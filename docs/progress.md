@@ -116,6 +116,8 @@ Current verification: `pnpm check` passes 176 TypeScript tests, typechecks and W
 
 ## Branding checkpoint
 
+`9b2e6da feat(extension): add Helium sync logo and favicon` records this checkpoint.
+
 The supplied official Helium application icon was extracted without changing the installed app. Built-in image generation created a Helium Synk derivative with the recognizable six-spoke white emblem/blue tile and two mint sync arrows. The repository retains the transparent RGBA master and PNG sizes 16/32/48/128/256/512, plus an ICO with 16/32/48 px frames. The dashboard, extension installation/toolbar icons and options/restoration favicons use the new assets. [The branding record](branding.md) contains the exact prompt and asset map.
 
 `pnpm typecheck` and the production WXT build pass. The packaged manifest and page HTML point to existing assets with the expected dimensions. The actual options page loaded the 128 px logo at desktop 55 px and mobile 40 px in synthetic previews. Viewport/document widths matched at 1089 and 390 px; console warnings/errors were empty. Saved local screenshots are `work/branding/dashboard-logo-desktop.png` and `work/branding/dashboard-logo-mobile.png`. Preview tab/server were closed after verification. Native toolbar/tab favicon rendering remains pending joint Helium acceptance. No sync behavior changed and the 176 TypeScript/31 Rust/11 integration suite results from the preceding checkpoint remain current. Both checklist copies record this checkpoint/commit; no whole milestone is complete.

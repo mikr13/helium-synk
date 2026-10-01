@@ -14,7 +14,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                   | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
 | Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                   | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
 | Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
-| Logo and favicon                                                   | Complete branding implementation checkpoint          | PNG/ICO assets; typechecks/build and synthetic UI pass              |
+| Logo and favicon                                                   | Complete branding implementation checkpoint          | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
 | History plaintext/ciphertext erasure                               | Pending                                              | Section 7                                                           |
 | Local budgets, retention, full-scale journal performance, recovery | Pending                                              | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                | Disposable profiles only                                            |
@@ -156,6 +156,8 @@ Checkpoint commit: `3d1e9f3 feat(security): persist client key lifecycle and rec
 Evidence: 176 TypeScript, 31 Rust and 11 real-process tests, production WXT/typechecks, rustfmt/clippy and format/version/Changeset checks. The new real-process flow drops a committed rotation reply, reopens both sides, preserves immutable historical ciphertext, re-encrypts missing offline work in all four domains, retries pairing across another rotation and recovers roots 1–4 into a fresh author. The synthetic mobile UI had no overflow or console warnings/errors. See [key-rotation.md](key-rotation.md) and [progress.md](progress.md); native acceptance and every whole milestone exit gate remain open.
 
 ## Branding checkpoint — 2026-10-01
+
+Checkpoint commit: `9b2e6da feat(extension): add Helium sync logo and favicon`.
 
 - [x] Derive a Helium Synk logo from the supplied official icon with a mint synchronization ring and transparent background.
 - [x] Package 16/32/48/128/256/512 px PNGs and a multi-size favicon; wire dashboard, toolbar/install icons and both extension page favicons.
