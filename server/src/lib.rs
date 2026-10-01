@@ -23,6 +23,7 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 const MAX_BATCH: usize = 100;
+const MAX_PAGE_BYTES: usize = 512 * 1024;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
 #[derive(Clone)]
@@ -43,11 +44,21 @@ impl IntoResponse for ApiError {
 }
 impl From<sqlx::Error> for ApiError {
     fn from(error: sqlx::Error) -> Self {
+        let storage_full = error
+            .as_database_error()
+            .is_some_and(|database| database.code().as_deref() == Some("13"));
         tracing::error!(%error, "database request failed");
-        Self(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Database unavailable; retain pending work and retry",
-        )
+        if storage_full {
+            Self(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "Relay storage is full; retain pending work and retry after making space",
+            )
+        } else {
+            Self(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Database unavailable; retain pending work and retry",
+            )
+        }
     }
 }
 impl std::fmt::Display for ApiError {
@@ -384,18 +395,31 @@ async fn pull(
     .bind(query.cursor)
     .fetch_all(&app.pool)
     .await?;
-    let has_more = rows.len() > MAX_BATCH;
+    let mut has_more = rows.len() > MAX_BATCH;
     let mut records = Vec::new();
     let mut cursor = query.cursor;
+    let mut page_bytes = 256usize;
     for row in rows.into_iter().take(MAX_BATCH) {
-        cursor = row.get("sequence");
-        let envelope: serde_json::Value = serde_json::from_str(&row.get::<String, _>("envelope"))
-            .map_err(|_| {
+        let encoded: String = row.get("envelope");
+        let entry_bytes = encoded.len() + 128;
+        if entry_bytes + 256 > MAX_PAGE_BYTES {
+            return Err(ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Stored envelope exceeds transfer limit",
+            ));
+        }
+        if page_bytes + entry_bytes > MAX_PAGE_BYTES {
+            has_more = true;
+            break;
+        }
+        let envelope: serde_json::Value = serde_json::from_str(&encoded).map_err(|_| {
             ApiError(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Stored envelope is invalid",
             )
         })?;
+        cursor = row.get("sequence");
+        page_bytes += entry_bytes;
         records.push(serde_json::json!({"sequence": cursor, "envelope": envelope}));
     }
     Ok(Json(

@@ -234,3 +234,76 @@ async fn relays_encrypted_bookmark_records_without_reading_their_contents() {
     assert_eq!(page["records"][0]["envelope"]["domain"], "bookmark");
     assert_eq!(page["records"][0]["envelope"]["ciphertext"], e.ciphertext);
 }
+
+#[tokio::test]
+async fn byte_bounded_pages_preserve_every_large_record_and_cursor() {
+    let (_temp, app, c) = setup().await;
+    let records: Vec<Envelope> = (1..=10)
+        .map(|counter| {
+            let mut e = envelope(&c, counter);
+            e.domain = "bookmark".into();
+            e.ciphertext = STANDARD.encode(vec![0; 65_536]);
+            e
+        })
+        .collect();
+    assert_eq!(push(&app, &c, &records).await.0, StatusCode::OK);
+    let mut cursor = 0;
+    let mut received = Vec::new();
+    let mut pages = 0;
+    loop {
+        let (status, page) = request(
+            &app,
+            Some(&c),
+            "GET",
+            &format!("/v1/sync/pull?cursor={cursor}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(serde_json::to_vec(&page).unwrap().len() <= 512 * 1024);
+        pages += 1;
+        for record in page["records"].as_array().unwrap() {
+            received.push(record["sequence"].as_i64().unwrap());
+        }
+        cursor = page["next_cursor"].as_i64().unwrap();
+        if !page["has_more"].as_bool().unwrap() {
+            break;
+        }
+    }
+    assert!(pages > 1);
+    assert_eq!(received, (1..=10).collect::<Vec<_>>());
+    assert_eq!(cursor, 10);
+}
+
+#[tokio::test]
+async fn disk_full_rejects_without_committing_or_acknowledging_and_allows_an_identical_retry() {
+    let (_temp, app, c) = setup().await;
+    let pages: i64 = sqlx::query_scalar("PRAGMA page_count")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    sqlx::query(&format!("PRAGMA max_page_count = {pages}"))
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    let mut e = envelope(&c, 1);
+    e.domain = "bookmark".into();
+    e.ciphertext = STANDARD.encode(vec![0; 65_536]);
+    let (status, body) = push(&app, &c, std::slice::from_ref(&e)).await;
+    assert_eq!(status, StatusCode::INSUFFICIENT_STORAGE);
+    assert!(body["error"].as_str().unwrap().contains("storage is full"));
+    assert!(body.get("acknowledgements").is_none());
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM operations")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    sqlx::query("PRAGMA max_page_count = 1073741823")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        push(&app, &c, std::slice::from_ref(&e)).await.0,
+        StatusCode::OK
+    );
+}

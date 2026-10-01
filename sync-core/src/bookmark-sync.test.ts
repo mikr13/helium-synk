@@ -1,10 +1,10 @@
 import Dexie from 'dexie';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BOOKMARK_ROOTS, type BookmarkOperation } from './bookmarks';
 import { generateRecoveryKey, encryptDiagnostic, encryptPayload } from './crypto';
 import { SynkDatabase } from './database';
-import { SyncCoordinator, type Transport } from './sync';
-import type { Credentials, Envelope, PullPage } from './protocol';
+import { HttpTransport, SyncCoordinator, type Transport } from './sync';
+import { MAX_TRANSFER_BYTES, type Credentials, type Envelope, type PullPage } from './protocol';
 
 const databases: SynkDatabase[] = [];
 const credentials = (account_id: string = crypto.randomUUID()): Credentials => ({
@@ -26,6 +26,7 @@ async function pair() {
   return { key, a: await local(a, key), b: await local(credentials(a.account_id), key) };
 }
 afterEach(async () => {
+  vi.unstubAllGlobals();
   for (const db of databases.splice(0)) await db.delete();
 });
 class Relay implements Transport {
@@ -71,6 +72,48 @@ const create = (id: string, title = 'Original') => ({
 });
 
 describe('durable bookmark pipeline', () => {
+  it('surfaces relay storage exhaustion while retaining the committed local queue', async () => {
+    const { a } = await pair(),
+      id = crypto.randomUUID();
+    await a.queueBookmark(create(id));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: 'Relay storage is full' }), { status: 507 }),
+      ),
+    );
+    const state = (await a.state.get('local'))!;
+    await expect(new SyncCoordinator(a, () => new HttpTransport(state)).sync()).rejects.toThrow(
+      'storage is full',
+    );
+    expect(await a.pendingCount()).toBe(1);
+    expect((await a.bookmarkProjection()).nodes[id]).toBeDefined();
+  });
+  it('drains large records in byte-bounded batches while preserving their author order', async () => {
+    const { a } = await pair(),
+      relay = new Relay();
+    for (let index = 0; index < 18; index++)
+      await a.stageBookmark(create(crypto.randomUUID(), '漢'.repeat(16_000)));
+    const sizes: number[] = [],
+      counters: number[] = [];
+    const transport: Transport = {
+      pull: (cursor) => relay.pull(cursor),
+      push: async (envelopes, epoch) => {
+        sizes.push(
+          new TextEncoder().encode(JSON.stringify({ envelopes, expected_epoch: epoch })).byteLength,
+        );
+        counters.push(...envelopes.map((e) => e.counter));
+        return relay.push(envelopes);
+      },
+    };
+    await new SyncCoordinator(a, () => transport).sync();
+    expect(sizes.length).toBeGreaterThan(1);
+    expect(sizes.every((size) => size <= MAX_TRANSFER_BYTES)).toBe(true);
+    expect(counters).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+    expect(await a.pendingCount()).toBe(0);
+    expect((await a.bookmarkProjection()).nodes[BOOKMARK_ROOTS.bar].children).toHaveLength(18);
+  });
   it('accepts unchanged envelope fields returned in a different JSON member order', async () => {
     const { a } = await pair(),
       relay = new Relay(),

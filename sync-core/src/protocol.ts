@@ -1,5 +1,6 @@
 export const PROTOCOL_VERSION = 1 as const;
 export const MAX_BATCH = 100;
+export const MAX_TRANSFER_BYTES = 512 * 1_024;
 export const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
 
 // Browser permissions are enabled only when their capture/application adapters are ready.
@@ -114,4 +115,19 @@ const ENVELOPE_FIELDS = [
 /** JSON member order is not part of envelope identity across Rust/JavaScript serializers. */
 export function sameEnvelope(a: Envelope, b: Envelope): boolean {
   return ENVELOPE_FIELDS.every((field) => a[field] === b[field]);
+}
+
+/** Keep legitimate large records below the relay body limit without ever discarding a row. */
+export function envelopeBatch(pending: readonly Envelope[]): Envelope[] {
+  const batch: Envelope[] = [];
+  let bytes = 512; // Fixed request fields, epoch and punctuation.
+  for (const envelope of pending.slice(0, MAX_BATCH)) {
+    const size = new TextEncoder().encode(JSON.stringify(envelope)).byteLength + 1;
+    if (size + 512 > MAX_TRANSFER_BYTES)
+      throw new Error('Queued envelope exceeds the transfer limit. Pending work was retained.');
+    if (bytes + size > MAX_TRANSFER_BYTES) break;
+    batch.push(envelope);
+    bytes += size;
+  }
+  return batch;
 }

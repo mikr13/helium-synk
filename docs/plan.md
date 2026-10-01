@@ -36,7 +36,8 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Use client-side HKDF and AES-256-GCM with fresh nonces/authenticated metadata.
 - [x] Issue distinct profile API credentials; store only their hashes on the relay.
 - [x] Commit encrypted relay records with WAL/FULL durability before acknowledging/broadcasting.
-- [x] Validate idempotent retries, conflicting identities, bounded batches, and ordered cursor pages.
+- [x] Validate idempotent retries, conflicting identities, byte-bounded batches, and ordered cursor pages.
+- [x] Verify SQLite storage exhaustion rejects without acknowledging, preserves client queues, and permits an identical retry after recovery.
 - [x] Commit decrypted incoming records and cursor progress together; retain the cursor on failure.
 - [x] Pause safely on a changed server epoch while retaining local work.
 - [x] Add authenticated WebSocket hints and an alarm/reconnect reconciliation path.

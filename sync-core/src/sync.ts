@@ -1,7 +1,15 @@
 import { decryptPayload } from './crypto';
 import { projectBookmarks } from './bookmarks';
 import { type LocalState, type LocalRecord, type StoredOperation, SynkDatabase } from './database';
-import { MAX_BATCH, sameEnvelope, type Envelope, type PullPage, type PushReply } from './protocol';
+import {
+  MAX_BATCH,
+  envelopeBatch,
+  isUuid,
+  sameEnvelope,
+  type Envelope,
+  type PullPage,
+  type PushReply,
+} from './protocol';
 
 export interface Transport {
   pull(cursor: number): Promise<PullPage>;
@@ -22,6 +30,10 @@ export class HttpTransport implements Transport {
       redirect: 'error',
     });
     if (!response.ok) {
+      if (response.status === 507)
+        throw new Error(
+          'Relay storage is full. Pending work was retained; free server space before retrying.',
+        );
       if (response.status === 401)
         throw new Error('Device credentials were rejected. Check enrollment or revocation.');
       if (response.status === 409)
@@ -41,7 +53,7 @@ export class HttpTransport implements Transport {
 }
 
 function checkEpoch(state: LocalState, epoch: string): void {
-  if (typeof epoch !== 'string' || !epoch) throw new Error('Invalid server epoch.');
+  if (!isUuid(epoch)) throw new Error('Invalid server epoch.');
   if (state.server_epoch && state.server_epoch !== epoch) {
     throw new Error(
       'Server history changed. Synchronization is paused; export local data before recovery.',
@@ -196,7 +208,9 @@ export class SyncCoordinator {
     await this.pull(transport);
     for (let batchNumber = 0; batchNumber < 20; batchNumber++) {
       await this.db.flushDrafts();
-      const batch = await this.db.outbox.orderBy('counter').limit(MAX_BATCH).toArray();
+      const batch = envelopeBatch(
+        await this.db.outbox.orderBy('counter').limit(MAX_BATCH).toArray(),
+      );
       if (batch.length === 0) break;
       const reply = await transport.push(batch, (await this.db.state.get('local'))!.server_epoch!);
       checkEpoch((await this.db.state.get('local'))!, reply.server_epoch);
