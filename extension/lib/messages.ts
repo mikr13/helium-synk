@@ -4,10 +4,21 @@ import type {
   BookmarkImport,
   RootSelection,
   NativeBookmark,
+  SessionSnapshot,
+  SessionRestoreSummary,
+  RestoreSelection,
 } from '@helium-synk/core';
 
 export type Request =
   | { type: 'status' }
+  | { type: 'session-enable' }
+  | { type: 'session-pause' }
+  | { type: 'session-save' }
+  | { type: 'session-list'; offset?: number }
+  | { type: 'session-detail'; id: string }
+  | { type: 'session-restore'; id: string; snapshot_id: string; selection: RestoreSelection }
+  | { type: 'session-resume'; id: string }
+  | { type: 'session-cancel'; id: string }
   | { type: 'enroll'; credentials: Credentials; recovery_key: string }
   | { type: 'queue'; note: string }
   | { type: 'sync' }
@@ -28,6 +39,13 @@ export interface Status {
   pending: number;
   records: LocalRecord[];
   browser_version: string;
+  sessions: {
+    enabled: boolean;
+    snapshots: number;
+    incomplete: number;
+    error?: string;
+    restores: SessionRestoreSummary[];
+  };
   bookmarks: {
     phase: 'off' | 'preview' | 'active';
     nodes: number;
@@ -37,6 +55,10 @@ export interface Status {
     interrupted: { id: string; message: string }[];
   };
 }
+export type SessionListItem = Pick<
+  SessionSnapshot,
+  'id' | 'source_id' | 'source_name' | 'source_revision' | 'kind' | 'captured_at' | 'previous_of'
+> & { windows: number; tabs: number; latest: boolean };
 export interface RecoveryBundle {
   account_id: string;
   recovery_key: string;
@@ -48,6 +70,9 @@ export type Reply =
       status?: Status;
       recovery?: RecoveryBundle;
       replica?: unknown;
+      session_list?: SessionListItem[];
+      session_more?: boolean;
+      session_snapshot?: SessionSnapshot;
       bookmark_preview?: BookmarkImport;
       bookmark_roots?: {
         id: string;

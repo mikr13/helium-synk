@@ -8,3 +8,7 @@ export * from './bookmarks';
 export * from './payload';
 export * from './bookmark-native';
 export * from './bookmark-adapter';
+export * from './sessions';
+export * from './session-native';
+export * from './session-capture';
+export * from './session-restore';

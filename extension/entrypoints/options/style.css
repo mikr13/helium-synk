@@ -291,6 +291,8 @@ form button {
 }
 .records-heading {
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
@@ -500,4 +502,189 @@ footer p {
   color: var(--ink);
   background: #f5f5ed;
   font: inherit;
+}
+.session-panel {
+  margin-top: 28px;
+  scroll-margin-top: 20px;
+}
+.session-toolbar,
+.session-window-heading,
+.session-detail-heading {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.session-toolbar {
+  margin-top: 28px;
+}
+.session-switch {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.session-toolbar label {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.session-toolbar select {
+  display: block;
+  margin-top: 6px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fdfcf7;
+  color: var(--ink);
+  font: inherit;
+  max-width: 240px;
+}
+.session-source {
+  margin: 24px 0;
+}
+.session-source h3 {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font:
+    normal 24px Georgia,
+    serif;
+}
+.session-source h3 > span {
+  color: var(--muted);
+  font:
+    10px 'Courier New',
+    monospace;
+}
+.session-card {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 16px 10px;
+  font-weight: normal;
+}
+.session-card:hover,
+.session-card.selected {
+  background: #e9eadd;
+}
+.session-card > div {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.session-card > div > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.session-card > span {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.session-detail {
+  border-top: 2px solid var(--ink);
+  margin-top: 28px;
+  padding-top: 24px;
+}
+.session-window {
+  margin-top: 22px;
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+}
+.session-window h4 {
+  margin: 0;
+  font-size: 15px;
+}
+.session-window-heading p,
+.session-job p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.session-label {
+  font:
+    9px 'Courier New',
+    monospace;
+  color: var(--orange);
+  padding-left: 12px;
+}
+.session-group-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+}
+.session-group {
+  font-size: 11px;
+  color: var(--muted);
+}
+.session-group i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.session-tabs {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0;
+}
+.session-tabs li {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+.session-tab-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.session-tab-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.session-tab-copy span,
+.session-tab-copy small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.session-tabs button {
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+.session-jobs {
+  border-top: 1px solid var(--line);
+  margin-top: 26px;
+  padding-top: 16px;
+}
+.session-job {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+  font-size: 12px;
+}
+.session-job .error {
+  color: #8c392c;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .session-panel {
+    padding: 20px 16px;
+  }
+  .session-tabs li {
+    align-items: start;
+  }
+  .session-detail-heading > button {
+    width: 100%;
+  }
+  .session-source h3 {
+    overflow-wrap: anywhere;
+  }
 }

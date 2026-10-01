@@ -2,9 +2,9 @@
 
 Private browser sync for Helium, built with WXT/TypeScript and a self-hosted Rust/Axum/SQLite relay on a Mac Mini behind Tailscale.
 
-The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. History and sessions are still upcoming. Production hosting and real Helium lifecycle/API acceptance remain pending.
+The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. It also supports **opt-in session capture and restoration**: source-owned current/closed/previous snapshots, encrypted multipart transport and a durable restoration journal. History is still upcoming. Production hosting and real Helium lifecycle/API acceptance remain pending.
 
-Read the [bookmark merge contract](docs/bookmark-merge.md) and [native adapter/recovery contract](docs/bookmark-browser.md). Automated native-adapter tests use a simulated browser port; they do not establish live Helium compatibility.
+Read the [bookmark merge contract](docs/bookmark-merge.md) and [native adapter/recovery contract](docs/bookmark-browser.md). Read the [session capture/restoration contract](docs/sessions.md). Automated native-adapter tests use a simulated browser port; they do not establish live Helium compatibility.
 
 Follow the [implementation checklist](docs/plan.md) and [verification record](docs/progress.md). Development source lives at `/Users/mihirpandey/Work/fun/helium-synk`, outside Documents/iCloud.
 
@@ -52,6 +52,7 @@ In a **disposable Helium profile**, open `chrome://extensions`, enable developer
 3. Paste profile B's separate credential JSON into its dashboard and enter **the same recovery key** from A's recovery file.
 4. Queue a test note on each profile. Stop the relay, queue another note, and restart it to check catch-up synchronization.
 5. In each disposable profile, preview the bookmark merge, save its backup, and enable bookmark sync. Keep a stable extension identity/path. Use the interrupted-addition review if an ambiguous create pauses application.
+6. Enable session capture in the dashboard. Inspect another profile's current/closed/previous snapshots and restore a tab, window or whole session. Use disposable URLs and check partial progress; cancelling keeps opened pages. Live Helium acceptance for these APIs is still pending.
 
 A fresh profile generates a new key when the field is blank. Using different keys for the same account causes decryption failure; this checkpoint has no re-enrollment/key-correction UI. Diagnose with disposable profiles. Do not clear a profile that contains pending work.
 
@@ -61,7 +62,7 @@ A fresh profile generates a new key when the field is blank. Using different key
 
 Notes enter the local records table and encrypted outbox in one IndexedDB transaction. A retry reuses the same ciphertext and operation identity. Pending work is removed only after a validated committed acknowledgement; received records and cursor progress commit together. After reconnect, clients pull missed records even if a WebSocket notification was missed.
 
-If the Mini goes offline, locally committed data remains available and notes/enabled bookmark edits queue locally. Profile removal, extension uninstall, disk loss, and storage failure are separate failure cases. Automated checks exercise short outages and database/server restarts; hours-long real-browser tests remain pending.
+If the Mini goes offline, locally committed data remains available and notes, enabled bookmark edits and captured sessions queue locally. Closed/saved session snapshots remain distinct; unsent current snapshots may coalesce conservatively. Profile removal, extension uninstall, disk loss, and storage failure are separate failure cases. Automated checks exercise short outages and database/server restarts; hours-long real-browser tests remain pending.
 
 The relay stores encrypted content and token hashes. It sees author IDs, counters, delivery sequences, and traffic size/timing. Clients use AES-256-GCM with fresh nonces and HKDF-derived per-account/domain/author keys. This build auto-unlocks: the recovery key, API credential, and decrypted content caches are stored in the browser profile. **Local profile data is not encrypted at rest by this extension.** Keep the recovery key separately; a server backup cannot decrypt records.
 

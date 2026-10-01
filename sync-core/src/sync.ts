@@ -1,4 +1,5 @@
 import { decryptPayload } from './crypto';
+import { projectSessions } from './sessions';
 import { projectBookmarks } from './bookmarks';
 import { type LocalState, type LocalRecord, type StoredOperation, SynkDatabase } from './database';
 import {
@@ -145,6 +146,7 @@ export class SyncCoordinator {
             this.db.operations,
             this.db.drafts,
             this.db.replicas,
+            this.db.sessionReplicas,
             this.db.state,
             this.db.quarantine,
           ],
@@ -160,10 +162,32 @@ export class SyncCoordinator {
             }
             const bookmarkOperations = await this.db.bookmarkOperations();
             const byId = new Map(bookmarkOperations.map((op) => [op.operation_id, op]));
-            for (const record of operations) byId.set(record.operation_id, record.payload);
-            let projection;
+            for (const record of operations)
+              if (record.payload.kind === 'bookmark') byId.set(record.operation_id, record.payload);
+            const sessionParts = await this.db.sessionParts(),
+              sessionsById = new Map(sessionParts.map((p) => [p.operation_id, p]));
+            for (const record of operations)
+              if (record.payload.kind === 'session')
+                sessionsById.set(record.operation_id, record.payload);
+            let projection, sessions;
             try {
               projection = projectBookmarks([...byId.values()]);
+              sessions = projectSessions([...sessionsById.values()]);
+              const counters = new Map<string, string>();
+              const headers = [
+                ...(await this.db.records.toArray()).map((r) => r.envelope),
+                ...(await this.db.operations.toArray()).map((r) => r.envelope),
+                ...(await this.db.drafts.toArray()).map((r) => r.header),
+                ...records.map((r) => r.envelope),
+                ...operations.map((r) => r.envelope),
+              ];
+              for (const header of headers) {
+                const key = `${header.device_id}/${header.counter}`,
+                  old = counters.get(key);
+                if (old && old !== header.operation_id)
+                  throw new Error('Received author counter was reused across domains.');
+                counters.set(key, header.operation_id);
+              }
             } catch (cause) {
               validationFailure =
                 cause instanceof Error ? cause : new Error('Invalid bookmark journal.');
@@ -172,6 +196,7 @@ export class SyncCoordinator {
             await this.db.records.bulkPut(records);
             await this.db.operations.bulkPut(operations);
             await this.db.replicas.put({ domain: 'bookmark', value: projection });
+            await this.db.sessionReplicas.put({ id: 'session', value: sessions });
             await this.db.quarantine.bulkDelete(
               [...records, ...operations].map((r) => r.operation_id),
             );

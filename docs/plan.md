@@ -1,6 +1,6 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Implementation active through sections 1–9; bookmark adapter/transport implemented, native Helium acceptance and other domains pending.
+**Status:** Implementation active through sections 1–9; bookmark and session adapters/transport implemented; native Helium acceptance, history and security/server hardening pending.
 
 **Updated:** 2026-10-01  
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
@@ -18,9 +18,9 @@
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                 |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 65 TS + 10 relay + 3 cross-stack tests; native gates pending  |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 97 TS + 10 relay + 4 cross-stack tests; native gates pending  |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                 |
-| M4 — Current, closed, and previous sessions      | Planned                | M2         | —                                                             |
+| M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending      |
 | M5 — Cross-device history and deletion           | Planned                | M2         | —                                                             |
 | M6 — Production hosting and recovery             | Planned                | M3–M5      | —                                                             |
 | M7 — Product polish and release                  | Planned                | M6         | —                                                             |
@@ -56,7 +56,19 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 65 TypeScript, 10 Rust and 3 real-relay integration tests.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 97 TypeScript, 10 Rust and 4 real-relay integration tests.
+
+## Session implementation checkpoint — 2026-10-01
+
+- [x] Persist source-owned current/closed/previous snapshots and validate durable encrypted multipart delivery.
+- [x] Persist native window caches and preserve closed windows independently of relay availability.
+- [x] Handle worker/browser incarnation changes, paused collection, private-window exclusion and storage failures through tested browser ports.
+- [x] Journal bounded tab/window restoration with marker recovery, pins/order/groups/active selection and visible partial progress.
+- [x] Build source-profile/type filters, capture-age display, explicit saving and open-tab/window/all controls; exercise synthetic desktop and 390 px UI.
+- [x] Verify session convergence and encrypted SQLite storage across real relay/client restarts.
+- [ ] Verify live Helium capture/restoration, DevTools-closed lifecycle and hours-long outages together in disposable profiles.
+
+The [session contract](sessions.md) records supported behavior and recovery limits. Implementation evidence is separate from the live acceptance items in section 6 and M4; no whole milestone exit gate is complete.
 
 ## 1. Product requirements and boundaries
 

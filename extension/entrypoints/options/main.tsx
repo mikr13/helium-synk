@@ -5,6 +5,7 @@ import { generateRecoveryKey, parseCredentials } from '@helium-synk/core';
 import type { Reply, Request, Status } from '../../lib/messages';
 import './style.css';
 import { BookmarkPanel, downloadJson } from './bookmarks';
+import { SessionPanel } from './sessions';
 
 async function request(message: Request): Promise<Reply & { ok: true }> {
   const response = (await browser.runtime.sendMessage(message)) as Reply;
@@ -92,9 +93,9 @@ function App() {
         <a className="nav" href="#bookmarks">
           Bookmarks <small>Preview</small>
         </a>
-        <div className="nav">
-          Sessions <small>Planned</small>
-        </div>
+        <a className="nav" href="#sessions">
+          Sessions <small>Open</small>
+        </a>
         <div className="nav">
           History <small>Planned</small>
         </div>
@@ -304,11 +305,14 @@ function App() {
             )}
           </section>
         )}
+        {status?.enrolled && (
+          <SessionPanel status={status} request={request} onStatus={setStatus} />
+        )}
         <footer>
           <span>PRIVATE BY DESIGN</span>
           <p>
-            Bookmark capture begins after you review and enable its merge. History and sessions are
-            not collected yet.
+            Bookmarks and sessions begin after you enable their collection. History is not collected
+            yet.
           </p>
         </footer>
       </main>

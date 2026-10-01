@@ -1,19 +1,30 @@
 import { defineBackground } from 'wxt/utils/define-background';
-import { browser } from 'wxt/browser';
+import { browser, type Browser } from 'wxt/browser';
 import {
   SynkDatabase,
   SyncCoordinator,
   BookmarkAdapter,
+  SessionCapture,
+  SessionRestorer,
+  restoreSummary,
   flattenBookmarks,
   type BookmarkEvent,
 } from '@helium-synk/core';
 import type { Reply, Request, Status } from '../lib/messages';
 import { bookmarkBrowser } from '../lib/bookmark-browser';
+import { sessionBrowser, restoreBrowser, nativeTab, nativeWindow } from '../lib/session-browser';
 
 export default defineBackground(() => {
   const db = new SynkDatabase();
   const coordinator = new SyncCoordinator(db);
   const bookmarks = new BookmarkAdapter(db, bookmarkBrowser);
+  const sessions = new SessionCapture(db, sessionBrowser);
+  const restorer = new SessionRestorer(db, restoreBrowser);
+  let sessionError: string | undefined;
+  let sessionTimer: ReturnType<typeof setTimeout> | undefined;
+  let firstSessionEvent = 0;
+  let restoring = false;
+  let restoreTimer: ReturnType<typeof setTimeout> | undefined;
   let bookmarkError: string | undefined;
   let bookmarkTimer: ReturnType<typeof setTimeout> | undefined;
   let firstBookmarkEvent = 0;
@@ -27,6 +38,7 @@ export default defineBackground(() => {
     if (!force && Date.now() < retryAt) return;
     if (!(await db.state.get('local'))) return;
     await reconcileBookmarks();
+    await reconcileSessions();
     connection = 'syncing';
     try {
       await coordinator.sync();
@@ -92,9 +104,26 @@ export default defineBackground(() => {
     const setup = await db.bookmarkSetup.get('bookmark'),
       replica = await db.bookmarkProjection();
     const interrupted = await db.bookmarkEffects.where('status').equals('blocked').toArray();
-    const local = await db.state.get('local');
+    const local = await db.state.get('local'),
+      sessionSetup = await db.sessionSetup.get('session'),
+      sessionProjection = await db.sessionProjection();
+    const activeJobs = await db.sessionRestores
+      .where('status')
+      .anyOf('running', 'blocked')
+      .toArray();
+    const recentJobs = await db.sessionRestores.orderBy('created_at').reverse().limit(5).toArray();
+    const jobs = [...new Map([...activeJobs, ...recentJobs].map((j) => [j.id, j])).values()]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .map(restoreSummary);
     return {
       enrolled: !!local,
+      sessions: {
+        enabled: !!sessionSetup?.enabled,
+        snapshots: Object.keys(sessionProjection.snapshots).length,
+        incomplete: sessionProjection.incomplete.length,
+        error: sessionError,
+        restores: jobs,
+      },
       name: local?.credentials.name,
       endpoint: local?.credentials.server_url,
       connection,
@@ -120,6 +149,72 @@ export default defineBackground(() => {
   }
   async function handle(request: Request): Promise<Reply> {
     try {
+      if (request.type === 'session-list') {
+        const offset = request.offset ?? 0;
+        if (!Number.isSafeInteger(offset) || offset < 0)
+          throw new Error('Invalid session list page.');
+        const projection = await db.sessionProjection();
+        const values = Object.values(projection.snapshots).sort(
+          (a, b) =>
+            Number(projection.current[b.source_id] === b.id) -
+              Number(projection.current[a.source_id] === a.id) ||
+            b.captured_at.localeCompare(a.captured_at) ||
+            b.source_revision - a.source_revision ||
+            a.id.localeCompare(b.id),
+        );
+        return {
+          ok: true,
+          session_more: values.length > offset + 100,
+          session_list: values.slice(offset, offset + 100).map((s) => ({
+            id: s.id,
+            source_id: s.source_id,
+            source_name: s.source_name,
+            source_revision: s.source_revision,
+            kind: s.kind,
+            captured_at: s.captured_at,
+            previous_of: s.previous_of,
+            windows: s.windows.length,
+            tabs: s.windows.reduce((n, w) => n + w.tabs.length, 0),
+            latest: projection.current[s.source_id] === s.id,
+          })),
+        };
+      }
+      if (request.type === 'session-detail') {
+        const snapshot = (await db.sessionProjection()).snapshots[request.id];
+        if (!snapshot) throw new Error('This session snapshot is unavailable.');
+        return { ok: true, session_snapshot: snapshot };
+      }
+      if (request.type === 'session-enable') {
+        await sessions.enable();
+        sessionError = undefined;
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'session-pause') {
+        await sessions.pause();
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'session-save') {
+        await sessions.saveCurrent();
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'session-restore') {
+        const snapshot = (await db.sessionProjection()).snapshots[request.snapshot_id];
+        if (!snapshot) throw new Error('This session snapshot is unavailable.');
+        await restorer.begin(request.id, snapshot, request.selection);
+        void resumeRestores();
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'session-resume') {
+        await restorer.resume(request.id);
+        void resumeRestores();
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'session-cancel') {
+        await restorer.cancel(request.id);
+        return { ok: true, status: await status() };
+      }
       if (request.type === 'export') return { ok: true, replica: await db.exportReplica() };
       if (request.type === 'bookmark-roots') {
         const nodes = [...flattenBookmarks(await bookmarkBrowser.getTree()).values()];
@@ -196,6 +291,101 @@ export default defineBackground(() => {
     }
   }
 
+  async function reconcileSessions(): Promise<void> {
+    try {
+      await sessions.reconcile();
+      sessionError = undefined;
+    } catch (cause) {
+      sessionError =
+        cause instanceof Error
+          ? cause.message
+          : 'Unable to capture sessions. Last good snapshots were retained.';
+    }
+  }
+  async function resumeRestores(): Promise<void> {
+    if (restoring) return;
+    restoring = true;
+    try {
+      const jobs = await db.sessionRestores.where('status').equals('running').sortBy('created_at');
+      if (jobs[0]) await restorer.run(jobs[0].id);
+      if (await db.sessionRestores.where('status').equals('running').count()) {
+        if (restoreTimer) clearTimeout(restoreTimer);
+        restoreTimer = setTimeout(() => {
+          restoreTimer = undefined;
+          void resumeRestores();
+        }, 150);
+      }
+    } catch {
+      sessionError =
+        'Unable to save restoration progress. Opened tabs were retained; check local storage.';
+    } finally {
+      restoring = false;
+    }
+  }
+  function sessionEvent(work: Promise<unknown>): void {
+    void work
+      .then(async () => {
+        if (!(await db.sessionSetup.get('session'))?.enabled) return;
+        const now = Date.now();
+        if (!firstSessionEvent) firstSessionEvent = now;
+        if (sessionTimer) clearTimeout(sessionTimer);
+        sessionTimer = setTimeout(
+          () => {
+            sessionTimer = undefined;
+            firstSessionEvent = 0;
+            void reconcileSessions().then(() => sync(true));
+          },
+          Math.min(2_000, Math.max(0, firstSessionEvent + 5_000 - now)),
+        );
+      })
+      .catch(() => {
+        sessionError =
+          'Unable to persist a session event. Last good snapshots were retained; reconciliation will retry.';
+      });
+  }
+  function refreshTab(id: number): void {
+    sessionEvent(browser.tabs.get(id).then((tab) => sessions.observeTab(nativeTab(tab))));
+  }
+  // Native cache writes happen before the publication debounce and independently of transport.
+  browser.tabs.onCreated.addListener((tab) => sessionEvent(sessions.observeTab(nativeTab(tab))));
+  browser.tabs.onUpdated.addListener((_id, _changes, tab) =>
+    sessionEvent(sessions.observeTab(nativeTab(tab))),
+  );
+  browser.tabs.onRemoved.addListener((id, info) =>
+    sessionEvent(sessions.removeTab(id, info.windowId, info.isWindowClosing)),
+  );
+  browser.tabs.onMoved.addListener((id, info) =>
+    sessionEvent(sessions.moveTab(id, info.windowId, info.toIndex)),
+  );
+  browser.tabs.onActivated.addListener((info) => refreshTab(info.tabId));
+  browser.tabs.onDetached.addListener((id, info) =>
+    sessionEvent(sessions.removeTab(id, info.oldWindowId, false)),
+  );
+  browser.tabs.onAttached.addListener((id) => refreshTab(id));
+  browser.windows.onCreated.addListener((w) =>
+    sessionEvent(sessions.observeWindow(nativeWindow(w))),
+  );
+  browser.windows.onRemoved.addListener((id) => sessionEvent(sessions.closeWindow(id)));
+  browser.windows.onFocusChanged.addListener(() => sessionEvent(Promise.resolve()));
+  browser.windows.onBoundsChanged.addListener((w) =>
+    sessionEvent(sessions.observeWindow(nativeWindow(w))),
+  );
+  const groupEvent = (g: Browser.tabGroups.TabGroup) =>
+    sessionEvent(
+      sessions.observeGroup({
+        id: g.id,
+        windowId: g.windowId,
+        title: g.title ?? '',
+        color: g.color,
+        collapsed: g.collapsed,
+      }),
+    );
+  browser.tabGroups.onCreated.addListener(groupEvent);
+  browser.tabGroups.onUpdated.addListener(groupEvent);
+  browser.tabGroups.onMoved.addListener(groupEvent);
+  browser.tabGroups.onRemoved.addListener(() => sessionEvent(Promise.resolve()));
+  browser.sessions.onChanged.addListener(() => sessionEvent(Promise.resolve()));
+
   async function reconcileBookmarks(): Promise<void> {
     try {
       await bookmarks.reconcile();
@@ -268,6 +458,8 @@ export default defineBackground(() => {
   async function start(): Promise<void> {
     await browser.alarms.create('reconcile', { periodInMinutes: 0.5 });
     await reconcileBookmarks();
+    await reconcileSessions();
+    void resumeRestores();
     await connect();
     await sync();
   }

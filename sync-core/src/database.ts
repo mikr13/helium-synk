@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import type { SessionRestoreJob } from './session-restore';
 import { encryptDiagnostic, encryptPayload, validateRecoveryKey } from './crypto';
 import {
   parseCredentials,
@@ -13,8 +14,21 @@ import {
   type BookmarkOperation,
   type BookmarkProjection,
 } from './bookmarks';
+import {
+  splitSession,
+  projectSessions,
+  type SessionContent,
+  type SessionPart,
+  type SessionProjection,
+} from './sessions';
 import { validatePayload, type EnvelopeHeader } from './payload';
 import type { VectorClock, Revision } from './revision';
+import type {
+  SessionSetup,
+  SessionIdentity,
+  SessionWindowCache,
+  SessionClosedSeen,
+} from './session-native';
 import type {
   BookmarkBinding,
   BookmarkEffect,
@@ -42,13 +56,13 @@ export interface LocalRecord {
 export interface StoredOperation {
   operation_id: string;
   envelope: Envelope;
-  payload: BookmarkOperation;
+  payload: BookmarkOperation | SessionPart;
   sequence?: number;
 }
 export interface DraftOperation {
   operation_id: string;
   header: EnvelopeHeader;
-  payload: BookmarkOperation;
+  payload: BookmarkOperation | SessionPart;
 }
 export interface Replica {
   domain: 'bookmark';
@@ -68,6 +82,12 @@ export class SynkDatabase extends Dexie {
   drafts!: Table<DraftOperation, string>;
   replicas!: Table<Replica, string>;
   quarantine!: Table<QuarantinedRecord, string>;
+  sessionReplicas!: Table<{ id: 'session'; value: SessionProjection }, string>;
+  sessionSetup!: Table<SessionSetup, string>;
+  sessionRestores!: Table<SessionRestoreJob, string>;
+  sessionIdentities!: Table<SessionIdentity, string>;
+  sessionWindows!: Table<SessionWindowCache, number>;
+  sessionClosedSeen!: Table<SessionClosedSeen, string>;
   bookmarkSetup!: Table<BookmarkSetup, string>;
   bookmarkBindings!: Table<BookmarkBinding, string>;
   bookmarkInbox!: Table<BookmarkInbox, number>;
@@ -92,6 +112,15 @@ export class SynkDatabase extends Dexie {
       bookmarkBindings: 'logical_id, &native_id',
       bookmarkInbox: '++id, native_id',
       bookmarkEffects: 'id, status, native_id',
+    });
+    this.version(4).stores({
+      drafts: 'operation_id, header.counter, header.domain',
+      sessionReplicas: 'id',
+      sessionSetup: 'id',
+      sessionRestores: 'id, status, created_at',
+      sessionIdentities: 'key, &logical_id',
+      sessionWindows: 'runtime_id',
+      sessionClosedSeen: 'id, fingerprint',
     });
   }
   async enroll(credentials: Credentials, recoveryKey: string): Promise<void> {
@@ -195,7 +224,7 @@ export class SynkDatabase extends Dexie {
         let counter = local.next_counter,
           logical = local.logical ?? 0;
         const context = { ...(observedContext ?? local.context) };
-        const drafts: DraftOperation[] = [];
+        const drafts: (DraftOperation & { payload: BookmarkOperation })[] = [];
         for (let index = 0; index < actions.length; index++) {
           const action = actions[index]!;
           let revision: Revision;
@@ -288,10 +317,80 @@ export class SynkDatabase extends Dexie {
   async bookmarkOperations(): Promise<BookmarkOperation[]> {
     return this.transaction('r', [this.operations, this.drafts], async () => [
       ...(await this.operations.where('envelope.domain').equals('bookmark').toArray()).map(
-        (o) => o.payload,
+        (o) => o.payload as BookmarkOperation,
       ),
-      ...(await this.drafts.toArray()).map((d) => d.payload),
+      ...(await this.drafts.toArray())
+        .map((d) => d.payload)
+        .filter((p): p is BookmarkOperation => p.kind === 'bookmark'),
     ]);
+  }
+  async sessionParts(): Promise<SessionPart[]> {
+    return this.transaction('r', [this.operations, this.drafts], async () => [
+      ...(await this.operations.where('envelope.domain').equals('session').toArray()).map(
+        (o) => o.payload as SessionPart,
+      ),
+      ...(await this.drafts.where('header.domain').equals('session').toArray()).map(
+        (d) => d.payload as SessionPart,
+      ),
+    ]);
+  }
+  async sessionProjection(): Promise<SessionProjection> {
+    return (await this.sessionReplicas.get('session'))?.value ?? projectSessions([]);
+  }
+  async stageSession(content: SessionContent): Promise<string> {
+    return this.transaction(
+      'rw',
+      [this.state, this.operations, this.drafts, this.sessionReplicas],
+      async () => {
+        const local = await this.state.get('local');
+        if (!local) throw new Error('Connect this device first.');
+        const snapshot = {
+          ...structuredClone(content),
+          id: crypto.randomUUID(),
+          source_id: local.credentials.device_id,
+          source_name: local.credentials.name,
+          source_revision: local.next_counter,
+        };
+        const parts = splitSession(snapshot);
+        if (local.next_counter + parts.length >= Number.MAX_SAFE_INTEGER)
+          throw new Error('Device counter exhausted.');
+        if (content.kind === 'current') {
+          const drafts = (
+            await this.drafts.where('header.domain').equals('session').toArray()
+          ).filter((d) => d.payload.kind === 'session' && d.payload.snapshot_kind === 'current');
+          const persisted = new Set(
+            (await this.operations.where('envelope.domain').equals('session').toArray()).map(
+              (o) => (o.payload as SessionPart).snapshot_id,
+            ),
+          );
+          // Coalesce only wholly unencrypted current snapshots; never mutate ciphertext, closed or saved snapshots.
+          await this.drafts.bulkDelete(
+            drafts
+              .filter((d) => !persisted.has((d.payload as SessionPart).snapshot_id))
+              .map((d) => d.operation_id),
+          );
+        }
+        const drafts = parts.map((payload) => ({
+          operation_id: payload.operation_id,
+          payload,
+          header: {
+            protocol_version: 1 as const,
+            operation_id: payload.operation_id,
+            account_id: local.credentials.account_id,
+            device_id: local.credentials.device_id,
+            counter: payload.source_revision + payload.part,
+            domain: 'session' as const,
+            key_epoch: 1 as const,
+          },
+        }));
+        for (const d of drafts) validatePayload(d.payload, d.header);
+        const projection = projectSessions([...(await this.sessionParts()), ...parts]);
+        await this.drafts.bulkAdd(drafts);
+        await this.sessionReplicas.put({ id: 'session', value: projection });
+        await this.state.update('local', { next_counter: local.next_counter + parts.length });
+        return snapshot.id;
+      },
+    );
   }
   async bookmarkProjection(): Promise<BookmarkProjection> {
     return (await this.replicas.get('bookmark'))?.value ?? projectBookmarks([]);
@@ -314,6 +413,12 @@ export class SynkDatabase extends Dexie {
         this.outbox,
         this.replicas,
         this.quarantine,
+        this.sessionReplicas,
+        this.sessionSetup,
+        this.sessionIdentities,
+        this.sessionWindows,
+        this.sessionClosedSeen,
+        this.sessionRestores,
         this.bookmarkSetup,
         this.bookmarkBindings,
         this.bookmarkInbox,
@@ -336,6 +441,12 @@ export class SynkDatabase extends Dexie {
           outbox: await this.outbox.toArray(),
           replicas: await this.replicas.toArray(),
           quarantine: await this.quarantine.toArray(),
+          sessions: await this.sessionReplicas.toArray(),
+          session_setup: await this.sessionSetup.toArray(),
+          session_identities: await this.sessionIdentities.toArray(),
+          session_windows: await this.sessionWindows.toArray(),
+          session_closed_seen: await this.sessionClosedSeen.toArray(),
+          session_restores: await this.sessionRestores.toArray(),
           bookmark_setup: await this.bookmarkSetup.toArray(),
           bookmark_bindings: await this.bookmarkBindings.toArray(),
           bookmark_inbox: await this.bookmarkInbox.toArray(),

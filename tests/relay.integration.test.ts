@@ -11,6 +11,7 @@ import {
   SyncCoordinator,
   type Credentials,
 } from '../sync-core/src/index';
+import { sessionWindow } from './session-fixtures';
 
 const binary = resolve('target/debug/synk-server');
 const directory = mkdtempSync(join(tmpdir(), 'helium-synk-integration-'));
@@ -22,6 +23,8 @@ let credentialsB: Credentials;
 let credentialsC: Credentials;
 let credentialsD: Credentials;
 let credentialsE: Credentials;
+let credentialsF: Credentials;
+let credentialsG: Credentials;
 const sharedKey = generateRecoveryKey();
 const localDatabases: SynkDatabase[] = [];
 const sockets: WebSocket[] = [];
@@ -62,7 +65,7 @@ async function stop(): Promise<void> {
 }
 beforeAll(async () => {
   port = await freePort();
-  for (const name of ['A', 'B', 'C', 'D', 'E']) {
+  for (const name of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
     execFileSync(
       binary,
       [
@@ -84,6 +87,8 @@ beforeAll(async () => {
   credentialsC = JSON.parse(readFileSync(join(directory, 'C.credential.json'), 'utf8'));
   credentialsD = JSON.parse(readFileSync(join(directory, 'D.credential.json'), 'utf8'));
   credentialsE = JSON.parse(readFileSync(join(directory, 'E.credential.json'), 'utf8'));
+  credentialsF = JSON.parse(readFileSync(join(directory, 'F.credential.json'), 'utf8'));
+  credentialsG = JSON.parse(readFileSync(join(directory, 'G.credential.json'), 'utf8'));
   await start();
 });
 afterAll(async () => {
@@ -222,4 +227,67 @@ it('causal bookmarks survive a relay outage and pre-encryption client restart ac
   expect(stored).not.toContain('https://example.test/private-bookmark');
   expect(stored).not.toContain(sharedKey);
   expect(stored.trim().split('\n')).toHaveLength(3);
+});
+
+it('encrypted multipart sessions and offline closed windows survive client and Rust relay restart', async () => {
+  let a = await local(credentialsF, sharedKey);
+  const b = await local(credentialsG, sharedKey);
+  const first = await a.stageSession({
+    kind: 'current',
+    captured_at: '2026-10-01T08:00:00Z',
+    windows: [sessionWindow()],
+  });
+  await new SyncCoordinator(a).sync();
+  await new SyncCoordinator(b).sync();
+  expect((await b.sessionProjection()).current[credentialsF.device_id]).toBe(first);
+  await stop();
+  const closed = await a.stageSession({
+    kind: 'closed',
+    captured_at: '2026-10-01T08:02:00Z',
+    windows: [sessionWindow()],
+  });
+  const large = sessionWindow(600, 'Private session title ' + '漢'.repeat(200));
+  const newest = await a.stageSession({
+    kind: 'current',
+    captured_at: '2026-10-01T08:03:00Z',
+    windows: [large],
+  });
+  const second = sessionWindow(2);
+  second.focused = false;
+  const remote = await b.stageSession({
+    kind: 'current',
+    captured_at: '2026-10-01T08:04:00Z',
+    windows: [sessionWindow(), second],
+  });
+  const name = a.name;
+  a.close();
+  a = new SynkDatabase(name);
+  localDatabases.push(a);
+  expect((await a.sessionProjection()).snapshots[closed]).toBeDefined();
+  await expect(new SyncCoordinator(a).sync()).rejects.toThrow();
+  expect(await a.pendingCount()).toBeGreaterThan(2);
+  await start();
+  await new SyncCoordinator(a).sync();
+  await new SyncCoordinator(b).sync();
+  await new SyncCoordinator(a).sync();
+  const p = await a.sessionProjection();
+  expect(p).toEqual(await b.sessionProjection());
+  expect(p.current[credentialsF.device_id]).toBe(newest);
+  expect(p.current[credentialsG.device_id]).toBe(remote);
+  expect(p.snapshots[closed]!.windows[0]!.tabs).toHaveLength(3);
+  expect(p.snapshots[newest]!.windows[0]!.tabs).toHaveLength(600);
+  expect(await a.pendingCount()).toBe(0);
+  expect(await b.pendingCount()).toBe(0);
+  const stored = execFileSync(
+    'sqlite3',
+    [
+      database,
+      "SELECT envelope FROM operations WHERE json_extract(envelope, '$.domain') = 'session';",
+    ],
+    { encoding: 'utf8' },
+  );
+  expect(stored).not.toContain('Private session title');
+  expect(stored).not.toContain('https://example.com/');
+  expect(stored).not.toContain(sharedKey);
+  expect(stored.trim().split('\n').length).toBeGreaterThan(4);
 });
