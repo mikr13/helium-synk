@@ -8,16 +8,16 @@
 
 Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress; every whole milestone and native acceptance gate remains open.
 
-| Checkpoint                                                         | Status                                          | Commit / evidence                                                                                       |
-| ------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass           | `a0429bd` and earlier checkpoints; native gates open                                                    |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint              | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint                                     |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint              | `feat(security): add single-use durable profile pairing`; current 151 TS, 23 Rust, 9 real-process tests |
-| Future-data key rotation / compromised-installation recovery       | Pending                                         | Section 8                                                                                               |
-| History plaintext/ciphertext erasure                               | Pending                                         | Section 7                                                                                               |
-| Local budgets, retention, full-scale journal performance, recovery | Pending                                         | Sections 2–4, 7–9                                                                                       |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                           | Disposable profiles only                                                                                |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing | Section 10 onward                                                                                       |
+| Checkpoint                                                         | Status                                          | Commit / evidence                                                   |
+| ------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass           | `a0429bd` and earlier checkpoints; native gates open                |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint              | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint              | `4d34eed`; current 151 TS, 23 Rust, 9 real-process tests            |
+| Future-data key rotation / compromised-installation recovery       | Pending                                         | Section 8                                                           |
+| History plaintext/ciphertext erasure                               | Pending                                         | Section 7                                                           |
+| Local budgets, retention, full-scale journal performance, recovery | Pending                                         | Sections 2–4, 7–9                                                   |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                           | Disposable profiles only                                            |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
 
@@ -122,7 +122,7 @@ Evidence: 142 TypeScript, 18 Rust and 8 real-process integration tests, WXT prod
 - [x] Add saved-claim retry and explicit discard controls; verify synthetic 390 px UI.
 - [ ] Complete future-data content-key rotation and the native pairing/permissions gates.
 
-Evidence: 151 TypeScript, 23 Rust and 9 real-process integration tests, WXT production build/typechecks and format/version checks. See `docs/pairing.md` and `docs/progress.md`. Profile-local auto-unlock and decrypted caches remain the local protection policy; no milestone exit gate is complete.
+Checkpoint commit: `4d34eed feat(security): add single-use durable profile pairing`. Evidence: 151 TypeScript, 23 Rust and 9 real-process integration tests, WXT production build/typechecks and format/version checks. See `docs/pairing.md` and `docs/progress.md`. Profile-local auto-unlock and decrypted caches remain the local protection policy; no milestone exit gate is complete.
 
 ## 1. Product requirements and boundaries
 
