@@ -152,7 +152,7 @@ The [history policy](history.md) identifies what is still retained: capture/inbo
 
 ## History capture-copy cleanup checkpoint
 
-Current implementation checkpoint; commit recorded after commit.
+`abe48a9 feat(history): clean obsolete capture jobs atomically` records this checkpoint.
 
 IndexedDB schema 9 applies existing deletion/clear proofs to saved capture jobs during upgrade. Observed global/source/URL clears remove obsolete raw inbox intents, lookup batches and canceled scans in the same transaction as history projection/journal updates and an incoming cursor. This also works while capture is paused. Unrelated URL work and already observed generations remain saved. Completed native-removal URLs are removed from the remaining intent; cleanup cannot put an older multi-URL list back after a clear changed it.
 

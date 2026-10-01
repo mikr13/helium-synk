@@ -8,18 +8,18 @@
 
 Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress; every whole milestone and native acceptance gate remains open.
 
-| Checkpoint                                                         | Status                                                | Commit / evidence                                                             |
-| ------------------------------------------------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                 | `a0429bd` and earlier checkpoints; native gates open                          |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                    | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint           |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                    | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint           |
-| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open  | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                             |
-| Logo and favicon                                                   | Complete branding implementation checkpoint           | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass             |
-| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open  | `93bea2c`; 176 TS, 11 real-process tests, production build/UI                 |
-| History plaintext/ciphertext erasure                               | In progress: journal and obsolete capture-job cleanup | Current capture checkpoint; 194 TS, 11 real-process tests; full purge pending |
-| Local budgets, retention, full-scale journal performance, recovery | Pending                                               | Sections 2–4, 7–9                                                             |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                 | Disposable profiles only                                                      |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing       | Section 10 onward                                                             |
+| Checkpoint                                                         | Status                                                | Commit / evidence                                                   |
+| ------------------------------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                 | `a0429bd` and earlier checkpoints; native gates open                |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                    | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                    | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
+| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open  | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
+| Logo and favicon                                                   | Complete branding implementation checkpoint           | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open  | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
+| History plaintext/ciphertext erasure                               | In progress: journal and obsolete capture-job cleanup | `abe48a9`; 194 TS, 11 real-process tests; full purge pending        |
+| Local budgets, retention, full-scale journal performance, recovery | Pending                                               | Sections 2–4, 7–9                                                   |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                 | Disposable profiles only                                            |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing       | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
 
@@ -200,7 +200,7 @@ This is a journal-content checkpoint, not complete erasure or M5 acceptance. Enc
 
 ## History capture-copy cleanup checkpoint — 2026-10-01
 
-Checkpoint commit: current implementation checkpoint (commit recorded after commit).
+Checkpoint commit: `abe48a9 feat(history): clean obsolete capture jobs atomically`.
 
 - [x] Remove obsolete inbox/lookup/scan work for matching observed global/source/URL clears in the deletion/pull transaction, including paused capture.
 - [x] Scrub selected cached native metadata into identity-only local markers, preserving unrelated saved records and cached positions.
