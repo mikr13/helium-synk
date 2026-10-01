@@ -1,5 +1,11 @@
 import Dexie, { type Table } from 'dexie';
 import type { PairingCandidate } from './pairing';
+import {
+  parseKeyRing,
+  type EnrollmentKeys,
+  type KeySecrets,
+  type RotationPending,
+} from './key-state';
 import type {
   HistorySetup,
   HistoryInbox,
@@ -63,6 +69,7 @@ export interface LocalState {
   id: 'local';
   credentials: Credentials;
   recovery_key: string;
+  key_epoch?: number;
   next_counter: number;
   cursor: number;
   /** Confirmed relay ACK of the durable journal cursor; never native browser application. */
@@ -104,6 +111,8 @@ export interface QuarantinedRecord {
 export class SynkDatabase extends Dexie {
   state!: Table<LocalState, string>;
   pairingPending!: Table<PairingCandidate, string>;
+  keySecrets!: Table<KeySecrets, string>;
+  rotationPending!: Table<RotationPending, string>;
   outbox!: Table<Envelope, string>;
   records!: Table<LocalRecord, string>;
   operations!: Table<StoredOperation, string>;
@@ -172,18 +181,26 @@ export class SynkDatabase extends Dexie {
         'id, [visited_at+id], [source_id+visited_at+id], [source_id+url_tag], url_tag, source_id',
     });
     this.version(6).stores({ pairingPending: 'id' });
+    this.version(7).stores({ keySecrets: 'id', rotationPending: 'id' });
   }
   async enroll(
     credentials: Credentials,
     recoveryKey: string,
     historyIndexKey?: string,
+    keys?: EnrollmentKeys,
   ): Promise<void> {
     const parsed = parseCredentials(credentials);
     validateRecoveryKey(recoveryKey);
     const indexKey =
       historyIndexKey ?? (await deriveHistoryIndexKey(recoveryKey, parsed.account_id));
     validateRecoveryKey(indexKey);
-    await this.transaction('rw', [this.state, this.pairingPending], async () => {
+    const ring = parseKeyRing(keys ?? { key_epoch: 1, roots: { 1: recoveryKey } });
+    if (
+      ring.roots[ring.key_epoch] !== recoveryKey ||
+      (keys?.server_epoch && !canonicalUuid(keys.server_epoch))
+    )
+      throw new Error('Enrollment keys are inconsistent.');
+    await this.transaction('rw', [this.state, this.pairingPending, this.keySecrets], async () => {
       if (await this.pairingPending.get('pairing'))
         throw new Error('Retry the pending pairing claim first.');
       if (await this.state.get('local')) throw new Error('This profile is already enrolled.');
@@ -191,12 +208,21 @@ export class SynkDatabase extends Dexie {
         id: 'local',
         credentials: parsed,
         recovery_key: recoveryKey,
+        key_epoch: ring.key_epoch,
+        server_epoch: keys?.server_epoch,
         history_index_key: indexKey,
         next_counter: 1,
         cursor: 0,
         acknowledged_cursor: 0,
         logical: 0,
         context: {},
+      });
+      await this.keySecrets.add({
+        id: 'keys',
+        account_id: parsed.account_id,
+        device_id: parsed.device_id,
+        server_epoch: keys?.server_epoch,
+        roots: ring.roots,
       });
     });
   }
@@ -225,7 +251,7 @@ export class SynkDatabase extends Dexie {
         device_id: state.credentials.device_id,
         counter: state.next_counter,
         domain: 'diagnostic',
-        key_epoch: 1,
+        key_epoch: state.key_epoch ?? 1,
       },
       payload,
     );
@@ -317,7 +343,7 @@ export class SynkDatabase extends Dexie {
             device_id: revision.author,
             counter: revision.counter,
             domain: 'bookmark',
-            key_epoch: 1,
+            key_epoch: local.key_epoch ?? 1,
           };
           const payload: BookmarkOperation = {
             kind: 'bookmark',
@@ -357,27 +383,35 @@ export class SynkDatabase extends Dexie {
     return this.encrypting;
   }
   private async prepareDrafts(): Promise<void> {
-    const local = await this.state.get('local');
-    if (!local) return;
+    if (!(await this.state.get('local'))) return;
     const drafts = await this.drafts.orderBy('header.counter').limit(MAX_BATCH).toArray();
     for (const draft of drafts) {
+      const local = (await this.state.get('local'))!;
+      // Unencrypted drafts have never entered the relay, so adopt the current epoch directly.
+      const header = { ...draft.header, key_epoch: local.key_epoch ?? 1 };
       const envelope = await encryptPayload(
         local.recovery_key,
-        draft.header,
+        header,
         draft.payload,
         local.history_index_key,
       );
-      await this.transaction('rw', [this.drafts, this.operations, this.outbox], async () => {
-        // Another worker/database instance may have committed ciphertext while encryption was running.
-        if (!(await this.drafts.get(draft.operation_id))) return;
-        await this.operations.add({
-          operation_id: draft.operation_id,
-          envelope,
-          payload: draft.payload,
-        });
-        await this.outbox.add(envelope);
-        await this.drafts.delete(draft.operation_id);
-      });
+      await this.transaction(
+        'rw',
+        [this.state, this.drafts, this.operations, this.outbox],
+        async () => {
+          // Another worker/database instance may have committed ciphertext while encryption was running.
+          const saved = await this.drafts.get(draft.operation_id);
+          if (!saved || JSON.stringify(saved) !== JSON.stringify(draft)) return;
+          if (((await this.state.get('local'))?.key_epoch ?? 1) !== header.key_epoch) return;
+          await this.operations.add({
+            operation_id: draft.operation_id,
+            envelope,
+            payload: draft.payload,
+          });
+          await this.outbox.add(envelope);
+          await this.drafts.delete(draft.operation_id);
+        },
+      );
     }
   }
   async bookmarkOperations(): Promise<BookmarkOperation[]> {
@@ -446,7 +480,7 @@ export class SynkDatabase extends Dexie {
             device_id: local.credentials.device_id,
             counter: payload.source_revision + payload.part,
             domain: 'session' as const,
-            key_epoch: 1 as const,
+            key_epoch: local.key_epoch ?? 1,
           },
         }));
         for (const d of drafts) validatePayload(d.payload, d.header);
@@ -548,7 +582,7 @@ export class SynkDatabase extends Dexie {
             device_id: revision.author,
             counter: revision.counter,
             domain: 'history',
-            key_epoch: 1,
+            key_epoch: local.key_epoch ?? 1,
           };
           validatePayload(payload, header);
           drafts.push({ operation_id, header, payload });

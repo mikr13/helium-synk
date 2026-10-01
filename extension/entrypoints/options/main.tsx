@@ -8,6 +8,7 @@ import { BookmarkPanel, downloadJson } from './bookmarks';
 import { SessionPanel } from './sessions';
 import { HistoryPanel } from './history';
 import { PairingPanel } from './pairing';
+import { KeyPanel } from './keys';
 import { grantEndpoint } from '../../lib/endpoint-permission';
 
 async function request(message: Request): Promise<Reply & { ok: true }> {
@@ -22,6 +23,7 @@ function App() {
   const [status, setStatus] = useState<Status>();
   const [credential, setCredential] = useState('');
   const [key, setKey] = useState('');
+  const [recoveryJson, setRecoveryJson] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -62,10 +64,12 @@ function App() {
       type: 'enroll',
       credentials,
       recovery_key: key.trim() || generateRecoveryKey(),
+      ...(recoveryJson.trim() ? { recovery_bundle: JSON.parse(recoveryJson) } : {}),
     });
     setStatus(response.status);
     setCredential('');
     setKey('');
+    setRecoveryJson('');
   }
   async function recovery() {
     const result = await request({ type: 'recovery' });
@@ -142,6 +146,7 @@ function App() {
         )}
         {!status && !error && <p>Opening your local database…</p>}
         {status && <PairingPanel status={status} request={request} onStatus={setStatus} />}
+        {status?.enrolled && <KeyPanel status={status} request={request} onStatus={setStatus} />}
         {status && !status.enrolled && !status.pairing_pending && (
           <section className="panel">
             <div className="panel-heading">
@@ -180,10 +185,26 @@ function App() {
                 placeholder="Use the same key on your other devices"
               />
               <p className="fine">
-                The first device creates the encryption key. Save its recovery file, then use that
-                key when connecting another device. This build unlocks automatically from your
-                browser profile.
+                The first device creates the encryption key. Use a pairing invitation for later
+                profiles. This build unlocks automatically from your browser profile.
               </p>
+              <details className="recovery-import">
+                <summary>Restore from a private recovery bundle</summary>
+                <p className="fine">
+                  Issue a fresh installation credential first. Recovery restores content keys and
+                  downloads the relay journal; it does not restore local-only edits.
+                </p>
+                <label htmlFor="recovery-bundle">Private recovery bundle JSON</label>
+                <textarea
+                  id="recovery-bundle"
+                  value={recoveryJson}
+                  onChange={(e) => setRecoveryJson(e.target.value)}
+                  rows={4}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="Paste the separately saved private recovery bundle"
+                />
+              </details>
               <button disabled={busy}>
                 {busy ? 'Connecting…' : 'Connect device'} <span>↗</span>
               </button>
@@ -219,7 +240,7 @@ function App() {
                   {busy ? 'Working…' : 'Sync now'} <span>↗</span>
                 </button>
                 <button className="secondary" disabled={busy} onClick={() => void run(recovery)}>
-                  Save recovery key
+                  Save recovery bundle
                 </button>
                 <button
                   className="secondary"

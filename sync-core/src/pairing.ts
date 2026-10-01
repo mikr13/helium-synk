@@ -1,10 +1,20 @@
 import { SynkDatabase } from './database';
 import { validateRecoveryKey } from './crypto';
 import { isUuid, parseCredentials, serverUrl, type Credentials } from './protocol';
+import {
+  generateWrappingIdentity,
+  proveIdentity,
+  verifyIdentity,
+  validateWrappingIdentity,
+  type WrappingIdentity,
+  type PublicIdentity,
+} from './key-crypto';
+import { parseKeyRing } from './key-state';
+import { keySnapshot } from './key-manager';
 
 export interface PairingBundle {
   format: 'helium-synk-pairing';
-  version: 1;
+  version: 1 | 2;
   account_id: string;
   server_url: string;
   server_epoch: string;
@@ -12,11 +22,15 @@ export interface PairingBundle {
   expires_at: number;
   recovery_key: string;
   history_index_key: string;
+  key_epoch?: number;
+  roots?: Record<number, string>;
 }
 export interface PairingCandidate {
   id: 'pairing';
   bundle: PairingBundle;
   credentials: Credentials;
+  identity?: WrappingIdentity;
+  public_identity?: PublicIdentity;
 }
 const secret = (value: unknown): value is string =>
   typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
@@ -25,7 +39,7 @@ export function parsePairingBundle(value: unknown): PairingBundle {
   if (
     !bundle ||
     bundle.format !== 'helium-synk-pairing' ||
-    bundle.version !== 1 ||
+    ![1, 2].includes(bundle.version) ||
     !isUuid(bundle.account_id) ||
     !isUuid(bundle.server_epoch) ||
     !secret(bundle.invitation_token) ||
@@ -38,9 +52,12 @@ export function parsePairingBundle(value: unknown): PairingBundle {
     throw new Error('Invalid or unsupported pairing bundle.');
   validateRecoveryKey(bundle.recovery_key);
   validateRecoveryKey(bundle.history_index_key);
+  const keys = bundle.version === 2 ? parseKeyRing(bundle) : undefined;
+  if (keys && keys.roots[keys.key_epoch] !== bundle.recovery_key)
+    throw new Error('Pairing content keys are inconsistent.');
   return {
     format: 'helium-synk-pairing',
-    version: 1,
+    version: bundle.version,
     account_id: bundle.account_id,
     server_url: serverUrl(bundle.server_url),
     server_epoch: bundle.server_epoch,
@@ -48,6 +65,7 @@ export function parsePairingBundle(value: unknown): PairingBundle {
     expires_at: bundle.expires_at,
     recovery_key: bundle.recovery_key,
     history_index_key: bundle.history_index_key,
+    ...(keys ?? {}),
   };
 }
 function apiError(status: number): Error {
@@ -87,7 +105,7 @@ async function post(url: string, path: string, body: unknown, token?: string): P
   return response.json();
 }
 export async function createPairingBundle(db: SynkDatabase): Promise<PairingBundle> {
-  const state = await db.state.get('local');
+  const { local: state, secrets } = await keySnapshot(db);
   if (!state?.server_epoch)
     throw new Error('Sync this trusted installation before creating a pairing bundle.');
   const indexKey = await db.ensureHistoryIndexKey();
@@ -96,11 +114,15 @@ export async function createPairingBundle(db: SynkDatabase): Promise<PairingBund
     '/v1/pairing/invites',
     {},
     state.credentials.token,
-  )) as Pick<PairingBundle, 'account_id' | 'server_epoch' | 'invitation_token' | 'expires_at'>;
+  )) as Pick<
+    PairingBundle,
+    'account_id' | 'server_epoch' | 'invitation_token' | 'expires_at' | 'key_epoch'
+  >;
   if (
     !invitation ||
     invitation.account_id !== state.credentials.account_id ||
-    invitation.server_epoch !== state.server_epoch
+    invitation.server_epoch !== state.server_epoch ||
+    (invitation.key_epoch ?? 1) !== (state.key_epoch ?? 1)
   )
     throw new Error(
       'Pairing account or server epoch changed. Synchronization recovery is required.',
@@ -108,10 +130,12 @@ export async function createPairingBundle(db: SynkDatabase): Promise<PairingBund
   return parsePairingBundle({
     ...invitation,
     format: 'helium-synk-pairing',
-    version: 1,
+    version: 2,
     server_url: state.credentials.server_url,
     recovery_key: state.recovery_key,
     history_index_key: indexKey,
+    key_epoch: state.key_epoch ?? 1,
+    roots: secrets.roots,
   });
 }
 export async function stagePairing(db: SynkDatabase, value: unknown, name: string): Promise<void> {
@@ -133,6 +157,17 @@ export async function stagePairing(db: SynkDatabase, value: unknown, name: strin
       server_url: bundle.server_url,
     },
   };
+  candidate.identity = await generateWrappingIdentity();
+  candidate.public_identity = await proveIdentity(
+    bundle.recovery_key,
+    bundle.account_id,
+    bundle.server_epoch,
+    {
+      device_id: candidate.credentials.device_id,
+      public_key: candidate.identity.public_key,
+      proof_epoch: bundle.key_epoch ?? 1,
+    },
+  );
   await db.transaction('rw', [db.state, db.pairingPending], async () => {
     if (await db.state.get('local')) throw new Error('This profile is already enrolled.');
     if (await db.pairingPending.get('pairing'))
@@ -149,6 +184,23 @@ export async function completePairing(db: SynkDatabase): Promise<void> {
     credentials = parseCredentials(candidate.credentials);
   if (credentials.account_id !== bundle.account_id || credentials.server_url !== bundle.server_url)
     throw new Error('Pending pairing claim is inconsistent. Preserve it for recovery.');
+  if (!!candidate.identity !== !!candidate.public_identity)
+    throw new Error('Pending pairing wrapping keys are inconsistent.');
+  if (candidate.identity) {
+    await validateWrappingIdentity(candidate.identity);
+    if (
+      candidate.identity.public_key !== candidate.public_identity!.public_key ||
+      candidate.public_identity!.device_id !== credentials.device_id ||
+      candidate.public_identity!.proof_epoch !== (bundle.key_epoch ?? 1)
+    )
+      throw new Error('Pending pairing wrapping keys are inconsistent.');
+    await verifyIdentity(
+      bundle.recovery_key,
+      bundle.account_id,
+      bundle.server_epoch,
+      candidate.public_identity!,
+    );
+  }
   const reply = (await post(bundle.server_url, '/v1/pairing/register', {
     account_id: bundle.account_id,
     expected_epoch: bundle.server_epoch,
@@ -156,16 +208,27 @@ export async function completePairing(db: SynkDatabase): Promise<void> {
     device_id: credentials.device_id,
     name: credentials.name,
     token: credentials.token,
-  })) as Pick<Credentials, 'account_id' | 'device_id' | 'name'> & { server_epoch: string };
+    ...(candidate.public_identity
+      ? {
+          public_key: candidate.public_identity.public_key,
+          proof: candidate.public_identity.proof,
+          proof_epoch: candidate.public_identity.proof_epoch,
+        }
+      : {}),
+  })) as Pick<Credentials, 'account_id' | 'device_id' | 'name'> & {
+    server_epoch: string;
+    key_epoch?: number;
+  };
   if (
     !reply ||
     reply.account_id !== bundle.account_id ||
     reply.server_epoch !== bundle.server_epoch ||
     reply.device_id !== credentials.device_id ||
-    reply.name !== credentials.name
+    reply.name !== credentials.name ||
+    (reply.key_epoch ?? 1) !== (bundle.key_epoch ?? 1)
   )
     throw new Error('Invalid pairing acknowledgement. The pending claim was retained.');
-  await db.transaction('rw', [db.state, db.pairingPending], async () => {
+  await db.transaction('rw', [db.state, db.pairingPending, db.keySecrets], async () => {
     const current = await db.pairingPending.get('pairing');
     if (!current) {
       const local = await db.state.get('local');
@@ -174,7 +237,7 @@ export async function completePairing(db: SynkDatabase): Promise<void> {
         local.credentials.token === credentials.token &&
         local.credentials.account_id === bundle.account_id &&
         local.credentials.server_url === bundle.server_url &&
-        local.recovery_key === bundle.recovery_key &&
+        (await db.keySecrets.get('keys'))?.roots[bundle.key_epoch ?? 1] === bundle.recovery_key &&
         local.history_index_key === bundle.history_index_key
       )
         return;
@@ -182,8 +245,16 @@ export async function completePairing(db: SynkDatabase): Promise<void> {
     if (!current || JSON.stringify(current) !== JSON.stringify(candidate))
       throw new Error('Pending pairing claim changed.');
     await db.pairingPending.delete('pairing');
-    await db.enroll(credentials, bundle.recovery_key, bundle.history_index_key);
-    await db.state.update('local', { server_epoch: bundle.server_epoch });
+    await db.enroll(credentials, bundle.recovery_key, bundle.history_index_key, {
+      key_epoch: bundle.key_epoch ?? 1,
+      roots: bundle.roots ?? { 1: bundle.recovery_key },
+      server_epoch: bundle.server_epoch,
+    });
+    if (candidate.identity)
+      await db.keySecrets.update('keys', {
+        identity: candidate.identity,
+        public_identity: candidate.public_identity,
+      });
   });
 }
 export function pairingSummary(candidate?: PairingCandidate) {

@@ -145,18 +145,21 @@ class FakeBrowser implements BookmarkBrowser {
     return this.copy(id);
   }
 }
-async function local(browser = new FakeBrowser()) {
+async function local(
+  browser = new FakeBrowser(),
+  shared?: { account_id: string; recovery_key: string },
+) {
   const db = new SynkDatabase(`native-${crypto.randomUUID()}`);
   databases.push(db);
   await db.enroll(
     {
-      account_id: crypto.randomUUID(),
+      account_id: shared?.account_id ?? crypto.randomUUID(),
       device_id: crypto.randomUUID(),
       token: 'f'.repeat(64),
       server_url: 'http://127.0.0.1:4318',
       name: 'Native adapter test',
     },
-    generateRecoveryKey(),
+    shared?.recovery_key ?? generateRecoveryKey(),
   );
   const adapter = new BookmarkAdapter(db, browser);
   browser.events = (event) => adapter.capture(event);
@@ -667,12 +670,10 @@ describe('native bookmark integration', () => {
       a = await enabled(aBrowser),
       bBrowser = new FakeBrowser();
     bBrowser.next = 100;
-    const bNative = await bBrowser.add('Shared', 'https://remote.example'),
-      b = await local(bBrowser);
-    const aState = (await a.db.state.get('local'))!,
-      bState = (await b.db.state.get('local'))!;
-    await b.db.state.update('local', {
-      credentials: { ...bState.credentials, account_id: aState.credentials.account_id },
+    const bNative = await bBrowser.add('Shared', 'https://remote.example');
+    const aState = (await a.db.state.get('local'))!;
+    const b = await local(bBrowser, {
+      account_id: aState.credentials.account_id,
       recovery_key: aState.recovery_key,
     });
     const epoch = crypto.randomUUID(),

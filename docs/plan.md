@@ -1,6 +1,6 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Implementation active through sections 1–9; bookmark/session/history capture and transport implemented; native Helium acceptance, key rotation, history erasure/scale and local storage/recovery pending.
+**Status:** Implementation active through sections 1–9; bookmark/session/history capture and transport implemented; client key lifecycle implemented; native Helium acceptance, history erasure/scale and local storage/older-backup recovery pending.
 
 **Updated:** 2026-10-01
 
@@ -8,16 +8,16 @@
 
 Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress; every whole milestone and native acceptance gate remains open.
 
-| Checkpoint                                                         | Status                                          | Commit / evidence                                                   |
-| ------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass           | `a0429bd` and earlier checkpoints; native gates open                |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint              | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint              | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
-| Future-data key rotation / compromised-installation recovery       | Protocol verified; client/UI pending            | `a437f25`; 158 TS, 31 Rust, 10 real-process tests; section 8        |
-| History plaintext/ciphertext erasure                               | Pending                                         | Section 7                                                           |
-| Local budgets, retention, full-scale journal performance, recovery | Pending                                         | Sections 2–4, 7–9                                                   |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                           | Disposable profiles only                                            |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing | Section 10 onward                                                   |
+| Checkpoint                                                         | Status                                               | Commit / evidence                                                   |
+| ------------------------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                | `a0429bd` and earlier checkpoints; native gates open                |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                   | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                   | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
+| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open | Client checkpoint below; 176 TS, 31 Rust, 11 real-process tests     |
+| History plaintext/ciphertext erasure                               | Pending                                              | Section 7                                                           |
+| Local budgets, retention, full-scale journal performance, recovery | Pending                                              | Sections 2–4, 7–9                                                   |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                | Disposable profiles only                                            |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing      | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
 
@@ -36,7 +36,7 @@ This table and both checklist copies are updated at implementation checkpoints a
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 158 TS + 31 relay + 10 cross-stack tests; native gates pending      |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 176 TS + 31 relay + 11 cross-stack tests; native gates pending      |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
 | M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
@@ -74,7 +74,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 158 TypeScript, 31 Rust and 10 real-relay integration tests.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 176 TypeScript, 31 Rust and 11 real-relay integration tests.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -131,11 +131,26 @@ Checkpoint commit: `4d34eed feat(security): add single-use durable profile pairi
 - [x] Close old-epoch insertion while preserving exact committed retries; prove missing offline envelopes before replacement.
 - [x] Bind invitation claims to content epochs and preserve schema-3 committed claim retries through migration.
 - [x] Verify packet tampering/key exclusion, failed-write rollback, concurrent membership/rotation, bounded pagination and epoch exhaustion.
-- [ ] Persist client wrapping identities/key rings/proposals and adopt new epochs durably across worker/database restarts.
-- [ ] Integrate safe outbox/draft rekey, versioned private pairing/recovery bundles and device-removal/retry controls.
+- [x] Persist client wrapping identities/key rings/proposals and adopt new epochs durably across simulated worker/database restarts; see client checkpoint below.
+- [x] Integrate safe outbox/draft rekey, versioned private pairing/recovery bundles and device-removal/retry controls; see client checkpoint below.
 - [ ] Complete the future-data rotation product gate and joint native/recovery acceptance.
 
-Checkpoint commit: `a437f25 feat(security): add recipient key rotation protocol`. Evidence: 158 TypeScript, 31 Rust and 10 real-process tests plus WXT/typecheck, rustfmt/clippy and format/version checks. The real process discards a committed rotation reply, restarts, excludes the removed installation and proves safe offline rekey eligibility. See [key-rotation.md](key-rotation.md) for the exact protocol and its relay/membership trust boundary. Ordinary extension use stays at epoch 1; rotation is not yet exposed to profiles. No whole milestone exit gate is complete.
+Checkpoint commit: `a437f25 feat(security): add recipient key rotation protocol`. Evidence: 158 TypeScript, 31 Rust and 10 real-process tests plus WXT/typecheck, rustfmt/clippy and format/version checks. The real process discards a committed rotation reply, restarts, excludes the removed installation and proves safe offline rekey eligibility. See [key-rotation.md](key-rotation.md) for the exact protocol and its relay/membership trust boundary. At this protocol checkpoint, ordinary extension use stayed at epoch 1. The client checkpoint below adds durable rotation and recovery. No whole milestone exit gate is complete.
+
+## Client key lifecycle checkpoint — 2026-10-01
+
+- [x] Persist independent private wrapping identities before registration and exact proposals before rotation HTTP requests in IndexedDB schema 7.
+- [x] Adopt authenticated recipient packets and current roots/epochs atomically; retain all historical roots and the stable history-index key.
+- [x] Recover lost committed rotation replies through saved intent/own packets; require explicit review for changed membership or superseded proposals.
+- [x] Prove old queued ciphertext committed/missing before acknowledging or replacing it; preserve operation IDs/counters and transact journal/outbox replacement together.
+- [x] Prepare unencrypted drafts at the current epoch and verify offline note/bookmark/session/history convergence across rotations/restarts.
+- [x] Export/import private version-2 pairing/recovery bundles; recover into a fresh credential/wrapping identity/counter without cloning an author.
+- [x] Reject copied credentials with missing author state; document reset/restore nonce and author-frontier requirements.
+- [x] Add installation removal and saved-proposal retry/review controls; verify the actual options UI using synthetic responses at 390 px.
+- [ ] Verify pairing, removal/rotation, worker revival and recovery jointly in disposable Helium profiles.
+- [ ] Complete older-backup/server-loss recovery, history erasure, local budgets/retention and scale gates.
+
+Evidence: 176 TypeScript, 31 Rust and 11 real-process tests, production WXT/typechecks, rustfmt/clippy and format/version/Changeset checks. The new real-process flow drops a committed rotation reply, reopens both sides, preserves immutable historical ciphertext, re-encrypts missing offline work in all four domains, retries pairing across another rotation and recovers roots 1–4 into a fresh author. The synthetic mobile UI had no overflow or console warnings/errors. See [key-rotation.md](key-rotation.md) and [progress.md](progress.md); native acceptance and every whole milestone exit gate remain open.
 
 ## 1. Product requirements and boundaries
 
@@ -402,13 +417,13 @@ Public APIs support window/tab/group restoration, but do not let the extension i
 - [x] Encrypt with AES-256-GCM, fresh 96-bit nonces, and authenticated envelope metadata.
 - [x] Persist immutable ciphertext for retries; prevent operation-ID reuse with changed contents.
 - [x] Implement bounded monotonic key epochs and recipient-specific wrapping; verify tampering, exact retries and exhaustion.
-- [ ] Version encryption envelopes and key epochs end to end; define nonce safety across installation resets and restores.
+- [x] Version encryption envelopes and key epochs end to end; define nonce safety across installation resets and restores. See [key-rotation.md](key-rotation.md) and the client checkpoint.
 - [x] Define whether each installation auto-unlocks or requires an unlock secret; document local cached-data/key protection.
 - [x] Use distinct high-entropy API credentials per installation and store only credential hashes on the server.
 - [x] Provide a high-entropy out-of-band pairing bundle with a short-lived, single-use server registration invitation.
 - [x] Keep master-key material local to clients during registration and out of logs/ordinary URL parameters.
 - [x] Export a separate recovery bundle and document that server backups alone cannot decrypt data.
-- [ ] Revoke API access immediately and define future-data key rotation for removal of a compromised installation.
+- [x] Revoke API access immediately and define future-data key rotation for removal of a compromised installation. Automated client/relay evidence passes under the documented relay/membership trust boundary; native acceptance remains open.
 - [x] Explain that revocation cannot erase already-downloaded data or invalidate knowledge of old keys.
 - [ ] Request only required browser APIs and the configured server host; avoid broad browsing-site host access/content scripts.
 - [ ] Render titles/URLs as untrusted text and keep the extension CSP restrictive.

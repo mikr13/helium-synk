@@ -130,8 +130,12 @@ pub(crate) async fn state(
             "public_key":row.get::<Option<String>,_>("wrapping_public_key"),"proof":row.get::<Option<String>,_>("wrapping_proof"),
             "proof_epoch":row.get::<Option<u8>,_>("wrapping_proof_epoch")})).collect::<Vec<_>>();
     let rows = sqlx::query("SELECT packet FROM key_packets WHERE recipient_id = ? AND key_epoch > ? ORDER BY key_epoch LIMIT 33")
-        .bind(author).bind(query.after_epoch).fetch_all(&mut *tx).await?;
+        .bind(&author).bind(query.after_epoch).fetch_all(&mut *tx).await?;
     let has_more = rows.len() > 32;
+    let own = sqlx::query("SELECT counter, operation_id FROM operations WHERE device_id = ? ORDER BY counter DESC LIMIT 1")
+        .bind(&author).fetch_optional(&mut *tx).await?;
+    let author_counter = own.as_ref().map_or(0, |r| r.get::<i64, _>("counter"));
+    let author_operation_id = own.map(|r| r.get::<String, _>("operation_id"));
     let packets: Vec<Value> = rows
         .into_iter()
         .take(32)
@@ -145,7 +149,8 @@ pub(crate) async fn state(
         })?;
     tx.commit().await?;
     Ok(Json(
-        json!({"server_epoch":app.server_epoch,"key_epoch":current,"devices":devices,"packets":packets,"has_more":has_more}),
+        json!({"account_id":app.account_id,"server_epoch":app.server_epoch,"key_epoch":current,"devices":devices,"packets":packets,"has_more":has_more,
+        "author_counter":author_counter,"author_operation_id":author_operation_id}),
     ))
 }
 #[derive(Clone, Deserialize, Serialize)]

@@ -1,4 +1,6 @@
 import { decryptPayload } from './crypto';
+import { KeyManager, keySnapshot } from './key-manager';
+import type { KeyTransport } from './key-state';
 import { projectHistory } from './history';
 import { projectSessions } from './sessions';
 import { projectBookmarks } from './bookmarks';
@@ -15,12 +17,30 @@ import {
 } from './protocol';
 
 export interface Transport {
+  keys?: KeyTransport;
   pull(cursor: number): Promise<PullPage>;
   push(envelopes: Envelope[], epoch: string): Promise<PushReply>;
   acknowledge(cursor: number, epoch: string): Promise<ProgressReply>;
 }
 export class HttpTransport implements Transport {
   constructor(private state: LocalState) {}
+  keys: KeyTransport = {
+    state: (after) => this.request(`/v1/keys/state?after_epoch=${after}`),
+    identity: (identity, serverEpoch) =>
+      this.request('/v1/keys/identity', {
+        server_epoch: serverEpoch,
+        public_key: identity.public_key,
+        proof_epoch: identity.proof_epoch,
+        proof: identity.proof,
+      }),
+    rotate: (request) => this.request('/v1/keys/rotate', request),
+    rekeyCheck: (envelopes, serverEpoch, keyEpoch) =>
+      this.request('/v1/sync/rekey-check', {
+        envelopes,
+        server_epoch: serverEpoch,
+        key_epoch: keyEpoch,
+      }),
+  };
   private async request<T>(path: string, body?: unknown): Promise<T> {
     const response = await fetch(`${this.state.credentials.server_url}${path}`, {
       method: body ? 'POST' : 'GET',
@@ -122,6 +142,7 @@ export class SyncCoordinator {
       let previous = state.cursor;
       const records: LocalRecord[] = [];
       const operations: StoredOperation[] = [];
+      const { secrets } = await keySnapshot(this.db);
       for (const entry of page.records) {
         if (
           !Number.isSafeInteger(entry.sequence) ||
@@ -132,11 +153,10 @@ export class SyncCoordinator {
           throw new Error('Invalid record sequence or account.');
         previous = entry.sequence;
         try {
-          const payload = await decryptPayload(
-            state.recovery_key,
-            entry.envelope,
-            state.history_index_key,
-          );
+          const root = secrets.roots[entry.envelope.key_epoch];
+          if (!root)
+            throw new Error('This content-key epoch is unavailable. Refresh keys before retrying.');
+          const payload = await decryptPayload(root, entry.envelope, state.history_index_key);
           const record = {
             operation_id: entry.envelope.operation_id,
             envelope: entry.envelope,
@@ -279,10 +299,17 @@ export class SyncCoordinator {
     const state = await this.db.state.get('local');
     if (!state) return;
     const transport = this.makeTransport(state);
+    const keys = transport.keys ? new KeyManager(this.db, transport.keys) : undefined;
+    if (keys) {
+      await keys.refresh();
+      await keys.resumePending();
+    } else if ((state.key_epoch ?? 1) > 1)
+      throw new Error('Transport lacks required content-key APIs. Pending work was retained.');
     // Establish/check epoch before acknowledging any queued work.
     await this.pull(transport);
     for (let batchNumber = 0; batchNumber < 20; batchNumber++) {
       await this.db.flushDrafts();
+      if (keys) await keys.rekeyOutbox();
       const batch = envelopeBatch(
         await this.db.outbox.orderBy('counter').limit(MAX_BATCH).toArray(),
       );

@@ -18,3 +18,6 @@ export * from './history-capture';
 
 export * from './pairing';
 export * from './key-crypto';
+export * from './key-state';
+export * from './key-manager';
+export * from './recovery';

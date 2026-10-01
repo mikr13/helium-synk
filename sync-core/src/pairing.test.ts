@@ -223,7 +223,12 @@ it('constructs a local-key bundle from an authenticated invitation without trans
   );
   vi.stubGlobal('fetch', fetch);
   const exported = await createPairingBundle(database);
-  expect(exported).toEqual(invitation);
+  expect(exported).toEqual({
+    ...invitation,
+    version: 2,
+    key_epoch: 1,
+    roots: { 1: invitation.recovery_key },
+  });
   expect(JSON.stringify(fetch.mock.calls)).not.toContain(invitation.recovery_key);
   expect(JSON.stringify(fetch.mock.calls)).not.toContain(invitation.history_index_key);
   vi.stubGlobal(

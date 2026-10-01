@@ -277,7 +277,11 @@ describe('durable processed-cursor acknowledgements', () => {
     expect(await target.records.count()).toBe(0);
     expect(acknowledge).not.toHaveBeenCalled();
     failed.mockRestore();
-    await target.state.update('local', { recovery_key: generateRecoveryKey() });
+    const wrong = generateRecoveryKey();
+    await target.transaction('rw', [target.state, target.keySecrets], async () => {
+      await target.state.update('local', { recovery_key: wrong });
+      await target.keySecrets.update('keys', { roots: { 1: wrong } });
+    });
     await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow();
     expect(await target.quarantine.count()).toBe(1);
     expect(acknowledge).not.toHaveBeenCalled();

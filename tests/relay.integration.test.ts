@@ -457,19 +457,18 @@ it('retries a real lost cursor ACK after graceful SIGTERM and durable client reo
 });
 
 it('enforces running relay quotas while preserving identical retries and durable client work', async () => {
-  const source = await local(credentialsA, sharedKey);
-  // This test only uploads; the existing author's local counter must remain unique.
-  const next = Number(
-    execFileSync(
-      'sqlite3',
-      [
-        database,
-        `SELECT COALESCE(MAX(counter),0)+1 FROM operations WHERE device_id = '${credentialsA.device_id}';`,
-      ],
-      { encoding: 'utf8' },
-    ).trim(),
-  );
-  await source.state.update('local', { next_counter: next });
+  // Reuse the actual durable installation; copying its credential into a fresh
+  // profile would lose its private wrapping key and author-counter history.
+  let source: SynkDatabase | undefined;
+  for (const candidate of [...localDatabases].reverse())
+    if (
+      candidate.isOpen() &&
+      (await candidate.state.get('local'))?.credentials.device_id === credentialsA.device_id
+    ) {
+      source = candidate;
+      break;
+    }
+  if (!source) throw new Error('Original quota-test installation is missing');
   await source.queueDiagnostic('Retain until quota increases');
   const envelope = (await source.outbox.toArray())[0]!;
   const before = await relayStatus(credentialsA);

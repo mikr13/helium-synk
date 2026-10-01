@@ -838,3 +838,50 @@ footer p {
   outline: 2px solid var(--orange);
   outline-offset: 3px;
 }
+.key-panel {
+  margin-bottom: 24px;
+}
+.key-devices {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
+}
+.key-devices li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.key-devices input[type='checkbox'] {
+  width: 16px;
+  margin: 4px 0 0;
+}
+.key-devices label {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.key-devices small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.key-complete {
+  padding: 14px;
+  background: #e8eddc;
+}
+.key-panel button:focus-visible,
+.key-panel input:focus-visible,
+.recovery-import summary:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 3px;
+}
+.recovery-import {
+  margin: 16px 0;
+}
+.recovery-import summary {
+  cursor: pointer;
+  font-size: 12px;
+}

@@ -7,6 +7,10 @@ import {
   completePairing,
   discardPairing,
   pairingSummary,
+  KeyManager,
+  HttpTransport,
+  exportRecovery,
+  enrollRecovery,
   SyncCoordinator,
   BookmarkAdapter,
   SessionCapture,
@@ -133,6 +137,8 @@ export default defineBackground(() => {
       .map(restoreSummary);
     return {
       enrolled: !!local,
+      key_epoch: local?.key_epoch ?? (local ? 1 : undefined),
+      rotation_pending: await rotationSummary(),
       pairing_pending: pairingSummary(await db.pairingPending.get('pairing')),
       history: {
         enabled: !!historySetup?.enabled,
@@ -174,6 +180,22 @@ export default defineBackground(() => {
       },
       browser_version: navigator.userAgent.match(/(?:Chrome|Chromium)\/([\d.]+)/)?.[1] ?? 'Unknown',
     };
+  }
+  async function rotationSummary(): Promise<Status['rotation_pending']> {
+    const pending = await db.rotationPending.get('rotation');
+    return pending
+      ? {
+          rotation_id: pending.request.rotation_id,
+          key_epoch: pending.request.key_epoch,
+          from_epoch: pending.request.from_epoch,
+          revoke_ids: pending.request.revoke_ids,
+        }
+      : undefined;
+  }
+  async function keyManager(): Promise<KeyManager> {
+    const local = await db.state.get('local');
+    if (!local) throw new Error('Connect this device first.');
+    return new KeyManager(db, new HttpTransport(local).keys);
   }
   async function handle(request: Request): Promise<Reply> {
     try {
@@ -333,8 +355,35 @@ export default defineBackground(() => {
         );
         return { ok: true, bookmark_candidates: candidates };
       }
+      if (request.type === 'keys-list') {
+        const remote = await (await keyManager()).refresh();
+        return {
+          ok: true,
+          status: await status(),
+          keys: {
+            key_epoch: remote.key_epoch,
+            device_id: (await db.state.get('local'))!.credentials.device_id,
+            devices: remote.devices.map((d) => ({
+              device_id: d.device_id,
+              name: d.name,
+              revoked: d.revoked,
+              ready: !!d.public_key,
+            })),
+          },
+        };
+      }
+      if (request.type === 'keys-rotate' || request.type === 'keys-retry') {
+        const manager = await keyManager();
+        if (request.type === 'keys-rotate')
+          await manager.stageRotation(request.revoke_ids, request.replace);
+        await manager.completeRotation();
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
       if (request.type === 'enroll') {
-        await db.enroll(request.credentials, request.recovery_key);
+        if (request.recovery_bundle)
+          await enrollRecovery(db, request.credentials, request.recovery_bundle);
+        else await db.enroll(request.credentials, request.recovery_key);
         await connect();
         await sync(true);
       } else if (request.type === 'queue') {
@@ -345,16 +394,9 @@ export default defineBackground(() => {
         await connect();
         await sync(true);
       } else if (request.type === 'recovery') {
-        const local = await db.state.get('local');
-        if (!local) throw new Error('Connect this device first.');
         return {
           ok: true,
-          recovery: {
-            account_id: local.credentials.account_id,
-            recovery_key: local.recovery_key,
-            history_index_key: await db.ensureHistoryIndexKey(),
-            server_url: local.credentials.server_url,
-          },
+          recovery: await exportRecovery(db),
         };
       } else if (request.type !== 'status') throw new Error('Unknown request.');
       return { ok: true, status: await status() };
