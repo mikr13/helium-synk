@@ -168,7 +168,7 @@ Basic two-disposable-profile smoke testing can begin now. Full joint acceptance 
 
 ## History relay purge protocol checkpoint
 
-Current relay purge checkpoint; commit recorded after commit.
+`a4c17a0 feat(server): add atomic history ciphertext purge protocol` records this checkpoint.
 
 SQLite schema 5 retains original history headers/digests and a fixed encrypted certificate/request binding while replacing live-journal ciphertext. Certificate insertion, all replacements/reservations, usage and minimum capability commit atomically. Original sequences, IDs and author counters remain reserved. Exact historical retries ACK without reinserting their bodies; rekey checks classify matching receipts as committed. Only the original author may reserve an unknown encrypted target, at an earlier own counter than the new certificate, without uploading its content.
 
