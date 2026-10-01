@@ -12,8 +12,8 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | ------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------- |
 | Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass           | `a0429bd` and earlier checkpoints; native gates open                |
 | Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint              | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint              | `4d34eed`; current 151 TS, 23 Rust, 9 real-process tests            |
-| Future-data key rotation / compromised-installation recovery       | Pending                                         | Section 8                                                           |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint              | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
+| Future-data key rotation / compromised-installation recovery       | Protocol verified; client/UI pending            | 158 TS, 31 Rust, 10 real-process tests; section 8                   |
 | History plaintext/ciphertext erasure                               | Pending                                         | Section 7                                                           |
 | Local budgets, retention, full-scale journal performance, recovery | Pending                                         | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                           | Disposable profiles only                                            |
@@ -36,7 +36,7 @@ This table and both checklist copies are updated at implementation checkpoints a
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 151 TS + 23 relay + 9 cross-stack tests; native gates pending       |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 158 TS + 31 relay + 10 cross-stack tests; native gates pending      |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
 | M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
@@ -74,7 +74,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 151 TypeScript, 23 Rust and 9 real-relay integration tests.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 158 TypeScript, 31 Rust and 10 real-relay integration tests.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -123,6 +123,19 @@ Evidence: 142 TypeScript, 18 Rust and 8 real-process integration tests, WXT prod
 - [ ] Complete future-data content-key rotation and the native pairing/permissions gates.
 
 Checkpoint commit: `4d34eed feat(security): add single-use durable profile pairing`. Evidence: 151 TypeScript, 23 Rust and 9 real-process integration tests, WXT production build/typechecks and format/version checks. See `docs/pairing.md` and `docs/progress.md`. Profile-local auto-unlock and decrypted caches remain the local protection policy; no milestone exit gate is complete.
+
+## Key-rotation protocol checkpoint — 2026-10-01
+
+- [x] Generate independent installation wrapping keys and authenticate recipient public keys/rotation packets.
+- [x] Commit API revocation, exact retained-recipient packets and monotonic content epochs atomically; retry identical rotations after restart.
+- [x] Close old-epoch insertion while preserving exact committed retries; prove missing offline envelopes before replacement.
+- [x] Bind invitation claims to content epochs and preserve schema-3 committed claim retries through migration.
+- [x] Verify packet tampering/key exclusion, failed-write rollback, concurrent membership/rotation, bounded pagination and epoch exhaustion.
+- [ ] Persist client wrapping identities/key rings/proposals and adopt new epochs durably across worker/database restarts.
+- [ ] Integrate safe outbox/draft rekey, versioned private pairing/recovery bundles and device-removal/retry controls.
+- [ ] Complete the future-data rotation product gate and joint native/recovery acceptance.
+
+Evidence: 158 TypeScript, 31 Rust and 10 real-process tests plus WXT/typecheck, rustfmt/clippy and format/version checks. The real process discards a committed rotation reply, restarts, excludes the removed installation and proves safe offline rekey eligibility. See [key-rotation.md](key-rotation.md) for the exact protocol and its relay/membership trust boundary. Ordinary extension use stays at epoch 1; rotation is not yet exposed to profiles. No whole milestone exit gate is complete.
 
 ## 1. Product requirements and boundaries
 
@@ -388,7 +401,8 @@ Public APIs support window/tab/group restoration, but do not let the extension i
 - [x] Derive separate domain/author-installation keys using HKDF.
 - [x] Encrypt with AES-256-GCM, fresh 96-bit nonces, and authenticated envelope metadata.
 - [x] Persist immutable ciphertext for retries; prevent operation-ID reuse with changed contents.
-- [ ] Version encryption envelopes and key epochs; define nonce safety across installation resets and restores.
+- [x] Implement bounded monotonic key epochs and recipient-specific wrapping; verify tampering, exact retries and exhaustion.
+- [ ] Version encryption envelopes and key epochs end to end; define nonce safety across installation resets and restores.
 - [x] Define whether each installation auto-unlocks or requires an unlock secret; document local cached-data/key protection.
 - [x] Use distinct high-entropy API credentials per installation and store only credential hashes on the server.
 - [x] Provide a high-entropy out-of-band pairing bundle with a short-lived, single-use server registration invitation.

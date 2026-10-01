@@ -75,17 +75,21 @@ pub(crate) async fn invite(
     rand::rngs::OsRng.fill_bytes(&mut secret);
     let token: String = secret.iter().map(|byte| format!("{byte:02x}")).collect();
     let expires_at = timestamp + INVITE_LIFETIME;
+    let key_epoch: u8 = sqlx::query_scalar("SELECT key_epoch FROM settings WHERE id = 1")
+        .fetch_one(&mut *tx)
+        .await?;
     sqlx::query(
-        "INSERT INTO pairing_invites (invitation_hash,issuer_id,expires_at) VALUES (?,?,?)",
+        "INSERT INTO pairing_invites (invitation_hash,issuer_id,expires_at,key_epoch) VALUES (?,?,?,?)",
     )
     .bind(token_hash(&token))
     .bind(issuer)
     .bind(expires_at)
+    .bind(key_epoch)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
     Ok(Json(
-        json!({"account_id":app.account_id,"server_epoch":app.server_epoch,"invitation_token":token,"expires_at":expires_at}),
+        json!({"account_id":app.account_id,"server_epoch":app.server_epoch,"invitation_token":token,"expires_at":expires_at,"key_epoch":key_epoch}),
     ))
 }
 #[derive(Deserialize)]
@@ -97,6 +101,9 @@ pub(crate) struct Registration {
     device_id: String,
     name: String,
     token: String,
+    public_key: Option<String>,
+    proof: Option<String>,
+    proof_epoch: Option<u8>,
 }
 pub(crate) async fn register(
     State(app): State<App>,
@@ -123,6 +130,20 @@ pub(crate) async fn register(
         .bind(token_hash(&request.invitation_token)).fetch_optional(&mut *tx).await?
         .ok_or(ApiError(StatusCode::GONE, "Pairing invitation unavailable or expired"))?;
     let expiry: i64 = row.get("expires_at");
+    let invitation_epoch: u8 = row.get("key_epoch");
+    let has_identity =
+        request.public_key.is_some() && request.proof.is_some() && request.proof_epoch.is_some();
+    if (request.public_key.is_some() || request.proof.is_some() || request.proof_epoch.is_some())
+        && (!has_identity
+            || !crate::keys::valid_public(request.public_key.as_deref().unwrap_or(""))
+            || !crate::keys::valid_proof(request.proof.as_deref().unwrap_or(""))
+            || request.proof_epoch != Some(invitation_epoch))
+    {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "Invalid pairing wrapping identity",
+        ));
+    }
     if row.get::<i64, _>("issuer_revoked") != 0 || timestamp >= expiry + CLAIM_RETRY_GRACE {
         return Err(ApiError(
             StatusCode::GONE,
@@ -130,10 +151,25 @@ pub(crate) async fn register(
         ));
     }
     let api_hash = token_hash(&request.token);
-    let claim_hash = token_hash(
-        &serde_json::to_string(&(&request.device_id, &request.name, &api_hash))
+    let claim_hash = if has_identity {
+        token_hash(
+            &serde_json::to_string(&(
+                &request.device_id,
+                &request.name,
+                &api_hash,
+                &request.public_key,
+                &request.proof,
+                request.proof_epoch,
+            ))
             .expect("claim primitives"),
-    );
+        )
+    } else {
+        // Preserve exact retries of schema-3 claims across migration.
+        token_hash(
+            &serde_json::to_string(&(&request.device_id, &request.name, &api_hash))
+                .expect("claim primitives"),
+        )
+    };
     if let Some(claimed) = row.get::<Option<String>, _>("claimed_device_id") {
         if claimed != request.device_id
             || row.get::<Option<String>, _>("claim_hash").as_deref() != Some(claim_hash.as_str())
@@ -156,6 +192,21 @@ pub(crate) async fn register(
             ));
         }
     } else {
+        let current: u8 = sqlx::query_scalar("SELECT key_epoch FROM settings WHERE id = 1")
+            .fetch_one(&mut *tx)
+            .await?;
+        if current != invitation_epoch {
+            return Err(ApiError(
+                StatusCode::GONE,
+                "Pairing invitation predates content-key rotation; obtain a new bundle",
+            ));
+        }
+        if current > 1 && !has_identity {
+            return Err(ApiError(
+                StatusCode::UPGRADE_REQUIRED,
+                "Content-key rotation requires a client with installation wrapping keys",
+            ));
+        }
         if timestamp >= expiry {
             return Err(ApiError(
                 StatusCode::GONE,
@@ -185,16 +236,19 @@ pub(crate) async fn register(
                 "Pairing installation identity already exists",
             ));
         }
-        sqlx::query("INSERT INTO devices (id,name,token_hash) VALUES (?,?,?)")
+        sqlx::query("INSERT INTO devices (id,name,token_hash,wrapping_public_key,wrapping_proof,wrapping_proof_epoch) VALUES (?,?,?,?,?,?)")
             .bind(&request.device_id)
             .bind(&request.name)
             .bind(&api_hash)
+            .bind(&request.public_key)
+            .bind(&request.proof)
+            .bind(request.proof_epoch)
             .execute(&mut *tx)
             .await?;
         sqlx::query("UPDATE pairing_invites SET claimed_device_id = ?, claim_hash = ? WHERE invitation_hash = ?").bind(&request.device_id).bind(claim_hash).bind(token_hash(&request.invitation_token)).execute(&mut *tx).await?;
     }
     tx.commit().await?;
     Ok(Json(
-        json!({"account_id":app.account_id,"server_epoch":app.server_epoch,"device_id":request.device_id,"name":request.name}),
+        json!({"account_id":app.account_id,"server_epoch":app.server_epoch,"device_id":request.device_id,"name":request.name,"key_epoch":invitation_epoch}),
     ))
 }

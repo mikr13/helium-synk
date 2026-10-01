@@ -1,6 +1,6 @@
 # Relay protocol and durable progress
 
-Protocol version 1 uses client-encrypted envelopes and account-scoped author identities. The relay schema is version 3, including single-use pairing; see the [pairing contract](pairing.md). `/health/ready` reports protocol, schema, package and linked SQLite versions; `/v1/status` requires the installation's bearer credential and reports account envelope usage/budgets, device counts, latest sequence and that installation's processed cursor, epoch and activity time. It exposes no browsing payloads or credentials.
+Protocol version 1 uses client-encrypted envelopes and account-scoped author identities. The relay schema is version 4, including single-use pairing and the [content-key rotation protocol](key-rotation.md); see the [pairing contract](pairing.md). `/health/ready` reports protocol, schema, package and linked SQLite versions; `/v1/status` requires the installation's bearer credential and reports account envelope usage/budgets, device counts, latest sequence and that installation's processed cursor, epoch and activity time. It exposes no browsing payloads or credentials.
 
 ## Cursor acknowledgements
 
@@ -33,4 +33,4 @@ The relay uses one SQLite connection, WAL, FULL synchronous commits, foreign key
 
 SIGTERM and Ctrl+C stop admission, signal notification sockets, drain handlers and close the database pool. Tests verify clean exit and reopening with unchanged epoch and an intact journal. This is automated real-process evidence, not launchd/reboot/Tailscale acceptance. The handler/socket caps do not claim to bound all TCP connections waiting to supply HTTP headers.
 
-SQLx refuses modified checksums or unknown applied migrations. Back up before upgrading; do not edit an applied migration or downgrade a migrated database into an older-schema binary. Upgrade the relay before deploying this client, which requires `/v1/sync/ack`. An older relay returns a visible upgrade-required error and clients retain pending work. Earlier clients can still push/pull protocol-1 envelopes against the schema-3 relay.
+SQLx refuses modified checksums or unknown applied migrations. Back up before upgrading; do not edit an applied migration or downgrade a migrated database into an older-schema binary. Upgrade the relay before deploying this client, which requires `/v1/sync/ack`. An older relay returns a visible upgrade-required error and clients retain pending work. Earlier clients can still push/pull protocol-1 envelopes against the schema-4 relay at epoch 1. Rotation closes fresh old-epoch insertion with HTTP 412; exact already-committed envelopes remain retryable. Client key adoption and rotation controls are the next checkpoint.

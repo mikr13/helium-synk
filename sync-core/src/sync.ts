@@ -44,6 +44,10 @@ export class HttpTransport implements Transport {
         throw new Error(
           'Server history or an operation identity conflicts with local state. Pending work was retained; export local data before recovery.',
         );
+      if (response.status === 412)
+        throw new Error(
+          'Content-key epoch changed. Pending work was retained; refresh installation keys before retrying.',
+        );
       if (response.status === 404)
         throw new Error(
           'Relay lacks a required API. Upgrade the relay; pending work was retained.',

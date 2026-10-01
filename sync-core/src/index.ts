@@ -17,3 +17,4 @@ export * from './history-native';
 export * from './history-capture';
 
 export * from './pairing';
+export * from './key-crypto';

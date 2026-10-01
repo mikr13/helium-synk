@@ -1,5 +1,6 @@
 use std::{path::Path, sync::Arc, time::Duration};
 mod hardening;
+mod keys;
 mod pairing;
 pub use hardening::Limits;
 
@@ -25,7 +26,7 @@ use sqlx::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, broadcast, watch};
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u8 = 3;
+const SCHEMA_VERSION: u8 = 4;
 const MAX_BATCH: usize = 100;
 const MAX_PAGE_BYTES: usize = 512 * 1024;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
@@ -287,6 +288,10 @@ pub fn router(app: App) -> Router {
         .route("/v1/status", get(hardening::status))
         .route("/v1/pairing/invites", post(pairing::invite))
         .route("/v1/pairing/register", post(pairing::register))
+        .route("/v1/keys/identity", post(keys::identity))
+        .route("/v1/keys/state", get(keys::state))
+        .route("/v1/keys/rotate", post(keys::rotate))
+        .route("/v1/sync/rekey-check", post(keys::rekey_check))
         .layer(DefaultBodyLimit::max(1_048_576))
         .layer(axum::middleware::from_fn_with_state(
             app.clone(),
@@ -303,7 +308,7 @@ async fn ready(State(app): State<App>) -> Result<Json<serde_json::Value>, ApiErr
 }
 
 fn validate(e: &Envelope, app: &App, author: &str) -> Result<(), ApiError> {
-    if e.protocol_version != 1 || e.key_epoch != 1 {
+    if e.protocol_version != 1 || e.key_epoch == 0 {
         return Err(ApiError(
             StatusCode::UPGRADE_REQUIRED,
             "Unsupported protocol or encryption version; use compatible clients and relay",
@@ -373,6 +378,9 @@ async fn push(
     }
     let mut acknowledgements = Vec::new();
     let mut latest = 0;
+    let key_epoch: u8 = sqlx::query_scalar("SELECT key_epoch FROM settings WHERE id = 1")
+        .fetch_one(&mut *tx)
+        .await?;
     for envelope in &request.envelopes {
         let encoded =
             serde_json::to_string(envelope).expect("envelope contains serializable primitives");
@@ -390,6 +398,12 @@ async fn push(
             }
             row.get::<i64, _>("sequence")
         } else {
+            if envelope.key_epoch != key_epoch {
+                return Err(ApiError(
+                    StatusCode::PRECONDITION_FAILED,
+                    "Content key epoch changed; retain pending work and refresh keys before retrying",
+                ));
+            }
             let reused: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM operations WHERE device_id = ? AND counter = ?",
             )

@@ -627,5 +627,5 @@ it('pairs a new installation across a real lost enrollment reply and relay/clien
   expect(stored).not.toContain('Signal from invitation-enrolled profile');
   expect(JSON.stringify(sent)).not.toContain(bundle.recovery_key);
   expect(JSON.stringify(sent)).not.toContain(bundle.history_index_key);
-  expect((await relayStatus(state.credentials)).schema_version).toBe(3);
+  expect((await relayStatus(state.credentials)).schema_version).toBe(4);
 });

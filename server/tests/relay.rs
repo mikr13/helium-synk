@@ -152,7 +152,7 @@ async fn rejects_wrong_author_unsupported_domain_bad_nonce_and_stale_epoch() {
     for key_version in [false, true] {
         let mut unsupported = envelope(&c, 1);
         if key_version {
-            unsupported.key_epoch = 2;
+            unsupported.key_epoch = 0;
         } else {
             unsupported.protocol_version = 2;
         }
@@ -848,4 +848,560 @@ async fn pairing_rejects_mismatched_accounts_epochs_keys_and_bounds_invitation_g
         .await
         .unwrap();
     assert_eq!(count, 1);
+}
+
+fn wrapping_public(marker: u8) -> String {
+    let mut raw = [marker; 65];
+    raw[0] = 4;
+    STANDARD.encode(raw)
+}
+async fn wrapping_identity(app: &App, c: &Credentials, marker: u8, epoch: u8) -> Value {
+    let body = json!({"server_epoch":app.server_epoch,"public_key":wrapping_public(marker),
+        "proof_epoch":epoch,"proof":STANDARD.encode([marker;32])});
+    assert_eq!(
+        request(
+            app,
+            Some(c),
+            "POST",
+            "/v1/keys/identity",
+            Some(body.clone())
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    body
+}
+fn rotation(
+    app: &App,
+    issuer: &Credentials,
+    from: u8,
+    recipients: &[(&Credentials, u8)],
+    revoke: &[&Credentials],
+) -> Value {
+    let id = Uuid::new_v4().to_string();
+    json!({"rotation_id":id,"server_epoch":app.server_epoch,"from_epoch":from,"key_epoch":from+1,
+        "revoke_ids":revoke.iter().map(|c|&c.device_id).collect::<Vec<_>>(),
+        "packets":recipients.iter().map(|(c, marker)|json!({"version":1,"rotation_id":id,
+            "account_id":app.account_id,"server_epoch":app.server_epoch,"issuer_id":issuer.device_id,
+            "from_epoch":from,"key_epoch":from+1,"recipient_id":c.device_id,
+            "recipient_public_key":wrapping_public(*marker),"ephemeral_public_key":wrapping_public(99),
+            "nonce":STANDARD.encode([from;12]),"ciphertext":STANDARD.encode([from;48]),
+            "proof":STANDARD.encode([from;32])})).collect::<Vec<_>>()})
+}
+async fn rotate(app: &App, c: &Credentials, body: Value) -> (StatusCode, Value) {
+    request(app, Some(c), "POST", "/v1/keys/rotate", Some(body)).await
+}
+async fn key_state(app: &App, c: &Credentials, after: u8) -> (StatusCode, Value) {
+    request(
+        app,
+        Some(c),
+        "GET",
+        &format!("/v1/keys/state?after_epoch={after}"),
+        None,
+    )
+    .await
+}
+#[tokio::test]
+async fn wrapping_identity_is_authenticated_immutable_and_old_exact_retry_survives_rotation() {
+    let (_temp, app, c) = setup().await;
+    let identity = wrapping_identity(&app, &c, 1, 1).await;
+    assert_eq!(
+        request(
+            &app,
+            None,
+            "POST",
+            "/v1/keys/identity",
+            Some(identity.clone())
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    for field in ["public_key", "proof"] {
+        let mut changed = identity.clone();
+        changed[field] = json!("");
+        assert_eq!(
+            request(&app, Some(&c), "POST", "/v1/keys/identity", Some(changed))
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let mut changed = identity.clone();
+    changed["public_key"] = json!(wrapping_public(2));
+    assert_eq!(
+        request(&app, Some(&c), "POST", "/v1/keys/identity", Some(changed))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        rotate(&app, &c, rotation(&app, &c, 1, &[(&c, 1)], &[]))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(
+            &app,
+            Some(&c),
+            "POST",
+            "/v1/keys/identity",
+            Some(identity.clone())
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let newcomer = app
+        .issue_device("Legacy", "http://127.0.0.1:4318")
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            &app,
+            Some(&newcomer),
+            "POST",
+            "/v1/keys/identity",
+            Some(identity)
+        )
+        .await
+        .0,
+        StatusCode::PRECONDITION_FAILED
+    );
+    wrapping_identity(&app, &newcomer, 2, 2).await;
+    app.revoke(&c.device_id).await.unwrap();
+    assert_eq!(key_state(&app, &c, 0).await.0, StatusCode::UNAUTHORIZED);
+}
+#[tokio::test]
+async fn rotation_revoke_packets_and_epoch_commit_together_and_retry_after_reopen() {
+    let (temp, app, c) = setup().await;
+    let peer = app
+        .issue_device("Peer", "http://127.0.0.1:4318")
+        .await
+        .unwrap();
+    let removed = app
+        .issue_device("Removed", "http://127.0.0.1:4318")
+        .await
+        .unwrap();
+    wrapping_identity(&app, &c, 1, 1).await;
+    wrapping_identity(&app, &peer, 2, 1).await;
+    let body = rotation(&app, &c, 1, &[(&c, 1), (&peer, 2)], &[&removed]);
+    // Fail after the rotation row is inserted but before packets/revocation/epoch commit.
+    sqlx::query("CREATE TRIGGER fail_packet BEFORE INSERT ON key_packets BEGIN SELECT RAISE(ABORT,'test packet failure'); END")
+        .execute(&app.pool).await.unwrap();
+    assert_eq!(
+        rotate(&app, &c, body.clone()).await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(key_state(&app, &removed, 0).await.0, StatusCode::OK);
+    let state = key_state(&app, &c, 0).await.1;
+    assert_eq!(state["key_epoch"], 1);
+    assert_eq!(state["packets"], json!([]));
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM key_rotations")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    sqlx::query("DROP TRIGGER fail_packet")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    let (status, reply) = rotate(&app, &c, body.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        key_state(&app, &removed, 0).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let state = key_state(&app, &peer, 0).await.1;
+    assert_eq!(state["key_epoch"], 2);
+    assert_eq!(state["packets"][0]["recipient_id"], peer.device_id);
+    assert_eq!(state["packets"].as_array().unwrap().len(), 1);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM key_packets WHERE recipient_id = ?")
+        .bind(&removed.device_id)
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    app.pool.close().await;
+    let reopened = App::open(&temp.path().join("synk.sqlite")).await.unwrap();
+    assert_eq!(
+        rotate(&reopened, &c, body.clone()).await,
+        (StatusCode::OK, reply.clone())
+    );
+    let next = rotation(&reopened, &peer, 2, &[(&c, 1), (&peer, 2)], &[]);
+    assert_eq!(rotate(&reopened, &peer, next).await.0, StatusCode::OK);
+    assert_eq!(
+        rotate(&reopened, &c, body.clone()).await,
+        (StatusCode::OK, reply)
+    );
+    let mut changed = body;
+    changed["packets"][0]["ciphertext"] = json!(STANDARD.encode([7; 48]));
+    assert_eq!(rotate(&reopened, &c, changed).await.0, StatusCode::CONFLICT);
+}
+#[tokio::test]
+async fn rotation_requires_exact_live_membership_and_disallows_self_revocation_and_extra_packets() {
+    let (_temp, app, c) = setup().await;
+    let peer = app
+        .issue_device("Unready", "http://127.0.0.1:4318")
+        .await
+        .unwrap();
+    wrapping_identity(&app, &c, 1, 1).await;
+    assert_eq!(
+        rotate(&app, &c, rotation(&app, &c, 1, &[(&c, 1)], &[]))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    wrapping_identity(&app, &peer, 2, 1).await;
+    let body = rotation(&app, &c, 1, &[(&c, 1), (&peer, 2)], &[]);
+    let newcomer = app
+        .issue_device("Raced membership", "http://127.0.0.1:4318")
+        .await
+        .unwrap();
+    assert_eq!(rotate(&app, &c, body.clone()).await.0, StatusCode::CONFLICT);
+    app.revoke(&newcomer.device_id).await.unwrap();
+    for change in 0..5 {
+        let mut bad = body.clone();
+        match change {
+            0 => bad["revoke_ids"] = json!([c.device_id]),
+            1 => bad["revoke_ids"] = json!([peer.device_id, peer.device_id]),
+            2 => bad["packets"][0]["recipient_public_key"] = json!(wrapping_public(8)),
+            3 => {
+                let duplicate = bad["packets"][0].clone();
+                bad["packets"].as_array_mut().unwrap().push(duplicate);
+            }
+            _ => bad["revoke_ids"] = json!([Uuid::new_v4().to_string()]),
+        }
+        assert_ne!(rotate(&app, &c, bad).await.0, StatusCode::OK);
+        assert_eq!(key_state(&app, &c, 0).await.1["key_epoch"], 1);
+    }
+    assert_eq!(
+        rotate(
+            &app,
+            &c,
+            rotation(&app, &c, 1, &[(&c, 1), (&peer, 2), (&newcomer, 3)], &[])
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let (a, b) = tokio::join!(
+        rotate(&app, &c, body),
+        rotate(
+            &app,
+            &peer,
+            rotation(&app, &peer, 1, &[(&c, 1), (&peer, 2)], &[])
+        )
+    );
+    assert!(matches!(
+        (a.0, b.0),
+        (StatusCode::OK, StatusCode::PRECONDITION_FAILED)
+            | (StatusCode::PRECONDITION_FAILED, StatusCode::OK)
+    ));
+}
+#[tokio::test]
+async fn fresh_records_require_current_epoch_while_committed_old_retries_remain_identical() {
+    let (_temp, app, c) = setup().await;
+    let old = envelope(&c, 1);
+    let (_, first) = push(&app, &c, std::slice::from_ref(&old)).await;
+    wrapping_identity(&app, &c, 1, 1).await;
+    assert_eq!(
+        rotate(&app, &c, rotation(&app, &c, 1, &[(&c, 1)], &[]))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        push(&app, &c, std::slice::from_ref(&old)).await,
+        (StatusCode::OK, first)
+    );
+    let mut fresh = envelope(&c, 2);
+    let mut current = fresh.clone();
+    current.key_epoch = 2;
+    assert_eq!(
+        push(&app, &c, &[current.clone(), envelope(&c, 3)]).await.0,
+        StatusCode::PRECONDITION_FAILED
+    );
+    assert_eq!(key_state(&app, &c, 0).await.1["key_epoch"], 2);
+    assert_eq!(
+        request(&app, Some(&c), "GET", "/v1/status", None).await.1["journal_operations"],
+        1
+    );
+    let (_, second) = push(&app, &c, std::slice::from_ref(&current)).await;
+    assert_eq!(second["acknowledgements"][0]["sequence"], 2);
+    fresh.key_epoch = 2;
+    fresh.nonce = STANDARD.encode([3; 12]);
+    assert_eq!(push(&app, &c, &[fresh]).await.0, StatusCode::CONFLICT);
+    let mut future = envelope(&c, 3);
+    future.key_epoch = 3;
+    assert_eq!(
+        push(&app, &c, &[future]).await.0,
+        StatusCode::PRECONDITION_FAILED
+    );
+}
+#[tokio::test]
+async fn rekey_check_proves_uncommitted_only_after_old_epoch_is_closed_and_preserves_committed_identity()
+ {
+    let (_temp, app, c) = setup().await;
+    let old = envelope(&c, 1);
+    let missing = envelope(&c, 2);
+    push(&app, &c, std::slice::from_ref(&old)).await;
+    let check = json!({"server_epoch":app.server_epoch,"key_epoch":2,"envelopes":[old,missing]});
+    assert_eq!(
+        request(
+            &app,
+            Some(&c),
+            "POST",
+            "/v1/sync/rekey-check",
+            Some(check.clone())
+        )
+        .await
+        .0,
+        StatusCode::PRECONDITION_FAILED
+    );
+    wrapping_identity(&app, &c, 1, 1).await;
+    rotate(&app, &c, rotation(&app, &c, 1, &[(&c, 1)], &[])).await;
+    let (status, proof) = request(
+        &app,
+        Some(&c),
+        "POST",
+        "/v1/sync/rekey-check",
+        Some(check.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(proof["committed"][0]["operation_id"], old.operation_id);
+    assert_eq!(proof["committed"][0]["sequence"], 1);
+    assert_eq!(proof["missing"], json!([missing.operation_id]));
+    assert_eq!(
+        push(&app, &c, std::slice::from_ref(&missing)).await.0,
+        StatusCode::PRECONDITION_FAILED
+    );
+    let mut replacement = missing.clone();
+    replacement.key_epoch = 2;
+    replacement.nonce = STANDARD.encode([4; 12]);
+    assert_eq!(
+        push(&app, &c, std::slice::from_ref(&replacement)).await.0,
+        StatusCode::OK
+    );
+    // Missing proof does not authorize modification of a newly committed envelope.
+    assert_eq!(
+        request(
+            &app,
+            Some(&c),
+            "POST",
+            "/v1/sync/rekey-check",
+            Some(check.clone())
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let mut bad = check.clone();
+    bad["envelopes"] = json!([envelope(&c, 1)]);
+    assert_eq!(
+        request(&app, Some(&c), "POST", "/v1/sync/rekey-check", Some(bad))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let mut bad = check.clone();
+    bad["envelopes"] = json!([old.clone(), old]);
+    assert_eq!(
+        request(&app, Some(&c), "POST", "/v1/sync/rekey-check", Some(bad))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let mut bad = check;
+    bad["server_epoch"] = json!(Uuid::new_v4().to_string());
+    assert_eq!(
+        request(&app, Some(&c), "POST", "/v1/sync/rekey-check", Some(bad))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+}
+#[tokio::test]
+async fn old_invites_cannot_claim_after_rotation_but_committed_keyed_claim_can_retry() {
+    let (_temp, app, c) = setup().await;
+    wrapping_identity(&app, &c, 1, 1).await;
+    let pending = claim(&app, &invitation(&app, &c).await);
+    let invite = invitation(&app, &c).await;
+    let mut paired = claim(&app, &invite);
+    paired["public_key"] = json!(wrapping_public(2));
+    paired["proof"] = json!(STANDARD.encode([2; 32]));
+    paired["proof_epoch"] = json!(1);
+    assert_eq!(register(&app, paired.clone()).await.0, StatusCode::OK);
+    let peer = Credentials {
+        account_id: app.account_id.clone(),
+        device_id: paired["device_id"].as_str().unwrap().into(),
+        token: paired["token"].as_str().unwrap().into(),
+        name: "Paired".into(),
+        server_url: c.server_url.clone(),
+    };
+    rotate(&app, &c, rotation(&app, &c, 1, &[(&c, 1), (&peer, 2)], &[])).await;
+    assert_eq!(register(&app, pending).await.0, StatusCode::GONE);
+    let (status, reply) = register(&app, paired.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(reply["key_epoch"], 1);
+    assert_eq!(
+        key_state(&app, &peer, 1).await.1["packets"][0]["key_epoch"],
+        2
+    );
+    let fresh = invitation(&app, &c).await;
+    assert_eq!(fresh["key_epoch"], 2);
+    let mut legacy = claim(&app, &fresh);
+    legacy["token"] = json!("c".repeat(64));
+    assert_eq!(
+        register(&app, legacy.clone()).await.0,
+        StatusCode::UPGRADE_REQUIRED
+    );
+    legacy["public_key"] = json!(wrapping_public(3));
+    legacy["proof"] = json!(STANDARD.encode([3; 32]));
+    legacy["proof_epoch"] = json!(1);
+    assert_eq!(
+        register(&app, legacy.clone()).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    legacy["proof_epoch"] = json!(2);
+    assert_eq!(register(&app, legacy).await.0, StatusCode::OK);
+    paired["public_key"] = json!(wrapping_public(8));
+    assert_eq!(register(&app, paired).await.0, StatusCode::CONFLICT);
+}
+#[tokio::test]
+async fn key_packet_pages_are_bounded_and_epoch_exhaustion_cannot_wrap() {
+    let (_temp, app, c) = setup().await;
+    wrapping_identity(&app, &c, 1, 1).await;
+    for from in 1..=254 {
+        assert_eq!(
+            rotate(&app, &c, rotation(&app, &c, from, &[(&c, 1)], &[]))
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+    let mut after = 1;
+    let mut seen = Vec::new();
+    loop {
+        let (status, page) = key_state(&app, &c, after).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(page["key_epoch"], 255);
+        let packets = page["packets"].as_array().unwrap();
+        assert!(packets.len() <= 32);
+        for packet in packets {
+            let next = packet["key_epoch"].as_u64().unwrap() as u8;
+            assert_eq!(next, after + 1);
+            after = next;
+            seen.push(next);
+        }
+        if page["has_more"] == false {
+            break;
+        }
+    }
+    assert_eq!(seen.len(), 254);
+    assert_eq!(after, 255);
+    let mut exhausted = rotation(&app, &c, 254, &[(&c, 1)], &[]);
+    exhausted["from_epoch"] = json!(255);
+    exhausted["key_epoch"] = json!(0);
+    assert_eq!(rotate(&app, &c, exhausted).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(key_state(&app, &c, 255).await.1["packets"], json!([]));
+}
+
+#[tokio::test]
+async fn schema_three_claim_migration_preserves_exact_retries_and_bootstraps_epoch_one() {
+    use sha2::{Digest, Sha256};
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    let temp = tempfile::tempdir().unwrap();
+    let migrations = temp.path().join("schema-three");
+    std::fs::create_dir(&migrations).unwrap();
+    for (name, source) in [
+        (
+            "0001_relay.sql",
+            include_str!("../migrations/0001_relay.sql"),
+        ),
+        (
+            "0002_limits_progress.sql",
+            include_str!("../migrations/0002_limits_progress.sql"),
+        ),
+        (
+            "0003_pairing.sql",
+            include_str!("../migrations/0003_pairing.sql"),
+        ),
+    ] {
+        std::fs::write(migrations.join(name), source).unwrap();
+    }
+    let path = temp.path().join("migrated.sqlite");
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+    sqlx::migrate::Migrator::new(migrations.as_path())
+        .await
+        .unwrap()
+        .run(&pool)
+        .await
+        .unwrap();
+    let hash = |text: &str| format!("{:x}", Sha256::digest(text.as_bytes()));
+    let account = Uuid::new_v4().to_string();
+    let epoch = Uuid::new_v4().to_string();
+    let issuer = Uuid::new_v4().to_string();
+    let device = Uuid::new_v4().to_string();
+    let invitation = "a".repeat(64);
+    let token = "b".repeat(64);
+    let api_hash = hash(&token);
+    sqlx::query("INSERT INTO settings (id,account_id,server_epoch) VALUES (1,?,?)")
+        .bind(&account)
+        .bind(&epoch)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO devices (id,name,token_hash) VALUES (?,'Issuer',?), (?,'Legacy paired',?)",
+    )
+    .bind(&issuer)
+    .bind(hash(&"c".repeat(64)))
+    .bind(&device)
+    .bind(&api_hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let old_claim_hash =
+        hash(&serde_json::to_string(&(&device, "Legacy paired", &api_hash)).unwrap());
+    sqlx::query("INSERT INTO pairing_invites (invitation_hash,issuer_id,expires_at,claimed_device_id,claim_hash) VALUES (?,?,strftime('%s','now') + 900,?,?)")
+        .bind(hash(&invitation)).bind(&issuer).bind(&device).bind(old_claim_hash).execute(&pool).await.unwrap();
+    pool.close().await;
+    let app = App::open(&path).await.unwrap();
+    let claim = json!({"account_id":account,"expected_epoch":epoch,"invitation_token":invitation,"device_id":device,"name":"Legacy paired","token":token});
+    let (status, reply) = register(&app, claim).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(reply["key_epoch"], 1);
+    let c = Credentials {
+        account_id: account,
+        device_id: device,
+        token,
+        server_url: "http://127.0.0.1:4318".into(),
+        name: "Legacy paired".into(),
+    };
+    let state = key_state(&app, &c, 0).await.1;
+    assert_eq!(state["key_epoch"], 1);
+    assert_eq!(state["packets"], json!([]));
+    assert!(
+        state["devices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|d| d["public_key"].is_null())
+    );
+    assert_eq!(
+        request(&app, Some(&c), "GET", "/v1/status", None).await.1["schema_version"],
+        4
+    );
 }

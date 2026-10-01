@@ -11,7 +11,7 @@ export interface Envelope {
   device_id: string;
   counter: number;
   domain: 'diagnostic' | 'bookmark' | 'session' | 'history';
-  key_epoch: 1;
+  key_epoch: number;
   nonce: string;
   ciphertext: string;
 }
@@ -54,12 +54,15 @@ export function isUuid(value: unknown): value is string {
 export function validCounter(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
+export function validKeyEpoch(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 255;
+}
 export function validateEnvelope(e: Envelope): void {
   if (
     !e ||
     e.protocol_version !== 1 ||
     !['diagnostic', 'bookmark', 'session', 'history'].includes(e.domain) ||
-    e.key_epoch !== 1 ||
+    !validKeyEpoch(e.key_epoch) ||
     !isUuid(e.operation_id) ||
     !isUuid(e.account_id) ||
     !isUuid(e.device_id) ||

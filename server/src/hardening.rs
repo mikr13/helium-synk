@@ -159,7 +159,7 @@ pub(crate) async fn status(
         .bind(author).fetch_one(&app.pool).await?;
     Ok(Json(
         serde_json::json!({"server_epoch":app.server_epoch,"protocol_version":1,"schema_version":crate::SCHEMA_VERSION,
-        "package_version":env!("CARGO_PKG_VERSION"),"sqlite_version":app.sqlite_version,
+        "package_version":env!("CARGO_PKG_VERSION"),"sqlite_version":app.sqlite_version,"key_epoch":row.get::<i64,_>("key_epoch"),
         "journal_bytes":row.get::<i64,_>("journal_bytes"),"journal_operations":row.get::<i64,_>("journal_operations"),
         "max_journal_bytes":row.get::<i64,_>("max_journal_bytes"),"max_operations":row.get::<i64,_>("max_operations"),
         "max_devices":row.get::<i64,_>("max_devices"),"devices":row.get::<i64,_>("devices"),"active_devices":row.get::<i64,_>("active_devices"),
