@@ -15,7 +15,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                   | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
 | Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
 | Logo and favicon                                                   | Complete branding implementation checkpoint          | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
-| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open | 176 TS, 11 real-process tests, production build and responsive UI   |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
 | History plaintext/ciphertext erasure                               | Pending                                              | Section 7                                                           |
 | Local budgets, retention, full-scale journal performance, recovery | Pending                                              | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                | Disposable profiles only                                            |
@@ -168,6 +168,8 @@ Checkpoint commit: `9b2e6da feat(extension): add Helium sync logo and favicon`.
 The [branding record](branding.md) preserves the source, assets and exact built-in image-generation prompt. Existing goal gates remain open; this checkpoint does not complete M7 or the production release.
 
 ## Dark interface and TypeScript aliases checkpoint — 2026-10-01
+
+Checkpoint commit: `93bea2c feat(extension): adopt dark Tailwind and shadcn UI`.
 
 - [x] Share logo-derived navy/blue/mint Tailwind tokens across dashboard, setup/recovery and restoration pages; dark mode only, all radius tokens zero.
 - [x] Install actual shadcn/ui components and compose cards, forms, alerts, badges, tabs, checkboxes, disclosures and accessible confirmations from that toolkit.
