@@ -64,6 +64,8 @@ export interface LocalState {
   recovery_key: string;
   next_counter: number;
   cursor: number;
+  /** Confirmed relay ACK of the durable journal cursor; never native browser application. */
+  acknowledged_cursor?: number;
   server_epoch?: string;
   last_synced?: string;
   logical?: number;
@@ -187,6 +189,7 @@ export class SynkDatabase extends Dexie {
         history_index_key: indexKey,
         next_counter: 1,
         cursor: 0,
+        acknowledged_cursor: 0,
         logical: 0,
         context: {},
       });

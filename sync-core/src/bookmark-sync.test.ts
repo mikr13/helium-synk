@@ -30,6 +30,9 @@ afterEach(async () => {
   for (const db of databases.splice(0)) await db.delete();
 });
 class Relay implements Transport {
+  async acknowledge(cursor: number, epoch: string) {
+    return { server_epoch: epoch, processed_cursor: cursor };
+  }
   epoch = crypto.randomUUID();
   offline = false;
   loseResponse = false;
@@ -98,6 +101,7 @@ describe('durable bookmark pipeline', () => {
     const sizes: number[] = [],
       counters: number[] = [];
     const transport: Transport = {
+      acknowledge: (cursor, epoch) => relay.acknowledge(cursor, epoch),
       pull: (cursor) => relay.pull(cursor),
       push: async (envelopes, epoch) => {
         sizes.push(
@@ -120,6 +124,7 @@ describe('durable bookmark pipeline', () => {
       id = crypto.randomUUID();
     await a.queueBookmark(create(id));
     const transport: Transport = {
+      acknowledge: (cursor, epoch) => relay.acknowledge(cursor, epoch),
       push: (envelopes) => relay.push(envelopes),
       pull: async (cursor) => {
         const page = await relay.pull(cursor);
@@ -332,6 +337,7 @@ describe('durable bookmark pipeline', () => {
     });
     let pulls = 0;
     const transport: Transport = {
+      acknowledge: (cursor, epoch) => relay.acknowledge(cursor, epoch),
       push: (envelopes) => relay.push(envelopes),
       pull: async (cursor) => {
         const page = await relay.pull(cursor);

@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use synk_server::App;
+use synk_server::{App, Limits};
 
 #[derive(Parser)]
 #[command(version, about = "Private encrypted relay for Helium Synk")]
@@ -30,6 +30,15 @@ enum Command {
         server_url: String,
         #[arg(long)]
         output: PathBuf,
+    },
+    /// Update persisted account budgets without deleting records. Running relays read these on each insert.
+    SetLimits {
+        #[arg(long)]
+        max_journal_bytes: i64,
+        #[arg(long)]
+        max_operations: i64,
+        #[arg(long, default_value_t = 64)]
+        max_devices: i64,
     },
     RevokeDevice {
         #[arg(long)]
@@ -55,11 +64,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ))
             .await?;
             tracing::info!(address = %listener.local_addr()?, "relay listening on localhost");
-            axum::serve(listener, synk_server::router(app))
-                .with_graceful_shutdown(async {
-                    let _ = tokio::signal::ctrl_c().await;
+            let stopping = app.clone();
+            axum::serve(listener, synk_server::router(app.clone()))
+                .with_graceful_shutdown(async move {
+                    shutdown_signal().await;
+                    stopping.initiate_shutdown();
+                    tracing::info!("relay draining committed work");
                 })
                 .await?;
+            app.pool.close().await;
+            tracing::info!("relay stopped");
         }
         Command::IssueDevice {
             name,
@@ -83,6 +97,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 output.display()
             );
         }
+        Command::SetLimits {
+            max_journal_bytes,
+            max_operations,
+            max_devices,
+        } => {
+            app.configure_limits(Limits {
+                max_journal_bytes,
+                max_operations,
+                max_devices,
+            })
+            .await?;
+            println!("Relay budgets updated. Existing records and retry identities were retained.");
+        }
         Command::RevokeDevice { device_id } => {
             if !app.revoke(&device_id).await? {
                 return Err("Device not found or already revoked".into());
@@ -93,4 +120,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler");
+        tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = terminate.recv() => {} }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }

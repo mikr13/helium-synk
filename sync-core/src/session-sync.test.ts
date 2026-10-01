@@ -31,6 +31,9 @@ async function pair() {
   return { a: await local(), b: await local(), key };
 }
 class Relay implements Transport {
+  async acknowledge(cursor: number, epoch: string) {
+    return { server_epoch: epoch, processed_cursor: cursor };
+  }
   epoch = crypto.randomUUID();
   rows: Envelope[] = [];
   offline = false;
@@ -197,6 +200,7 @@ describe('durable session synchronization', () => {
     relay.pageSize = 1;
     let pulls = 0;
     const transport: Transport = {
+      acknowledge: (cursor, epoch) => relay.acknowledge(cursor, epoch),
       push: (e) => relay.push(e),
       pull: async (cursor) => {
         if (++pulls === 2) throw new Error('Page interrupted');

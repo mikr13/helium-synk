@@ -149,6 +149,18 @@ async fn persists_records_epoch_credentials_and_monotonic_sequence_after_reopen(
 #[tokio::test]
 async fn rejects_wrong_author_unsupported_domain_bad_nonce_and_stale_epoch() {
     let (_temp, app, c) = setup().await;
+    for key_version in [false, true] {
+        let mut unsupported = envelope(&c, 1);
+        if key_version {
+            unsupported.key_epoch = 2;
+        } else {
+            unsupported.protocol_version = 2;
+        }
+        assert_eq!(
+            push(&app, &c, &[unsupported]).await.0,
+            StatusCode::UPGRADE_REQUIRED
+        );
+    }
     let other = app
         .issue_device("Test B", "http://127.0.0.1:4318")
         .await
@@ -306,4 +318,337 @@ async fn disk_full_rejects_without_committing_or_acknowledging_and_allows_an_ide
         push(&app, &c, std::slice::from_ref(&e)).await.0,
         StatusCode::OK
     );
+}
+
+async fn status(app: &App, c: &Credentials) -> Value {
+    let (code, value) = request(app, Some(c), "GET", "/v1/status", None).await;
+    assert_eq!(code, StatusCode::OK);
+    value
+}
+async fn ack(app: &App, c: &Credentials, epoch: &str, cursor: i64) -> (StatusCode, Value) {
+    request(
+        app,
+        Some(c),
+        "POST",
+        "/v1/sync/ack",
+        Some(json!({"server_epoch":epoch,"cursor":cursor})),
+    )
+    .await
+}
+#[tokio::test]
+async fn exact_byte_quota_persists_and_identical_retry_does_not_consume_budget() {
+    let (temp, app, c) = setup().await;
+    let e = envelope(&c, 1);
+    let bytes = serde_json::to_vec(&e).unwrap().len() as i64;
+    app.configure_limits(synk_server::Limits {
+        max_journal_bytes: bytes - 1,
+        max_operations: 10,
+        max_devices: 64,
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        push(&app, &c, std::slice::from_ref(&e)).await.0,
+        StatusCode::INSUFFICIENT_STORAGE
+    );
+    assert_eq!(status(&app, &c).await["journal_bytes"], 0);
+    app.configure_limits(synk_server::Limits {
+        max_journal_bytes: bytes,
+        max_operations: 1,
+        max_devices: 64,
+    })
+    .await
+    .unwrap();
+    let (code, first) = push(&app, &c, std::slice::from_ref(&e)).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(push(&app, &c, std::slice::from_ref(&e)).await.1, first);
+    assert_eq!(
+        push(&app, &c, &[envelope(&c, 2)]).await.0,
+        StatusCode::INSUFFICIENT_STORAGE
+    );
+    let s = status(&app, &c).await;
+    assert_eq!(s["journal_bytes"], bytes);
+    assert_eq!(s["journal_operations"], 1);
+    app.pool.close().await;
+    let reopened = App::open(&temp.path().join("synk.sqlite")).await.unwrap();
+    assert_eq!(status(&reopened, &c).await["journal_bytes"], bytes);
+    assert_eq!(status(&reopened, &c).await["max_journal_bytes"], bytes);
+    // Lowering a limit below existing usage preserves records and exact retries.
+    reopened
+        .configure_limits(synk_server::Limits {
+            max_journal_bytes: 1,
+            max_operations: 1,
+            max_devices: 1,
+        })
+        .await
+        .unwrap();
+    assert_eq!(push(&reopened, &c, std::slice::from_ref(&e)).await.1, first);
+}
+#[tokio::test]
+async fn quota_failure_rolls_back_the_entire_batch_and_usage_then_concurrent_inserts_stay_bounded()
+{
+    let (_temp, app, c) = setup().await;
+    app.configure_limits(synk_server::Limits {
+        max_journal_bytes: 1_000_000,
+        max_operations: 1,
+        max_devices: 64,
+    })
+    .await
+    .unwrap();
+    let a = envelope(&c, 1);
+    let b = envelope(&c, 2);
+    let (code, response) = push(&app, &c, &[a.clone(), b.clone()]).await;
+    assert_eq!(code, StatusCode::INSUFFICIENT_STORAGE);
+    assert!(response.get("acknowledgements").is_none());
+    assert_eq!(status(&app, &c).await["journal_bytes"], 0);
+    assert_eq!(status(&app, &c).await["journal_operations"], 0);
+    let first = [a];
+    let second = [b];
+    let (left, right) = tokio::join!(push(&app, &c, &first), push(&app, &c, &second));
+    assert!(matches!(
+        (left.0, right.0),
+        (StatusCode::OK, StatusCode::INSUFFICIENT_STORAGE)
+            | (StatusCode::INSUFFICIENT_STORAGE, StatusCode::OK)
+    ));
+    assert_eq!(status(&app, &c).await["journal_operations"], 1);
+}
+#[tokio::test]
+async fn installation_limit_counts_revoked_authors_and_validates_configuration() {
+    let (_temp, app, c) = setup().await;
+    let limits = synk_server::Limits {
+        max_journal_bytes: 1_000_000,
+        max_operations: 10,
+        max_devices: 1,
+    };
+    app.configure_limits(limits.clone()).await.unwrap();
+    assert!(
+        app.issue_device("B", "http://127.0.0.1:4318")
+            .await
+            .is_err()
+    );
+    app.revoke(&c.device_id).await.unwrap();
+    assert!(
+        app.issue_device("B", "http://127.0.0.1:4318")
+            .await
+            .is_err()
+    );
+    for invalid in [
+        synk_server::Limits {
+            max_devices: 257,
+            ..limits.clone()
+        },
+        synk_server::Limits {
+            max_devices: 0,
+            ..limits.clone()
+        },
+        synk_server::Limits {
+            max_operations: 0,
+            ..limits.clone()
+        },
+        synk_server::Limits {
+            max_journal_bytes: 9_007_199_254_740_992,
+            ..limits.clone()
+        },
+    ] {
+        assert!(app.configure_limits(invalid).await.is_err());
+    }
+    app.configure_limits(synk_server::Limits {
+        max_devices: 2,
+        ..limits
+    })
+    .await
+    .unwrap();
+    assert!(app.issue_device("B", "http://127.0.0.1:4318").await.is_ok());
+}
+#[tokio::test]
+async fn processed_ack_is_authorized_epoch_scoped_monotonic_and_persisted() {
+    let (temp, app, c) = setup().await;
+    let peer = app
+        .issue_device("B", "http://127.0.0.1:4318")
+        .await
+        .unwrap();
+    assert_eq!(
+        push(&app, &c, &[envelope(&c, 1), envelope(&c, 2)]).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(
+            &app,
+            None,
+            "POST",
+            "/v1/sync/ack",
+            Some(json!({"server_epoch":app.server_epoch,"cursor":0}))
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        ack(&app, &c, &Uuid::new_v4().to_string(), 0).await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        ack(&app, &c, &app.server_epoch, -1).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        ack(&app, &c, &app.server_epoch, 9_007_199_254_740_992)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        ack(&app, &c, &app.server_epoch, 1).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    // Caller-provided pull positions cannot forge delivery for an unread installation.
+    assert_eq!(
+        request(&app, Some(&peer), "GET", "/v1/sync/pull?cursor=2", None)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        request(&app, Some(&c), "GET", "/v1/sync/pull", None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        ack(&app, &peer, &app.server_epoch, 2).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        ack(&app, &c, &app.server_epoch, 3).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    for cursor in [2, 2, 1, 0] {
+        let (code, result) = ack(&app, &c, &app.server_epoch, cursor).await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(result["processed_cursor"], 2);
+    }
+    app.pool.close().await;
+    let reopened = App::open(&temp.path().join("synk.sqlite")).await.unwrap();
+    let progress = status(&reopened, &c).await;
+    assert_eq!(progress["processed_cursor"], 2);
+    assert_eq!(progress["processed_epoch"], reopened.server_epoch);
+    assert!(progress["last_seen"].is_string());
+    assert_eq!(status(&reopened, &peer).await["processed_cursor"], 0);
+    reopened.revoke(&c.device_id).await.unwrap();
+    assert_eq!(
+        ack(&reopened, &c, &reopened.server_epoch, 2).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        request(&reopened, Some(&c), "GET", "/v1/status", None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+#[tokio::test]
+async fn migration_backfills_existing_envelope_bytes_and_usage_triggers_track_changes() {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    let temp = tempfile::tempdir().unwrap();
+    let old_migrations = temp.path().join("old-migrations");
+    std::fs::create_dir(&old_migrations).unwrap();
+    std::fs::write(
+        old_migrations.join("0001_relay.sql"),
+        include_str!("../migrations/0001_relay.sql"),
+    )
+    .unwrap();
+    let path = temp.path().join("old.sqlite");
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+    sqlx::migrate::Migrator::new(old_migrations.as_path())
+        .await
+        .unwrap()
+        .run(&pool)
+        .await
+        .unwrap();
+    let account = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO settings VALUES (1,?,?)")
+        .bind(&account)
+        .bind(Uuid::new_v4().to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO devices VALUES ('old-author','old','hash',0)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let value = "unicode payload café";
+    sqlx::query("INSERT INTO operations (operation_id,device_id,counter,envelope) VALUES ('old-operation','old-author',1,?)").bind(value).execute(&pool).await.unwrap();
+    pool.close().await;
+    let app = App::open(&path).await.unwrap();
+    let usage: (i64, i64) = sqlx::query_as("SELECT journal_bytes,journal_operations FROM settings")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(usage, (value.len() as i64, 1));
+    sqlx::query("UPDATE operations SET envelope = 'short'")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    let bytes: i64 = sqlx::query_scalar("SELECT journal_bytes FROM settings")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(bytes, 5);
+    sqlx::query("DELETE FROM operations")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    let usage: (i64, i64) = sqlx::query_as("SELECT journal_bytes,journal_operations FROM settings")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(usage, (0, 0));
+    let sequence: i64 =
+        sqlx::query_scalar("SELECT seq FROM sqlite_sequence WHERE name = 'operations'")
+            .fetch_one(&app.pool)
+            .await
+            .unwrap();
+    assert_eq!(sequence, 1);
+}
+#[tokio::test]
+async fn startup_refuses_modified_or_unknown_migrations_without_rewriting_history() {
+    for unknown in [false, true] {
+        let (temp, app, _c) = setup().await;
+        if unknown {
+            sqlx::query("INSERT INTO _sqlx_migrations (version,description,installed_on,success,checksum,execution_time) VALUES (999,'future',CURRENT_TIMESTAMP,1,X'00',0)").execute(&app.pool).await.unwrap();
+        } else {
+            sqlx::query("UPDATE _sqlx_migrations SET checksum = X'00' WHERE version = 1")
+                .execute(&app.pool)
+                .await
+                .unwrap();
+        }
+        app.pool.close().await;
+        let error = App::open(&temp.path().join("synk.sqlite"))
+            .await
+            .err()
+            .expect("must refuse incompatible migration");
+        assert!(error.to_string().contains("migration"));
+    }
+}
+#[tokio::test]
+async fn sequence_exhaustion_rejects_without_advancing_usage() {
+    let (_temp, app, c) = setup().await;
+    push(&app, &c, &[envelope(&c, 1)]).await;
+    sqlx::query("UPDATE sqlite_sequence SET seq = 9007199254740991 WHERE name = 'operations'")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        push(&app, &c, &[envelope(&c, 2)]).await.0,
+        StatusCode::INSUFFICIENT_STORAGE
+    );
+    assert_eq!(status(&app, &c).await["journal_operations"], 1);
 }

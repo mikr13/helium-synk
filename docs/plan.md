@@ -18,7 +18,7 @@
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 135 TS + 10 relay + 5 cross-stack tests; native gates pending       |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 142 TS + 18 relay + 8 cross-stack tests; native gates pending       |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
 | M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
@@ -56,7 +56,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 135 TypeScript, 10 Rust and 5 real-relay integration tests.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 142 TypeScript, 18 Rust and 8 real-relay integration tests.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -81,6 +81,18 @@ The [session contract](sessions.md) records supported behavior and recovery limi
 - [ ] Coordinate logical removal with local content removal, ciphertext purge and backup-retention behavior.
 
 These checks use simulated native ports, synthetic UI responses and the real relay. History collection is opt-in in the development build. The [history contract](history.md) records the remaining erasure/scale/live acceptance work; section 7/M5 exit gates remain open.
+
+## Relay hardening and durable progress checkpoint — 2026-10-01
+
+- [x] Persist account envelope budgets/usage and enforce atomic quota rollback while allowing identical retries.
+- [x] Authenticate and persist installation-delivered/processed cursors; verify epoch and monotonicity.
+- [x] Send client cursor ACKs only after durable local journal commits; retry lost replies, restart and failed local ACK writes.
+- [x] Bound HTTP handlers and notification sockets/buffering/sends; verify graceful SIGTERM and SQLite reopening.
+- [x] Verify schema-1 usage/delivery backfill and refusal of changed checksums/unknown migrations.
+- [ ] Complete pairing/key rotation, history content/ciphertext erasure, local storage/retention, scale and recovery work.
+- [ ] Complete the real Helium and hours-long outage gates together in disposable profiles.
+
+Evidence: 142 TypeScript, 18 Rust and 8 real-process integration tests, WXT production build/typechecks and format/version checks. See `docs/relay-protocol.md` and `docs/progress.md`. Processed ACKs attest to durable journal processing; native browser effects have separate progress. No whole milestone exit gate is complete.
 
 ## 1. Product requirements and boundaries
 
@@ -221,19 +233,19 @@ docs/               Decisions, recovery procedures, contributor guide
 
 ### Protocol checklist
 
-- [ ] Give every operation a unique ID, author installation ID/counter, schema version, and encrypted payload.
-- [ ] Use a non-reused monotonically increasing server sequence for retrieval within a server epoch.
-- [ ] Keep merge revisions separate from server delivery sequences and wall-clock timestamps.
-- [ ] Reject reuse of an operation ID with a different envelope; retrying the same operation returns its original result.
-- [ ] Use at-least-once delivery and idempotent effects; do not claim exactly-once network delivery.
-- [ ] Preserve unacknowledged work across timeouts and ambiguous upload responses.
+- [x] Give every operation a unique ID, author installation ID/counter, schema version, and encrypted payload.
+- [x] Use a non-reused monotonically increasing server sequence for retrieval within a server epoch.
+- [x] Keep merge revisions separate from server delivery sequences and wall-clock timestamps.
+- [x] Reject reuse of an operation ID with a different envelope; retrying the same operation returns its original result.
+- [x] Use at-least-once delivery and idempotent effects; do not claim exactly-once network delivery.
+- [x] Preserve unacknowledged work across timeouts and ambiguous upload responses.
 - [ ] Authenticate WebSockets without putting long-lived credentials in URLs; use a short-lived ticket or authenticated initial message.
 - [ ] Treat notifications as hints; pull immediately after reconnect even if no notification arrived.
 - [ ] Prevent the initial pull/subscription race with a catch-up pull after subscription is established.
 - [ ] Use one coordinator per installation, bounded batches, timeouts, exponential backoff, and jitter.
 - [ ] Handle invalid authentication separately from temporary network failure.
-- [ ] Quarantine invalid/incompatible records and surface the error; do not silently advance over required unprocessed changes.
-- [ ] Store processing/application progress so a crash can safely resume.
+- [x] Quarantine invalid/incompatible records and surface the error; do not silently advance over required unprocessed changes.
+- [x] Store processing/application progress so a crash can safely resume.
 - [ ] Define supported protocol/schema versions and explicit upgrade-required responses.
 
 ### Starting latency targets
@@ -284,7 +296,7 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 - [x] Specify deterministic handling of missing/deleted parents and invalid placement.
 - [x] Prove convergence from the same operation set regardless of arrival order.
 
-**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 135 TypeScript tests, 10 relay tests and 5 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
+**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 142 TypeScript tests, 18 relay tests and 8 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
 
 ### Browser integration and onboarding
 
@@ -373,15 +385,15 @@ References: [AES-GCM parameters](https://developer.mozilla.org/en-US/docs/Web/AP
 | `pairing_invites`   | Hashed invitations, expiry, single-use state                                   |
 | `schema_migrations` | Database migration history                                                     |
 
-- [ ] Use WAL mode on a local disk, `synchronous=FULL`, foreign keys, and configured busy timeout.
-- [ ] Keep transactions short; control write concurrency and use a small connection pool.
-- [ ] Add operation uniqueness constraints, cursor indexes, and bounded pagination.
-- [ ] Validate envelope/schema versions, batch size, payload size, and author authorization.
-- [ ] Limit account storage and WebSocket message/buffer sizes; handle slow clients by disconnecting safely.
-- [ ] Acknowledge only committed records; broadcast only after commit.
-- [ ] Handle disk-full/database errors explicitly without discarding the client's pending work.
-- [ ] Add graceful shutdown and migration compatibility checks.
-- [ ] Keep the V1 bookmark journal uncompacted; monitor growth.
+- [x] Use WAL mode on a local disk, `synchronous=FULL`, foreign keys, and configured busy timeout.
+- [x] Keep transactions short; control write concurrency and use a small connection pool.
+- [x] Add operation uniqueness constraints, cursor indexes, and bounded pagination.
+- [x] Validate envelope/schema versions, batch size, payload size, and author authorization.
+- [x] Limit account storage and WebSocket message/buffer sizes; handle slow clients by disconnecting safely.
+- [x] Acknowledge only committed records; broadcast only after commit.
+- [x] Handle disk-full/database errors explicitly without discarding the client's pending work.
+- [x] Add graceful shutdown and migration compatibility checks.
+- [x] Keep the V1 bookmark journal uncompacted; monitor growth.
 - [ ] Before future compaction, define client-generated encrypted checkpoints, acknowledged frontiers, device retirement, and forced rebootstrap rules.
 
 SQLite WAL supports concurrent readers and a writer but only one active writer. Use filesystem storage outside iCloud Drive/network-sync folders. [SQLite WAL](https://www.sqlite.org/wal.html), [SQLx SQLite configuration](https://docs.rs/sqlx/latest/sqlx/sqlite/struct.SqliteConnectOptions.html)

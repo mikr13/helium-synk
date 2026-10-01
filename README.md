@@ -66,7 +66,7 @@ If the Mini goes offline, locally committed data remains available and notes, en
 
 The relay stores encrypted content and token hashes. It sees author IDs, counters, delivery sequences, and traffic size/timing. Clients use AES-256-GCM with fresh nonces and HKDF-derived per-account/domain/author keys. This build auto-unlocks: the recovery key, API credential, and decrypted content caches are stored in the browser profile. **Local profile data is not encrypted at rest by this extension.** Keep the recovery key separately; a server backup cannot decrypt records.
 
-Revocation removes API access but cannot erase downloaded data or revoke knowledge of an existing encryption key. The options page exports the local replica separately from recovery keys. Key rotation, quotas, short-lived pairing, and older-backup recovery procedures are later gates.
+Revocation removes API access but cannot erase downloaded data or revoke knowledge of an existing encryption key. The options page exports the local replica separately from recovery keys. The relay enforces persisted account envelope budgets and exposes authenticated usage/progress. Clients ACK committed journal cursors and retry lost replies durably; native browser effects retain separate progress. Upgrade the relay before this client. Read the [relay protocol/budget contract](docs/relay-protocol.md). Key rotation, short-lived pairing, local budgets/retention and older-backup recovery remain open gates.
 
 ## Hosting and releases
 

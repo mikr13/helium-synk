@@ -61,6 +61,9 @@ async function visit(db: SynkDatabase, native = '1', time = 1000.25): Promise<Hi
   };
 }
 class Relay implements Transport {
+  async acknowledge(cursor: number, epoch: string) {
+    return { server_epoch: epoch, processed_cursor: cursor };
+  }
   epoch = crypto.randomUUID();
   rows: Envelope[] = [];
   offline = false;

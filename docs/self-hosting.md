@@ -10,7 +10,7 @@ This is a deployment checklist. No service, Tailscale policy, power setting, or 
 - [ ] Build using `./scripts/cargo.sh build --release --locked`; install the binary to a stable explicit path outside build output.
 - [ ] Record the dynamic SQLite library dependency before deployment. Package/use a patched library and test the actual deployed binary after Homebrew upgrades.
 - [ ] Use the CLI's absolute `--database` path and the default localhost-only listener; never bind directly to all interfaces.
-- [ ] Implement and test bounded graceful SIGTERM shutdown before launchd installation. The current binary handles Ctrl+C; SIGTERM persistence is exercised as process termination, not graceful shutdown.
+- [x] Implement and test bounded graceful SIGTERM/Ctrl+C shutdown, including authenticated sockets and durable SQLite reopening. Eight real-process integration tests pass; launchd/reboot acceptance remains pending.
 - [ ] Decide between a per-user LaunchAgent (login required) and a properly restricted LaunchDaemon, based on the installed Tailscale variant and desired startup behavior.
 - [ ] Create a launchd plist with absolute ProgramArguments, WorkingDirectory, RunAtLoad/KeepAlive policy, a restart throttle, restrictive Umask, and explicit standard-output/error log paths. Verify it before installing.
 - [ ] Rotate/bound logs, monitor readiness and disk space, and test migration/upgrade rollback compatibility.

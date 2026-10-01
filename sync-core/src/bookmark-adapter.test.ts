@@ -510,6 +510,7 @@ describe('native bookmark integration', () => {
       },
     );
     const transport: Transport = {
+      acknowledge: async (cursor, epoch) => ({ server_epoch: epoch, processed_cursor: cursor }),
       async pull(cursor) {
         return {
           server_epoch: epoch,
@@ -581,6 +582,7 @@ describe('native bookmark integration', () => {
       },
     );
     const transport: Transport = {
+      acknowledge: async (cursor, epoch) => ({ server_epoch: epoch, processed_cursor: cursor }),
       async pull(cursor) {
         return {
           server_epoch: epoch,
@@ -676,6 +678,7 @@ describe('native bookmark integration', () => {
     const epoch = crypto.randomUUID(),
       rows: Envelope[] = [];
     const transport: Transport = {
+      acknowledge: async (cursor, epoch) => ({ server_epoch: epoch, processed_cursor: cursor }),
       async pull(cursor) {
         return {
           server_epoch: epoch,

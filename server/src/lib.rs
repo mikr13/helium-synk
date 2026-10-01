@@ -1,4 +1,6 @@
-use std::{path::Path, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
+mod hardening;
+pub use hardening::Limits;
 
 use axum::{
     Json, Router,
@@ -19,7 +21,7 @@ use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
-use tokio::sync::broadcast;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, broadcast, watch};
 use uuid::Uuid;
 
 const MAX_BATCH: usize = 100;
@@ -33,6 +35,9 @@ pub struct App {
     pub server_epoch: String,
     pub sqlite_version: String,
     notifications: broadcast::Sender<i64>,
+    shutdown: watch::Sender<bool>,
+    sockets: Arc<Semaphore>,
+    requests: Arc<Semaphore>,
 }
 
 #[derive(Debug)]
@@ -180,6 +185,9 @@ impl App {
             server_epoch: row.get("server_epoch"),
             sqlite_version,
             notifications,
+            shutdown: watch::channel(false).0,
+            sockets: Arc::new(Semaphore::new(32)),
+            requests: Arc::new(Semaphore::new(32)),
         })
     }
 
@@ -198,12 +206,25 @@ impl App {
         rand::rngs::OsRng.fill_bytes(&mut secret);
         let token: String = secret.iter().map(|b| format!("{b:02x}")).collect();
         let id = Uuid::new_v4().to_string();
+        let mut tx = self.pool.begin().await?;
+        let available: i64 = sqlx::query_scalar(
+            "SELECT (SELECT COUNT(*) FROM devices) < max_devices FROM settings WHERE id = 1",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if available == 0 {
+            return Err(ApiError(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "Installation limit reached; retain existing identities and adjust the budget",
+            ));
+        }
         sqlx::query("INSERT INTO devices (id, name, token_hash) VALUES (?, ?, ?)")
             .bind(&id)
             .bind(name)
             .bind(token_hash(&token))
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(Credentials {
             account_id: self.account_id.clone(),
             device_id: id,
@@ -260,25 +281,34 @@ pub fn router(app: App) -> Router {
         .route("/v1/sync/push", post(push))
         .route("/v1/sync/pull", get(pull))
         .route("/v1/events", get(events))
+        .route("/v1/sync/ack", post(hardening::acknowledge))
+        .route("/v1/status", get(hardening::status))
         .layer(DefaultBodyLimit::max(1_048_576))
+        .layer(axum::middleware::from_fn_with_state(
+            app.clone(),
+            hardening::guard,
+        ))
         .with_state(app)
 }
 
 async fn ready(State(app): State<App>) -> Result<Json<serde_json::Value>, ApiError> {
     sqlx::query("SELECT 1").execute(&app.pool).await?;
     Ok(Json(
-        serde_json::json!({"status": "ready", "protocol_version": 1, "server_epoch": app.server_epoch, "sqlite_version": app.sqlite_version}),
+        serde_json::json!({"status": "ready", "protocol_version": 1, "schema_version":2, "package_version":env!("CARGO_PKG_VERSION"), "server_epoch": app.server_epoch, "sqlite_version": app.sqlite_version}),
     ))
 }
 
 fn validate(e: &Envelope, app: &App, author: &str) -> Result<(), ApiError> {
-    if e.protocol_version != 1
-        || !matches!(
-            e.domain.as_str(),
-            "diagnostic" | "bookmark" | "session" | "history"
-        )
-        || e.key_epoch != 1
-        || e.device_id != author
+    if e.protocol_version != 1 || e.key_epoch != 1 {
+        return Err(ApiError(
+            StatusCode::UPGRADE_REQUIRED,
+            "Unsupported protocol or encryption version; use compatible clients and relay",
+        ));
+    }
+    if !matches!(
+        e.domain.as_str(),
+        "diagnostic" | "bookmark" | "session" | "history"
+    ) || e.device_id != author
         || e.account_id != app.account_id
         || Uuid::parse_str(&e.operation_id).is_err()
         || e.counter < 1
@@ -327,6 +357,16 @@ async fn push(
         validate(envelope, &app, &author)?;
     }
     let mut tx = app.pool.begin().await?;
+    let allowed: bool = sqlx::query_scalar("SELECT revoked = 0 FROM devices WHERE id = ?")
+        .bind(&author)
+        .fetch_one(&mut *tx)
+        .await?;
+    if !allowed {
+        return Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "Device credentials revoked",
+        ));
+    }
     let mut acknowledgements = Vec::new();
     let mut latest = 0;
     for envelope in &request.envelopes {
@@ -356,6 +396,7 @@ async fn push(
             if reused > 0 {
                 return Err(ApiError(StatusCode::CONFLICT, "Device counter was reused"));
             }
+            hardening::reserve_insert(&mut tx, encoded.len()).await?;
             let result = sqlx::query("INSERT INTO operations (operation_id, device_id, counter, envelope) VALUES (?, ?, ?, ?)")
                 .bind(&envelope.operation_id).bind(&author).bind(envelope.counter).bind(encoded).execute(&mut *tx).await?;
             result.last_insert_rowid()
@@ -379,17 +420,36 @@ async fn pull(
     headers: HeaderMap,
     Query(query): Query<PullQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    app.bearer(&headers).await?;
+    let author = app.bearer(&headers).await?;
     if query.cursor < 0 || query.cursor > MAX_SAFE_INTEGER {
         return Err(ApiError(StatusCode::BAD_REQUEST, "Invalid cursor"));
     }
-    let latest: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(sequence), 0) FROM operations")
-        .fetch_one(&app.pool)
-        .await?;
+    let latest: i64 = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'operations'), 0)",
+    )
+    .fetch_one(&app.pool)
+    .await?;
     if query.cursor > latest {
         return Err(ApiError(
             StatusCode::CONFLICT,
             "Cursor is ahead of server history; recovery required",
+        ));
+    }
+    // A new credential must bootstrap from zero. Never turn an arbitrary caller's
+    // cursor into delivered progress usable for later retention decisions.
+    let delivered: i64 =
+        sqlx::query_scalar("SELECT sent_cursor FROM devices WHERE id = ? AND revoked = 0")
+            .bind(&author)
+            .fetch_optional(&app.pool)
+            .await?
+            .ok_or(ApiError(
+                StatusCode::UNAUTHORIZED,
+                "Device credentials revoked",
+            ))?;
+    if query.cursor > delivered {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "Cursor exceeds this installation's delivered progress",
         ));
     }
     let rows = sqlx::query(
@@ -425,6 +485,13 @@ async fn pull(
         page_bytes += entry_bytes;
         records.push(serde_json::json!({"sequence": cursor, "envelope": envelope}));
     }
+    let delivered = sqlx::query("UPDATE devices SET sent_cursor = MAX(sent_cursor, ?), last_seen = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND revoked = 0").bind(cursor).bind(author).execute(&app.pool).await?;
+    if delivered.rows_affected() != 1 {
+        return Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "Device credentials revoked",
+        ));
+    }
     Ok(Json(
         serde_json::json!({"server_epoch": app.server_epoch, "records": records, "next_cursor": cursor, "has_more": has_more}),
     ))
@@ -444,19 +511,32 @@ async fn events(
             return Err(ApiError(StatusCode::FORBIDDEN, "Extension origin required"));
         }
     }
+    let permit = app.sockets.clone().try_acquire_owned().map_err(|_| {
+        ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Notification connection limit reached; use pull and retry later",
+        )
+    })?;
     Ok(ws
+        .read_buffer_size(4_096)
+        .write_buffer_size(0)
+        .max_write_buffer_size(8_192)
         .max_message_size(4_096)
         .max_frame_size(4_096)
-        .on_upgrade(move |socket| socket_loop(socket, app)))
+        .on_upgrade(move |socket| socket_loop(socket, app, permit)))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SocketAuth {
     token: String,
 }
-async fn socket_loop(socket: WebSocket, app: App) {
+async fn socket_loop(socket: WebSocket, app: App, _permit: OwnedSemaphorePermit) {
+    let mut shutdown = app.shutdown.subscribe();
+    if *shutdown.borrow() {
+        return;
+    }
     let (mut sender, mut receiver) = socket.split();
-    let first = tokio::time::timeout(Duration::from_secs(5), receiver.next()).await;
+    let first = tokio::select! { value = tokio::time::timeout(Duration::from_secs(5), receiver.next()) => value, _ = shutdown.changed() => return };
     let token = match first {
         Ok(Some(Ok(Message::Text(text)))) => serde_json::from_str::<SocketAuth>(&text)
             .ok()
@@ -471,16 +551,20 @@ async fn socket_loop(socket: WebSocket, app: App) {
     }
     let mut notifications = app.notifications.subscribe();
     let ready = serde_json::json!({"type": "ready", "server_epoch": app.server_epoch});
-    if sender
-        .send(Message::Text(ready.to_string().into()))
-        .await
-        .is_err()
-    {
+    if !matches!(
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            sender.send(Message::Text(ready.to_string().into()))
+        )
+        .await,
+        Ok(Ok(()))
+    ) {
         return;
     }
     let mut heartbeat = tokio::time::interval(Duration::from_secs(20));
     loop {
         let message = tokio::select! {
+            _ = shutdown.changed() => break,
             event = notifications.recv() => match event {
                 Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => serde_json::json!({"type": "sync_available"}),
                 Err(_) => break,
@@ -489,7 +573,7 @@ async fn socket_loop(socket: WebSocket, app: App) {
             incoming = receiver.next() => match incoming {
                 Some(Ok(Message::Text(text))) if text.as_str() == "pong" || text.as_str() == "ping" => serde_json::json!({"type": "pong"}),
                 Some(Ok(Message::Ping(bytes))) => {
-                    if sender.send(Message::Pong(bytes)).await.is_err() { break; }
+                    if app.authenticate(&token).await.is_err() || !matches!(tokio::time::timeout(Duration::from_secs(5),sender.send(Message::Pong(bytes))).await,Ok(Ok(()))) { break; }
                     continue;
                 },
                 _ => break,
@@ -509,5 +593,5 @@ async fn socket_loop(socket: WebSocket, app: App) {
             break;
         }
     }
-    let _ = sender.close().await;
+    let _ = tokio::time::timeout(Duration::from_secs(5), sender.close()).await;
 }

@@ -30,6 +30,10 @@ export interface PushReply {
   server_epoch: string;
   acknowledgements: { operation_id: string; sequence: number }[];
 }
+export interface ProgressReply {
+  server_epoch: string;
+  processed_cursor: number;
+}
 export interface Diagnostic {
   kind: 'diagnostic';
   note: string;

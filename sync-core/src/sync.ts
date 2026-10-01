@@ -11,11 +11,13 @@ import {
   type Envelope,
   type PullPage,
   type PushReply,
+  type ProgressReply,
 } from './protocol';
 
 export interface Transport {
   pull(cursor: number): Promise<PullPage>;
   push(envelopes: Envelope[], epoch: string): Promise<PushReply>;
+  acknowledge(cursor: number, epoch: string): Promise<ProgressReply>;
 }
 export class HttpTransport implements Transport {
   constructor(private state: LocalState) {}
@@ -34,13 +36,21 @@ export class HttpTransport implements Transport {
     if (!response.ok) {
       if (response.status === 507)
         throw new Error(
-          'Relay storage is full. Pending work was retained; free server space before retrying.',
+          'Relay storage is full or its account quota was reached. Pending work was retained; check relay storage and budgets before retrying.',
         );
       if (response.status === 401)
         throw new Error('Device credentials were rejected. Check enrollment or revocation.');
       if (response.status === 409)
         throw new Error(
-          'Server rejected a conflicting operation identity. Pending work was retained.',
+          'Server history or an operation identity conflicts with local state. Pending work was retained; export local data before recovery.',
+        );
+      if (response.status === 404)
+        throw new Error(
+          'Relay lacks a required API. Upgrade the relay; pending work was retained.',
+        );
+      if (response.status === 426)
+        throw new Error(
+          'Client and relay versions are incompatible. Upgrade to compatible versions; pending work was retained.',
         );
       throw new Error(`Server request failed (${response.status}). Pending work was retained.`);
     }
@@ -51,6 +61,9 @@ export class HttpTransport implements Transport {
   }
   push(envelopes: Envelope[], epoch: string): Promise<PushReply> {
     return this.request('/v1/sync/push', { envelopes, expected_epoch: epoch });
+  }
+  acknowledge(cursor: number, epoch: string): Promise<ProgressReply> {
+    return this.request('/v1/sync/ack', { cursor, server_epoch: epoch });
   }
 }
 
@@ -91,6 +104,9 @@ export class SyncCoordinator {
       const state = (await this.db.state.get('local'))!;
       const page = await transport.pull(state.cursor);
       checkEpoch(state, page.server_epoch);
+      // A lost ACK reply or worker exit leaves cursor > acknowledged_cursor durably.
+      // Check the live epoch before retrying; a later bad page cannot erase prior progress.
+      await this.acknowledgeProgress(transport);
       if (
         !Array.isArray(page.records) ||
         page.records.length > MAX_BATCH ||
@@ -236,9 +252,24 @@ export class SyncCoordinator {
           );
         throw cause;
       }
+      await this.acknowledgeProgress(transport);
       if (!page.has_more) return;
     }
     throw new Error('More data remains to download. Sync again to continue.');
+  }
+  private async acknowledgeProgress(transport: Transport): Promise<void> {
+    const state = (await this.db.state.get('local'))!;
+    if (!state.server_epoch || state.cursor <= (state.acknowledged_cursor ?? 0)) return;
+    const reply = await transport.acknowledge(state.cursor, state.server_epoch);
+    checkEpoch(state, reply.server_epoch);
+    if (!Number.isSafeInteger(reply.processed_cursor) || reply.processed_cursor !== state.cursor)
+      throw new Error('Invalid processed-cursor acknowledgement. Local progress was retained.');
+    await this.db.transaction('rw', this.db.state, async () => {
+      const current = (await this.db.state.get('local'))!;
+      if (current.server_epoch !== state.server_epoch || current.cursor < state.cursor)
+        throw new Error('Local progress changed during acknowledgement.');
+      await this.db.state.update('local', { acknowledged_cursor: state.cursor });
+    });
   }
   private async perform(): Promise<void> {
     const state = await this.db.state.get('local');

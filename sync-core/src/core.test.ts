@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { decryptDiagnostic, generateRecoveryKey, encryptDiagnostic } from './crypto';
 import { SynkDatabase } from './database';
 import { SyncCoordinator, type Transport } from './sync';
@@ -19,9 +19,14 @@ async function enrolled(key = generateRecoveryKey(), c = credentials()) {
   return db;
 }
 afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   for (const db of databases.splice(0)) await db.delete();
 });
 class Relay implements Transport {
+  async acknowledge(cursor: number, epoch: string) {
+    return { server_epoch: epoch, processed_cursor: cursor };
+  }
   epoch = crypto.randomUUID();
   records: { sequence: number; envelope: Envelope }[] = [];
   loseResponse = false;
@@ -137,6 +142,7 @@ describe('durable encrypted synchronization', () => {
     const relay = new Relay();
     await db.queueDiagnostic('Must be acknowledged');
     const transport: Transport = {
+      acknowledge: (cursor, epoch) => relay.acknowledge(cursor, epoch),
       pull: (cursor) => relay.pull(cursor),
       push: async () => ({ server_epoch: relay.epoch, acknowledgements: [] }),
     };
@@ -149,6 +155,7 @@ describe('durable encrypted synchronization', () => {
     const db = await enrolled();
     const relay = new Relay();
     const transport: Transport = {
+      acknowledge: (cursor, epoch) => relay.acknowledge(cursor, epoch),
       push: (envelopes) => relay.push(envelopes),
       pull: async () => ({
         server_epoch: relay.epoch,
@@ -207,5 +214,139 @@ describe('encryption and configuration boundaries', () => {
       'already enrolled',
     );
     expect(await db.outbox.count()).toBe(1);
+  });
+});
+
+describe('durable processed-cursor acknowledgements', () => {
+  async function incoming() {
+    const key = generateRecoveryKey(),
+      c = credentials();
+    const source = await enrolled(key, c);
+    const target = await enrolled(key, { ...c, device_id: crypto.randomUUID() });
+    await source.queueDiagnostic('First durable page');
+    const relay = new Relay();
+    await relay.push(await source.outbox.toArray());
+    return { source, target, relay };
+  }
+  it('acknowledges only after the records and cursor transaction commits', async () => {
+    const { target, relay } = await incoming();
+    const acknowledge = vi.spyOn(relay, 'acknowledge').mockImplementation(async (cursor, epoch) => {
+      expect((await target.state.get('local'))?.cursor).toBe(cursor);
+      expect(await target.records.count()).toBe(1);
+      return { server_epoch: epoch, processed_cursor: cursor };
+    });
+    await new SyncCoordinator(target, () => relay).sync();
+    expect(acknowledge).toHaveBeenCalledExactlyOnceWith(1, relay.epoch);
+    expect((await target.state.get('local'))?.acknowledged_cursor).toBe(1);
+  });
+  it('retries a lost ACK reply after reopening and preserves unsent work', async () => {
+    const { target, relay } = await incoming();
+    await target.queueDiagnostic('Still pending during lost reply');
+    const calls: number[] = [];
+    let lose = true;
+    vi.spyOn(relay, 'acknowledge').mockImplementation(async (cursor, epoch) => {
+      calls.push(cursor);
+      if (lose) {
+        lose = false;
+        throw new Error('ACK reply lost after server commit');
+      }
+      return { server_epoch: epoch, processed_cursor: cursor };
+    });
+    await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow('ACK reply lost');
+    expect((await target.state.get('local'))?.cursor).toBe(1);
+    expect((await target.state.get('local'))?.acknowledged_cursor).toBe(0);
+    expect(await target.outbox.count()).toBe(1);
+    target.close();
+    const reopened = new SynkDatabase(target.name);
+    databases.push(reopened);
+    await new SyncCoordinator(reopened, () => relay).sync();
+    expect(calls).toEqual([1, 1, 2]);
+    expect(await reopened.outbox.count()).toBe(0);
+    expect((await reopened.state.get('local'))?.acknowledged_cursor).toBe(2);
+  });
+  it('never ACKs a rolled-back local page or wrong-key quarantine', async () => {
+    const { target, relay } = await incoming();
+    const acknowledge = vi.spyOn(relay, 'acknowledge');
+    const failed = vi
+      .spyOn(target, 'persistHistory')
+      .mockRejectedValue(new Error('Local disk full'));
+    await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow(
+      'Local disk full',
+    );
+    expect((await target.state.get('local'))?.cursor).toBe(0);
+    expect(await target.records.count()).toBe(0);
+    expect(acknowledge).not.toHaveBeenCalled();
+    failed.mockRestore();
+    await target.state.update('local', { recovery_key: generateRecoveryKey() });
+    await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow();
+    expect(await target.quarantine.count()).toBe(1);
+    expect(acknowledge).not.toHaveBeenCalled();
+  });
+  it('ACKs valid pages but stops before a later corrupted page', async () => {
+    const { source, target, relay } = await incoming();
+    await source.queueDiagnostic('Corrupted second page');
+    await relay.push(await source.outbox.toArray());
+    relay.records[1]!.envelope = { ...relay.records[1]!.envelope, nonce: 'bad' };
+    const acknowledge = vi.spyOn(relay, 'acknowledge');
+    const transport: Transport = {
+      push: (e) => relay.push(e),
+      acknowledge: (cursor, epoch) => relay.acknowledge(cursor, epoch),
+      pull: async (cursor) => ({
+        server_epoch: relay.epoch,
+        records: relay.records.filter((r) => r.sequence > cursor).slice(0, 1),
+        next_cursor: Math.min(cursor + 1, 2),
+        has_more: cursor === 0,
+      }),
+    };
+    await expect(new SyncCoordinator(target, () => transport).sync()).rejects.toThrow();
+    expect(acknowledge).toHaveBeenCalledExactlyOnceWith(1, relay.epoch);
+    expect((await target.state.get('local'))?.cursor).toBe(1);
+    expect((await target.state.get('local'))?.acknowledged_cursor).toBe(1);
+    expect((await target.quarantine.toArray())[0]?.sequence).toBe(2);
+  });
+  it('rejects malformed ACK replies and changed epochs without confirming progress', async () => {
+    for (const reply of [
+      { server_epoch: crypto.randomUUID(), processed_cursor: 1 },
+      { server_epoch: 'invalid', processed_cursor: 1 },
+      { processed_cursor: 2 },
+      { processed_cursor: -1 },
+      { processed_cursor: 0.5 },
+    ]) {
+      const { target, relay } = await incoming();
+      vi.spyOn(relay, 'acknowledge').mockResolvedValue({ server_epoch: relay.epoch, ...reply });
+      await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow();
+      expect((await target.state.get('local'))?.cursor).toBe(1);
+      expect((await target.state.get('local'))?.acknowledged_cursor).toBe(0);
+    }
+  });
+  it('retries when storing an accepted ACK fails and upgrades states without an ACK field', async () => {
+    const { target, relay } = await incoming();
+    await target.state.update('local', { acknowledged_cursor: undefined });
+    const acknowledge = vi.spyOn(relay, 'acknowledge');
+    const original = target.state.update.bind(target.state);
+    const update = vi.spyOn(target.state, 'update').mockImplementation((key, changes) => {
+      if ('acknowledged_cursor' in changes) throw new Error('ACK persistence failed');
+      return original(key, changes);
+    });
+    await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow(
+      'ACK persistence failed',
+    );
+    expect((await target.state.get('local'))?.cursor).toBe(1);
+    update.mockRestore();
+    await new SyncCoordinator(target, () => relay).sync();
+    expect(acknowledge).toHaveBeenCalledTimes(2);
+    expect((await target.state.get('local'))?.acknowledged_cursor).toBe(1);
+  });
+  it('checks the live epoch before retrying an unconfirmed ACK', async () => {
+    const { target, relay } = await incoming();
+    const acknowledge = vi.spyOn(relay, 'acknowledge').mockRejectedValue(new Error('Offline ACK'));
+    await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow('Offline ACK');
+    acknowledge.mockClear();
+    relay.epoch = crypto.randomUUID();
+    await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow(
+      'Server history changed',
+    );
+    expect(acknowledge).not.toHaveBeenCalled();
+    expect((await target.state.get('local'))?.acknowledged_cursor).toBe(0);
   });
 });

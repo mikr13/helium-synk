@@ -9,6 +9,7 @@ import {
   BOOKMARK_ROOTS,
   SynkDatabase,
   SyncCoordinator,
+  HttpTransport,
   type Credentials,
   historyVisitId,
   historyGeneration,
@@ -30,13 +31,18 @@ let credentialsF: Credentials;
 let credentialsG: Credentials;
 let credentialsH: Credentials;
 let credentialsI: Credentials;
+let credentialsJ: Credentials;
+let credentialsK: Credentials;
 const sharedKey = generateRecoveryKey();
 const localDatabases: SynkDatabase[] = [];
 const sockets: WebSocket[] = [];
 
 async function freePort(): Promise<number> {
   const probe = createServer();
-  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve, reject) => {
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', resolve);
+  });
   const result = probe.address();
   if (!result || typeof result === 'string') throw new Error('Could not allocate port');
   await new Promise<void>((resolve, reject) =>
@@ -59,18 +65,27 @@ async function start(): Promise<void> {
   }
   throw new Error('Relay did not become ready');
 }
-async function stop(): Promise<void> {
+async function stop() {
   const child = process;
   process = undefined;
   if (!child || child.exitCode !== null) return;
-  await new Promise<void>((resolve) => {
-    child.once('exit', () => resolve());
-    child.kill('SIGTERM');
-  });
+  return await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolve, reject) => {
+      const deadline = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error('Relay did not drain within five seconds'));
+      }, 5_000);
+      child.once('exit', (code, signal) => {
+        clearTimeout(deadline);
+        resolve({ code, signal });
+      });
+      child.kill('SIGTERM');
+    },
+  );
 }
 beforeAll(async () => {
   port = await freePort();
-  for (const name of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']) {
+  for (const name of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']) {
     execFileSync(
       binary,
       [
@@ -96,12 +111,15 @@ beforeAll(async () => {
   credentialsG = JSON.parse(readFileSync(join(directory, 'G.credential.json'), 'utf8'));
   credentialsH = JSON.parse(readFileSync(join(directory, 'H.credential.json'), 'utf8'));
   credentialsI = JSON.parse(readFileSync(join(directory, 'I.credential.json'), 'utf8'));
+  credentialsJ = JSON.parse(readFileSync(join(directory, 'J.credential.json'), 'utf8'));
+  credentialsK = JSON.parse(readFileSync(join(directory, 'K.credential.json'), 'utf8'));
   await start();
 });
 afterAll(async () => {
   for (const socket of sockets) socket.close();
   await stop();
-  for (const db of localDatabases) await db.delete();
+  for (const db of localDatabases) db.close();
+  for (const db of new Map(localDatabases.map((db) => [db.name, db])).values()) await db.delete();
   rmSync(directory, { recursive: true, force: true });
 });
 async function local(credentials: Credentials, key: string) {
@@ -376,4 +394,153 @@ it('history retains original visits and suppresses delayed offline uploads after
   expect(stored).not.toContain('Private history title');
   expect(stored).not.toContain(sharedKey);
   expect(stored).not.toContain(await a.ensureHistoryIndexKey());
+});
+
+async function relayStatus(credentials: Credentials) {
+  const response = await fetch(`http://127.0.0.1:${port}/v1/status`, {
+    headers: { Authorization: `Bearer ${credentials.token}` },
+  });
+  expect(response.ok).toBe(true);
+  return response.json();
+}
+it('retries a real lost cursor ACK after graceful SIGTERM and durable client reopen', async () => {
+  const source = await local(credentialsJ, sharedKey);
+  let target = await local(credentialsK, sharedKey);
+  await source.queueDiagnostic('Shutdown and lost progress reply probe');
+  await new SyncCoordinator(source).sync();
+  const before = await relayStatus(credentialsJ);
+  const native = new HttpTransport((await target.state.get('local'))!);
+  let acknowledged = 0;
+  const coordinator = new SyncCoordinator(target, () => ({
+    pull: (cursor) => native.pull(cursor),
+    push: (envelopes, epoch) => native.push(envelopes, epoch),
+    acknowledge: async (cursor, epoch) => {
+      const reply = await native.acknowledge(cursor, epoch);
+      expect((await target.state.get('local'))?.cursor).toBe(cursor);
+      acknowledged = cursor;
+      throw new Error('Real committed ACK reply deliberately lost');
+    },
+  }));
+  await expect(coordinator.sync()).rejects.toThrow('deliberately lost');
+  expect(acknowledged).toBeGreaterThan(0);
+  expect((await target.state.get('local'))?.acknowledged_cursor).toBe(0);
+  expect((await relayStatus(credentialsK)).processed_cursor).toBe(acknowledged);
+  const name = target.name;
+  target.close();
+  expect(await stop()).toEqual({ code: 0, signal: null });
+  await start();
+  target = new SynkDatabase(name);
+  localDatabases.push(target);
+  const resumed = new HttpTransport((await target.state.get('local'))!);
+  const retries: number[] = [];
+  await new SyncCoordinator(target, () => ({
+    pull: (cursor) => resumed.pull(cursor),
+    push: (envelopes, epoch) => resumed.push(envelopes, epoch),
+    acknowledge: (cursor, epoch) => {
+      retries.push(cursor);
+      return resumed.acknowledge(cursor, epoch);
+    },
+  })).sync();
+  expect(retries[0]).toBe(acknowledged);
+  expect((await target.state.get('local'))?.acknowledged_cursor).toBe(before.latest_sequence);
+  const after = await relayStatus(credentialsK);
+  expect(after.processed_cursor).toBe(before.latest_sequence);
+  expect(after.server_epoch).toBe(before.server_epoch);
+  expect(after.journal_operations).toBe(before.journal_operations);
+  const integrity = execFileSync('sqlite3', [database, 'PRAGMA integrity_check;'], {
+    encoding: 'utf8',
+  });
+  expect(integrity.trim()).toBe('ok');
+});
+
+it('enforces running relay quotas while preserving identical retries and durable client work', async () => {
+  const source = await local(credentialsA, sharedKey);
+  // This test only uploads; the existing author's local counter must remain unique.
+  const next = Number(
+    execFileSync(
+      'sqlite3',
+      [
+        database,
+        `SELECT COALESCE(MAX(counter),0)+1 FROM operations WHERE device_id = '${credentialsA.device_id}';`,
+      ],
+      { encoding: 'utf8' },
+    ).trim(),
+  );
+  await source.state.update('local', { next_counter: next });
+  await source.queueDiagnostic('Retain until quota increases');
+  const envelope = (await source.outbox.toArray())[0]!;
+  const before = await relayStatus(credentialsA);
+  const setLimits = (operations: number) =>
+    execFileSync(
+      binary,
+      [
+        '--database',
+        database,
+        'set-limits',
+        '--max-journal-bytes',
+        '1073741824',
+        '--max-operations',
+        String(operations),
+        '--max-devices',
+        '64',
+      ],
+      { stdio: 'ignore' },
+    );
+  setLimits(before.journal_operations);
+  try {
+    await expect(new SyncCoordinator(source).sync()).rejects.toThrow('quota');
+    expect(await source.outbox.count()).toBe(1);
+    expect((await relayStatus(credentialsA)).journal_operations).toBe(before.journal_operations);
+    setLimits(before.journal_operations + 1);
+    await new SyncCoordinator(source).sync();
+    expect(await source.outbox.count()).toBe(0);
+    const transport = new HttpTransport((await source.state.get('local'))!);
+    const reply = await transport.push([envelope], before.server_epoch);
+    expect(reply.acknowledgements).toHaveLength(1);
+    expect((await relayStatus(credentialsA)).journal_operations).toBe(
+      before.journal_operations + 1,
+    );
+  } finally {
+    setLimits(1_000_000);
+  }
+});
+
+it('bounds notification connections, releases slots and drains authenticated sockets on shutdown', async () => {
+  // Clear earlier test connections, and use the same credential in multiple bounded sockets.
+  await stop();
+  await start();
+  const connections: WebSocket[] = [];
+  async function connect(): Promise<WebSocket> {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/v1/events`);
+    sockets.push(socket);
+    await new Promise<void>((resolve, reject) => {
+      const deadline = setTimeout(() => reject(new Error('Socket readiness timed out')), 2_000);
+      socket.onopen = () => socket.send(JSON.stringify({ token: credentialsA.token }));
+      socket.onerror = () => {
+        clearTimeout(deadline);
+        reject(new Error('Socket rejected'));
+      };
+      socket.onmessage = (event) => {
+        const message = JSON.parse(String(event.data));
+        if (message.type === 'ready') {
+          clearTimeout(deadline);
+          resolve();
+        }
+        if (message.type === 'ping') socket.send('pong');
+      };
+    });
+    return socket;
+  }
+  for (let i = 0; i < 32; i++) connections.push(await connect());
+  await expect(connect()).rejects.toThrow('Socket rejected');
+  // HTTP reconciliation remains usable at the socket limit.
+  expect((await relayStatus(credentialsA)).protocol_version).toBe(1);
+  connections[0]!.close();
+  await expect.poll(() => connections[0]!.readyState).toBe(WebSocket.CLOSED);
+  connections.push(await connect());
+  expect(await stop()).toEqual({ code: 0, signal: null });
+  await expect.poll(() => connections.every((s) => s.readyState === WebSocket.CLOSED)).toBe(true);
+  await start();
+  const recovered = await connect();
+  recovered.close();
 });
