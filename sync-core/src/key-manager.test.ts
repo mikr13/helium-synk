@@ -3,7 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { SynkDatabase } from './database';
 import { KeyManager, keySnapshot } from './key-manager';
 import { SyncCoordinator, type Transport } from './sync';
-import { generateRecoveryKey, decryptDiagnostic, historyUrlTag } from './crypto';
+import { generateRecoveryKey, decryptDiagnostic, decryptPayload, historyUrlTag } from './crypto';
+import { historyVisitId } from './history';
 import { sameEnvelope, type Credentials, type Envelope } from './protocol';
 import type {
   KeyState,
@@ -328,6 +329,59 @@ it('acknowledges an ambiguously committed old envelope without rewriting its cip
   expect((await b.db.records.get(id))?.sequence).toBe(1);
   expect(await b.db.outbox.count()).toBe(0);
   expect(relay.records).toHaveLength(1);
+});
+it('rekeys an erased encrypted visit from immutable ciphertext without restoring local plaintext', async () => {
+  const { relay, a, b, removed } = await peers();
+  const incarnation = crypto.randomUUID(),
+    url = 'https://erased.example/private',
+    index = await b.db.ensureHistoryIndexKey(),
+    source = b.c.device_id,
+    id = historyVisitId(source, incarnation, '1', 1000.25);
+  const operation = await b.db.stageHistory({
+    type: 'visit',
+    visit: {
+      id,
+      source_id: source,
+      source_name: 'Private profile',
+      incarnation,
+      native_id: '1',
+      visited_at: 1000.25,
+      url,
+      url_tag: await historyUrlTag(index, url),
+      title: 'Erase this title',
+      generation: {},
+    },
+  });
+  await b.db.flushDrafts();
+  const original = (await b.db.outbox.get(operation))!;
+  await b.db.stageHistory({ type: 'delete', visit_ids: [id] });
+  expect((await b.db.operations.get(operation))?.payload).toMatchObject({
+    action: { type: 'erased-visit' },
+  });
+  await a.manager.stageRotation([removed.c.device_id]);
+  await a.manager.completeRotation();
+  await b.manager.refresh();
+  await b.manager.rekeyOutbox();
+  const replacement = (await b.db.outbox.get(operation))!;
+  expect(replacement.key_epoch).toBe(2);
+  expect(replacement.counter).toBe(original.counter);
+  expect(replacement.operation_id).toBe(original.operation_id);
+  expect(replacement.nonce).not.toBe(original.nonce);
+  expect(JSON.stringify(await b.db.exportReplica())).not.toContain(url);
+  expect((await b.db.operations.get(operation))?.payload).toMatchObject({
+    action: { type: 'erased-visit' },
+  });
+  expect(
+    await decryptPayload((await b.db.state.get('local'))!.recovery_key, replacement, index),
+  ).toMatchObject({ action: { visit: { url } } });
+  await b.sync();
+  await a.sync();
+  expect(await b.db.pendingCount()).toBe(0);
+  expect((await a.db.historyProjection()).visits).toEqual({});
+  expect(JSON.stringify(await a.db.exportReplica())).not.toContain(url);
+  expect(relay.records.find((r) => r.envelope.operation_id === operation)?.envelope).toEqual(
+    replacement,
+  );
 });
 it('keeps queues and journal ciphertext unchanged for incomplete, duplicated, unknown or wrong-epoch rekey proofs', async () => {
   const { a, b, removed } = await peers();

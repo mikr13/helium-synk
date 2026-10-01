@@ -7,6 +7,7 @@ import {
   historyGeneration,
   searchHistory,
   validateHistoryOperation,
+  eraseHistoryVisit,
   type HistoryAction,
   type HistoryOperation,
   type HistoryVisit,
@@ -63,6 +64,59 @@ function permutations<T>(items: T[]): T[][] {
     : [[]];
 }
 describe('history visits, search and privacy clear barriers', () => {
+  it('replays minimal erased receipts with deletion proof and preserves revision validation', () => {
+    const v = visit(),
+      original = operation(A, 1, { type: 'visit', visit: v }),
+      deletion = operation(B, 1, { type: 'delete', visit_ids: [v.id] }, { [A]: 1 }),
+      receipt = eraseHistoryVisit(original);
+    expect(projectHistory([receipt, deletion])).toEqual(projectHistory([original, deletion]));
+    expect(JSON.stringify(receipt)).not.toContain(v.url);
+    expect(JSON.stringify(receipt)).not.toContain(v.title);
+    expect(receipt.action.visit).toEqual({
+      id: v.id,
+      source_id: A,
+      url_tag: v.url_tag,
+      generation: {},
+    });
+    expect(() => projectHistory([receipt])).toThrow('no deletion or clear proof');
+    expect(() =>
+      projectHistory([
+        receipt,
+        deletion,
+        operation(A, 1, { type: 'visit', visit: visit(A, '2', 2000) }),
+      ]),
+    ).toThrow('counter');
+    // The local receipt cannot be supplied as a wire operation.
+    expect(() => validateHistoryOperation(receipt as unknown as HistoryOperation)).toThrow(
+      'Unsupported history action',
+    );
+  });
+
+  it('keeps the earliest erased generation canonical against retagged duplicate visits', () => {
+    const v = visit(),
+      first = operation(A, 1, { type: 'visit', visit: v }),
+      clear = operation(B, 1, { type: 'clear', scope: 'url', source_id: A, url_tag: v.url_tag }),
+      receipt = eraseHistoryVisit(first),
+      duplicate = operation(
+        A,
+        2,
+        { type: 'visit', visit: { ...v, title: 'Later title', generation: { [B]: 1 } } },
+        { [B]: 1 },
+      );
+    for (const order of permutations([receipt, clear, duplicate])) {
+      const projection = projectHistory(order);
+      expect(projection.visits).toEqual({});
+      expect(projection.stale[v.id]).toEqual([clear.operation_id]);
+      expect(projection.frontier[A]).toBe(2);
+    }
+    expect(() =>
+      projectHistory([
+        receipt,
+        clear,
+        { ...duplicate, action: { type: 'visit', visit: { ...v, url_tag: '0'.repeat(64) } } },
+      ]),
+    ).toThrow('different URL');
+  });
   it('namespaces native IDs and original timestamps, preserves repeated visits, and handles opaque IDs and native reuse', () => {
     const a = visit(A, 'same/id', 1000.25),
       b = visit(B, 'same/id', 1000.25),

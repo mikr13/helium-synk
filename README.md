@@ -10,7 +10,7 @@ Read the [bookmark merge contract](docs/bookmark-merge.md) and [native adapter/r
 
 Follow the [implementation checklist](docs/plan.md) and [verification record](docs/progress.md). Development source lives at `/Users/mihirpandey/Work/fun/helium-synk`, outside Documents/iCloud.
 
-The dashboard and restoration page share a dark navy/blue/mint [design system](docs/design-system.md), with square Tailwind/shadcn controls and bundled local fonts. Extension TypeScript source uses the `@/` alias.
+The dashboard and restoration page share a dark navy/blue/mint [design system](docs/design-system.md), with square Tailwind/shadcn controls and bundled local fonts. Extension TypeScript source uses the `@/` alias. History removal now clears suppressed journal plaintext and cancels unencrypted erased visits while retaining deletion metadata and immutable ciphertext. Capture-copy cleanup, relay ciphertext purge and backup expiration remain pending; see the [history policy](docs/history.md).
 
 ## Development
 

@@ -293,6 +293,7 @@ describe('durable bookmark pipeline', () => {
       id = crypto.randomUUID();
     await a.queueBookmark(create(id));
     const record = (await a.operations.toArray())[0];
+    if (record.payload.kind !== 'bookmark') throw new Error('Expected bookmark fixture.');
     for (const changed of [
       { ...record.envelope, counter: 999 },
       { ...record.envelope, operation_id: crypto.randomUUID() },

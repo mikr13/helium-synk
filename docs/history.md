@@ -1,6 +1,6 @@
 # History capture, timeline and clear policy
 
-The development build implements opt-in native capture, encrypted history transport, indexed local search and logical removal. It is tested through simulated browser ports and a real Rust relay. Permanent plaintext/ciphertext erasure and live Helium acceptance remain open gates; removal is not yet a complete privacy feature.
+The development build implements opt-in native capture, encrypted history transport, indexed local search, logical removal and suppressed-journal plaintext cleanup. It is tested through simulated browser ports and a real Rust relay. Complete plaintext/ciphertext erasure and live Helium acceptance remain open gates; removal is not yet a complete privacy feature.
 
 ## Individual visits and encryption
 
@@ -38,7 +38,13 @@ Selected-record removal uses permanent identity tombstones. Clear scopes are eve
 
 Visits carry the matching clear generations observed at capture. Visibility requires covering every applicable barrier. Stale uploads from an offline source remain hidden even if they arrive after a clear. Unrelated URL traffic cannot advance a visit generation. Every concurrent matching barrier matters; learning one clear does not override another unseen clear. V1 retains barriers and tombstones indefinitely. Future compaction requires retirement/acknowledgement frontiers and stale-source rebootstrap.
 
-Logical removal deletes entries from the live timeline index. It does **not** yet erase operation plaintext, capture/lookup copies, outgoing envelopes, quarantine or relay ciphertext. Coordinated content purge, authenticated relay redaction and separate backup-expiration behavior remain required before the erasure gate can pass. The UI discloses this boundary at removal confirmation.
+Logical removal deletes entries from the live timeline index and removes suppressed visit plaintext from the operation journal. IndexedDB schema 8 replaces that plaintext with local `erased-visit` receipts containing only the operation/revision, visit identity, source UUID, opaque URL tag and captured generation. The composite visit identity still contains native ID/time components needed for suppression; receipts are metadata, not anonymization. URLs, titles, source names, transitions and referring IDs are removed from those journal copies. Every receipt requires an applicable deletion/clear proof, and the original revision continues to detect reused counters and retagged duplicate identities.
+
+Unencrypted erased drafts are canceled into a separate receipt store, preserving their reserved headers/counters without publishing their content. Their suppression metadata remains private to that profile, so peers need not have identical metadata for canceled visits; their visible timelines and clear barriers still converge. Later genuinely new visits can publish normally. Migration applies the same policy to v7 journals transactionally. Draft cancellation wins against encryption already in flight.
+
+Encrypted visits retain their exact original envelopes and outgoing retries until a coordinated ciphertext-purge protocol proves it safe to remove them. Receiving/replaying the same envelope cannot persist its suppressed plaintext again. After key rotation, proven-missing encrypted work can be re-encrypted from retained ciphertext in memory without restoring the plaintext journal. Local receipts are never accepted as encrypted wire operations.
+
+Capture/lookup copies, outgoing envelopes, quarantine and relay ciphertext are **not yet fully erased**. Backups and exports made before removal remain separate stored copies. Coordinated capture cleanup, authenticated relay redaction and explicit backup-expiration/restore behavior remain required before the erasure gate can pass. The UI continues to disclose this boundary at removal confirmation. No secure deletion of physical IndexedDB pages, filesystem snapshots or independently saved copies is claimed.
 
 ## Bounded work and remaining scale gate
 

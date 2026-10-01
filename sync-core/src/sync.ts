@@ -193,6 +193,7 @@ export class SyncCoordinator {
             this.db.replicas,
             this.db.sessionReplicas,
             this.db.historyReplicas,
+            this.db.historyErasedDrafts,
             this.db.historyVisits,
             this.db.state,
             this.db.quarantine,
@@ -204,6 +205,10 @@ export class SyncCoordinator {
                 (await this.db.operations.get(record.operation_id));
               if (existing && !sameEnvelope(existing.envelope, record.envelope)) {
                 validationFailure = new Error('Received operation identity was reused.');
+                throw validationFailure;
+              }
+              if (await this.db.historyErasedDrafts.get(record.operation_id)) {
+                validationFailure = new Error('Received an unpublished erased history identity.');
                 throw validationFailure;
               }
             }
@@ -232,6 +237,7 @@ export class SyncCoordinator {
                 ...(await this.db.records.toArray()).map((r) => r.envelope),
                 ...(await this.db.operations.toArray()).map((r) => r.envelope),
                 ...(await this.db.drafts.toArray()).map((r) => r.header),
+                ...(await this.db.historyErasedDrafts.toArray()).map((r) => r.header),
                 ...records.map((r) => r.envelope),
                 ...operations.map((r) => r.envelope),
               ];

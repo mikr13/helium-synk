@@ -8,6 +8,7 @@ import {
   historyUrlTag,
   encryptPayload,
   decryptPayload,
+  encryptDiagnostic,
 } from './crypto';
 import {
   historyGeneration,
@@ -18,7 +19,191 @@ import {
 import type { Envelope, PullPage } from './protocol';
 const dbs: SynkDatabase[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const db of dbs.splice(0)) await db.delete();
+});
+
+describe('local history journal erasure', () => {
+  it('does not resurrect a draft when deletion commits while its encryption is in flight', async () => {
+    const { a } = await pair(),
+      v = await visit(a);
+    const id = await a.stageHistory({ type: 'visit', visit: v });
+    let entered!: () => void, release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+        entered = resolve;
+      }),
+      gate = new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+      encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, 'encrypt').mockImplementationOnce(async (algorithm, key, data) => {
+      entered();
+      await gate;
+      return encrypt(algorithm, key, data);
+    });
+    const flushing = a.flushDrafts();
+    await ready;
+    try {
+      await a.stageHistory({ type: 'delete', visit_ids: [v.id] });
+    } finally {
+      release();
+    }
+    await flushing;
+    expect(await a.outbox.get(id)).toBeUndefined();
+    expect(await a.operations.get(id)).toBeUndefined();
+    expect(await a.historyErasedDrafts.get(id)).toBeDefined();
+    expect(JSON.stringify(await a.exportReplica())).not.toContain(url);
+    expect(await a.pendingCount()).toBe(1);
+  });
+  it('removes decrypted journal content on both peers and keeps immutable encrypted retries', async () => {
+    const { a, b, key } = await pair(),
+      relay = new Relay(),
+      v = await visit(a);
+    const id = await a.stageHistory({ type: 'visit', visit: v });
+    await a.flushDrafts();
+    const encrypted = (await a.outbox.get(id))!;
+    await a.stageHistory({ type: 'delete', visit_ids: [v.id] });
+    expect((await a.operations.get(id))?.payload).toMatchObject({
+      action: { type: 'erased-visit' },
+    });
+    expect(await a.outbox.get(id)).toEqual(encrypted);
+    expect((await a.operations.get(id))?.envelope).toEqual(encrypted);
+    expect(JSON.stringify(await a.exportReplica())).not.toContain(url);
+    expect(JSON.stringify(await a.exportReplica())).not.toContain(v.title);
+    // Ciphertext erasure is a separate protocol step, still pending at this checkpoint.
+    expect(await decryptPayload(key, encrypted, await a.ensureHistoryIndexKey())).toMatchObject({
+      action: { visit: { url } },
+    });
+    await new SyncCoordinator(a, () => relay).sync();
+    await new SyncCoordinator(b, () => relay).sync();
+    expect(JSON.stringify(await b.exportReplica())).not.toContain(url);
+    expect((await b.operations.get(id))?.payload).toMatchObject({
+      action: { type: 'erased-visit' },
+    });
+    expect(await a.pendingCount()).toBe(0);
+    expect((await b.historyProjection()).visits).toEqual({});
+    // Replaying old relay ciphertext cannot persist the plaintext again.
+    await b.state.update('local', { cursor: 0, acknowledged_cursor: 0 });
+    await new SyncCoordinator(b, () => relay).sync();
+    expect(JSON.stringify(await b.exportReplica())).not.toContain(v.title);
+    expect((await b.operations.get(id))?.envelope).toEqual(encrypted);
+  });
+
+  it('cancels erased unencrypted visits while retaining their identity/counters across reopening', async () => {
+    const { a } = await pair(),
+      v = await visit(a);
+    const id = await a.stageHistory({ type: 'visit', visit: v });
+    const original = (await a.drafts.get(id))!;
+    await a.stageHistory({ type: 'delete', visit_ids: [v.id] });
+    expect(await a.drafts.get(id)).toBeUndefined();
+    expect(await a.historyErasedDrafts.get(id)).toMatchObject({
+      header: original.header,
+      payload: { action: { type: 'erased-visit' }, revision: { counter: original.header.counter } },
+    });
+    expect(await a.pendingCount()).toBe(1);
+    expect(JSON.stringify(await a.exportReplica())).not.toContain(url);
+    const next = (await a.state.get('local'))!.next_counter;
+    a.close();
+    const reopened = new SynkDatabase(a.name);
+    dbs.push(reopened);
+    await reopened.flushDrafts();
+    expect(await reopened.outbox.get(id)).toBeUndefined();
+    expect((await reopened.state.get('local'))!.next_counter).toBe(next);
+    expect((await reopened.historyProjection()).deleted[v.id]).toHaveLength(1);
+    const newer = await reopened.stageHistory({
+      type: 'visit',
+      visit: await visit(reopened, '2', 2000),
+    });
+    expect((await reopened.drafts.get(newer))?.header.counter).toBe(next);
+    expect((await reopened.queryHistory()).visits.map((row) => row.native_id)).toEqual(['2']);
+  });
+
+  it('rolls back journal erasure, draft cancellation, timeline and counters as one transaction', async () => {
+    const { a } = await pair(),
+      first = await visit(a),
+      second = await visit(a, '2', 2000);
+    await a.stageHistory({ type: 'visit', visit: first });
+    await a.flushDrafts();
+    await a.stageHistory({ type: 'visit', visit: second });
+    const before = await a.exportReplica();
+    const write = vi
+      .spyOn(a.historyErasedDrafts, 'put')
+      .mockRejectedValueOnce(new Error('Erasure write failed'));
+    await expect(
+      a.stageHistory({ type: 'delete', visit_ids: [first.id, second.id] }),
+    ).rejects.toThrow('Erasure write failed');
+    write.mockRestore();
+    expect(await a.exportReplica()).toEqual(before);
+    await a.stageHistory({ type: 'delete', visit_ids: [first.id, second.id] });
+    expect((await a.queryHistory()).visits).toEqual([]);
+    expect(JSON.stringify(await a.exportReplica())).not.toContain(url);
+    expect(await a.historyErasedDrafts.count()).toBe(1);
+  });
+
+  it('retains discarded draft counters for cross-domain reuse validation', async () => {
+    const { a, key } = await pair(),
+      relay = new Relay(),
+      v = await visit(a);
+    const id = await a.stageHistory({ type: 'visit', visit: v }),
+      original = (await a.drafts.get(id))!;
+    await a.stageHistory({ type: 'delete', visit_ids: [v.id] });
+    relay.rows.push(
+      await encryptDiagnostic(
+        key,
+        { ...original.header, operation_id: crypto.randomUUID(), domain: 'diagnostic' },
+        { kind: 'diagnostic', note: 'Counter reuse', created_at: new Date().toISOString() },
+      ),
+    );
+    await expect(new SyncCoordinator(a, () => relay).sync()).rejects.toThrow('counter was reused');
+    expect((await a.state.get('local'))!.cursor).toBe(0);
+    expect(await a.quarantine.count()).toBe(1);
+    expect(await a.historyErasedDrafts.get(id)).toBeDefined();
+    expect((await a.queryHistory()).visits).toEqual([]);
+  });
+
+  it('upgrades v7 deleted journals atomically without changing encrypted pending bytes', async () => {
+    const { a } = await pair(),
+      first = await visit(a),
+      second = await visit(a, '2', 2000);
+    const firstId = await a.stageHistory({ type: 'visit', visit: first });
+    await a.flushDrafts();
+    const original = (await a.operations.get(firstId))!;
+    const secondId = await a.stageHistory({ type: 'visit', visit: second }),
+      draft = (await a.drafts.get(secondId))!;
+    await a.stageHistory({ type: 'clear', scope: 'all' });
+    const legacy = new Dexie(`history-erasure-v7-${crypto.randomUUID()}`);
+    const tables = a.tables.filter((t) => t.name !== 'historyErasedDrafts');
+    legacy
+      .version(7)
+      .stores(
+        Object.fromEntries(
+          tables.map((t) => [
+            t.name,
+            [t.schema.primKey.src, ...t.schema.indexes.map((index) => index.src)].join(','),
+          ]),
+        ),
+      );
+    for (const table of tables) await legacy.table(table.name).bulkPut(await table.toArray());
+    // Restore the plaintext shape actually stored by v7, before the v8 erasure policy.
+    await legacy.table('operations').put(original);
+    await legacy.table('drafts').put(draft);
+    const bytes = await legacy.table('outbox').toArray(),
+      state = await legacy.table('state').get('local');
+    legacy.close();
+    const upgraded = new SynkDatabase(legacy.name);
+    dbs.push(upgraded);
+    expect(await upgraded.outbox.toArray()).toEqual(bytes);
+    expect(await upgraded.state.get('local')).toEqual(state);
+    expect((await upgraded.operations.get(firstId))?.payload).toMatchObject({
+      action: { type: 'erased-visit' },
+    });
+    expect((await upgraded.historyErasedDrafts.get(secondId))?.payload.action.type).toBe(
+      'erased-visit',
+    );
+    expect(await upgraded.drafts.get(secondId)).toBeUndefined();
+    expect(JSON.stringify(await upgraded.exportReplica())).not.toContain(url);
+    expect((await upgraded.queryHistory()).visits).toEqual([]);
+  });
 });
 async function pair() {
   const account = crypto.randomUUID(),
@@ -134,7 +319,11 @@ describe('durable encrypted history transport and timeline index', () => {
     await new SyncCoordinator(b, () => relay).sync();
     expect((await a.queryHistory()).visits).toHaveLength(0);
     expect((await b.queryHistory()).visits).toHaveLength(0);
-    expect(Object.keys((await b.historyProjection()).stale)).toHaveLength(2);
+    expect(Object.keys((await a.historyProjection()).stale)).toHaveLength(2);
+    expect(await a.historyErasedDrafts.count()).toBe(2);
+    // The erased unencrypted visits never reached the relay or the peer's journal.
+    expect(relay.rows).toHaveLength(1);
+    expect(Object.keys((await b.historyProjection()).stale)).toHaveLength(0);
     await a.stageHistory({ type: 'visit', visit: await visit(a, '3', 3000) });
     await new SyncCoordinator(a, () => relay).sync();
     await new SyncCoordinator(b, () => relay).sync();

@@ -32,6 +32,7 @@ export class HistoryCapture {
       this.db.operations,
       this.db.drafts,
       this.db.historyReplicas,
+      this.db.historyErasedDrafts,
       this.db.historyVisits,
       this.db.historySetup,
       this.db.historyInbox,

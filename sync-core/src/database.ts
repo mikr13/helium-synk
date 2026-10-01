@@ -24,6 +24,9 @@ import {
 } from './crypto';
 import {
   projectHistory,
+  eraseHistoryVisit,
+  type ErasedHistoryOperation,
+  type HistoryJournalOperation,
   validHistoryVisitId,
   type HistoryOperation,
   type HistoryAction,
@@ -90,13 +93,18 @@ export interface LocalRecord {
 export interface StoredOperation {
   operation_id: string;
   envelope: Envelope;
-  payload: BookmarkOperation | SessionPart | HistoryOperation;
+  payload: BookmarkOperation | SessionPart | HistoryJournalOperation;
   sequence?: number;
 }
 export interface DraftOperation {
   operation_id: string;
   header: EnvelopeHeader;
   payload: BookmarkOperation | SessionPart | HistoryOperation;
+}
+export interface ErasedHistoryDraft {
+  operation_id: string;
+  header: EnvelopeHeader;
+  payload: ErasedHistoryOperation;
 }
 export interface Replica {
   domain: 'bookmark';
@@ -130,6 +138,7 @@ export class SynkDatabase extends Dexie {
   bookmarkInbox!: Table<BookmarkInbox, number>;
   bookmarkEffects!: Table<BookmarkEffect, string>;
   historyReplicas!: Table<{ id: 'history'; value: Omit<HistoryProjection, 'visits'> }, string>;
+  historyErasedDrafts!: Table<ErasedHistoryDraft, string>;
   historyVisits!: Table<HistoryVisit & { operation_id: string }, string>;
   historySetup!: Table<HistorySetup, string>;
   historyInbox!: Table<HistoryInbox, number>;
@@ -182,6 +191,46 @@ export class SynkDatabase extends Dexie {
     });
     this.version(6).stores({ pairingPending: 'id' });
     this.version(7).stores({ keySecrets: 'id', rotationPending: 'id' });
+    this.version(8)
+      .stores({ historyErasedDrafts: 'operation_id, header.counter, header.device_id' })
+      .upgrade(async (tx) => {
+        const operations: StoredOperation[] = await tx
+          .table('operations')
+          .where('envelope.domain')
+          .equals('history')
+          .toArray();
+        const drafts: DraftOperation[] = await tx
+          .table('drafts')
+          .where('header.domain')
+          .equals('history')
+          .toArray();
+        const projection = projectHistory([
+          ...operations.map((o) => o.payload as HistoryJournalOperation),
+          ...drafts.map((d) => d.payload as HistoryOperation),
+        ]);
+        for (const record of operations) {
+          if (
+            record.payload.kind === 'history' &&
+            record.payload.action.type === 'visit' &&
+            !projection.visits[record.payload.action.visit.id]
+          )
+            await tx.table('operations').update(record.operation_id, {
+              payload: eraseHistoryVisit(record.payload),
+            });
+        }
+        for (const draft of drafts) {
+          if (
+            draft.payload.kind === 'history' &&
+            draft.payload.action.type === 'visit' &&
+            !projection.visits[draft.payload.action.visit.id]
+          ) {
+            await tx
+              .table('historyErasedDrafts')
+              .put({ ...draft, payload: eraseHistoryVisit(draft.payload) });
+            await tx.table('drafts').delete(draft.operation_id);
+          }
+        }
+      });
   }
   async enroll(
     credentials: Credentials,
@@ -397,16 +446,24 @@ export class SynkDatabase extends Dexie {
       );
       await this.transaction(
         'rw',
-        [this.state, this.drafts, this.operations, this.outbox],
+        [this.state, this.drafts, this.operations, this.outbox, this.historyReplicas],
         async () => {
           // Another worker/database instance may have committed ciphertext while encryption was running.
           const saved = await this.drafts.get(draft.operation_id);
           if (!saved || JSON.stringify(saved) !== JSON.stringify(draft)) return;
           if (((await this.state.get('local'))?.key_epoch ?? 1) !== header.key_epoch) return;
+          const history = await this.historyMetadata();
+          const payload =
+            draft.payload.kind === 'history' &&
+            draft.payload.action.type === 'visit' &&
+            (history.deleted[draft.payload.action.visit.id] ||
+              history.stale[draft.payload.action.visit.id])
+              ? eraseHistoryVisit(draft.payload)
+              : draft.payload;
           await this.operations.add({
             operation_id: draft.operation_id,
             envelope,
-            payload: draft.payload,
+            payload,
           });
           await this.outbox.add(envelope);
           await this.drafts.delete(draft.operation_id);
@@ -504,15 +561,20 @@ export class SynkDatabase extends Dexie {
       return key;
     });
   }
-  async historyOperations(): Promise<HistoryOperation[]> {
-    return this.transaction('r', [this.operations, this.drafts], async () => [
-      ...(await this.operations.where('envelope.domain').equals('history').toArray()).map(
-        (o) => o.payload as HistoryOperation,
-      ),
-      ...(await this.drafts.where('header.domain').equals('history').toArray()).map(
-        (o) => o.payload as HistoryOperation,
-      ),
-    ]);
+  async historyOperations(): Promise<HistoryJournalOperation[]> {
+    return this.transaction(
+      'r',
+      [this.operations, this.drafts, this.historyErasedDrafts],
+      async () => [
+        ...(await this.operations.where('envelope.domain').equals('history').toArray()).map(
+          (o) => o.payload as HistoryJournalOperation,
+        ),
+        ...(await this.drafts.where('header.domain').equals('history').toArray()).map(
+          (o) => o.payload as HistoryOperation,
+        ),
+        ...(await this.historyErasedDrafts.toArray()).map((o) => o.payload),
+      ],
+    );
   }
   async historyMetadata(): Promise<Omit<HistoryProjection, 'visits'>> {
     const old = await this.historyReplicas.get('history');
@@ -539,6 +601,32 @@ export class SynkDatabase extends Dexie {
     );
     const { visits: _visits, ...value } = projection;
     await this.historyReplicas.put({ id: 'history', value });
+    // Suppressed visit content is removed locally, while ciphertext remains immutable until relay purge.
+    for (const record of await this.operations
+      .where('envelope.domain')
+      .equals('history')
+      .toArray()) {
+      const payload = record.payload;
+      if (
+        payload.kind === 'history' &&
+        payload.action.type === 'visit' &&
+        !projection.visits[payload.action.visit.id]
+      )
+        await this.operations.update(record.operation_id, {
+          payload: eraseHistoryVisit(payload),
+        });
+    }
+    for (const draft of await this.drafts.where('header.domain').equals('history').toArray()) {
+      const payload = draft.payload;
+      if (
+        payload.kind === 'history' &&
+        payload.action.type === 'visit' &&
+        !projection.visits[payload.action.visit.id]
+      ) {
+        await this.historyErasedDrafts.put({ ...draft, payload: eraseHistoryVisit(payload) });
+        await this.drafts.delete(draft.operation_id);
+      }
+    }
   }
   async stageHistory(action: HistoryAction, observedContext?: VectorClock): Promise<string> {
     return (await this.stageHistories([action], observedContext))[0]!;
@@ -548,7 +636,14 @@ export class SynkDatabase extends Dexie {
       throw new Error('Invalid history capture batch.');
     return this.transaction(
       'rw',
-      [this.state, this.operations, this.drafts, this.historyReplicas, this.historyVisits],
+      [
+        this.state,
+        this.operations,
+        this.drafts,
+        this.historyReplicas,
+        this.historyVisits,
+        this.historyErasedDrafts,
+      ],
       async () => {
         const local = await this.state.get('local');
         if (!local) throw new Error('Connect this device first.');
@@ -726,6 +821,7 @@ export class SynkDatabase extends Dexie {
         this.sessionClosedSeen,
         this.sessionRestores,
         this.historyReplicas,
+        this.historyErasedDrafts,
         this.historyVisits,
         this.historySetup,
         this.historyInbox,
@@ -768,6 +864,7 @@ export class SynkDatabase extends Dexie {
           session_closed_seen: await this.sessionClosedSeen.toArray(),
           session_restores: await this.sessionRestores.toArray(),
           history_metadata: await this.historyReplicas.toArray(),
+          history_erased_drafts: await this.historyErasedDrafts.toArray(),
           history_visits: await this.historyVisits.toArray(),
           history_setup: await this.historySetup.toArray(),
           history_inbox: await this.historyInbox.toArray(),

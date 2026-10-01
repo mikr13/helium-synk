@@ -37,6 +37,35 @@ export interface HistoryOperation {
   action: HistoryAction;
 }
 export type HistoryClear = HistoryOperation & { action: Extract<HistoryAction, { type: 'clear' }> };
+/** Local suppression receipt. It is never an encrypted wire payload. */
+export interface ErasedHistoryOperation extends Omit<HistoryOperation, 'action'> {
+  action: {
+    type: 'erased-visit';
+    visit: Pick<HistoryVisit, 'id' | 'source_id' | 'url_tag' | 'generation'>;
+  };
+}
+export type HistoryJournalOperation = HistoryOperation | ErasedHistoryOperation;
+export function isErasedHistoryOperation(value: {
+  kind: string;
+  action?: { type: string };
+}): value is ErasedHistoryOperation {
+  return value.kind === 'history' && value.action?.type === 'erased-visit';
+}
+export function eraseHistoryVisit(operation: HistoryJournalOperation): ErasedHistoryOperation {
+  if (operation.action.type !== 'visit') throw new Error('Expected a history visit to erase.');
+  const { id, source_id, url_tag, generation } = operation.action.visit;
+  const { author, counter, logical, context } = operation.revision;
+  return {
+    kind: 'history',
+    schema_version: 1,
+    operation_id: operation.operation_id,
+    revision: { author, counter, logical, context: { ...context } },
+    action: {
+      type: 'erased-visit',
+      visit: { id, source_id, url_tag, generation: { ...generation } },
+    },
+  };
+}
 export interface HistoryProjection {
   visits: Record<string, HistoryVisit & { operation_id: string }>;
   deleted: Record<string, string[]>;
@@ -92,6 +121,26 @@ export function validHistoryVisitId(id: unknown): id is string {
     return false;
   }
 }
+function validateGeneration(generation: VectorClock, revision: Revision): void {
+  if (
+    !generation ||
+    typeof generation !== 'object' ||
+    Array.isArray(generation) ||
+    Object.keys(generation).length > 256
+  )
+    throw new Error('Invalid history generation.');
+  for (const [author, counter] of Object.entries(generation)) {
+    if (
+      !canonicalUuid(author) ||
+      !Number.isSafeInteger(counter) ||
+      counter < 1 ||
+      (author === revision.author
+        ? counter >= revision.counter
+        : counter > (revision.context[author] ?? 0))
+    )
+      throw new Error('History generation exceeds observed causal context.');
+  }
+}
 export function validateHistoryOperation(op: HistoryOperation): void {
   if (
     !op ||
@@ -121,17 +170,7 @@ export function validateHistoryOperation(op: HistoryOperation): void {
       Object.keys(v.generation).length > 256
     )
       throw new Error('Invalid history visit.');
-    for (const [author, counter] of Object.entries(v.generation)) {
-      if (
-        !canonicalUuid(author) ||
-        !Number.isSafeInteger(counter) ||
-        counter < 1 ||
-        (author === op.revision.author
-          ? counter >= op.revision.counter
-          : counter > (op.revision.context[author] ?? 0))
-      )
-        throw new Error('History generation exceeds observed causal context.');
-    }
+    validateGeneration(v.generation, op.revision);
   } else if (a.type === 'delete') {
     if (
       !Array.isArray(a.visit_ids) ||
@@ -172,10 +211,24 @@ export function historyGeneration(
   return generation;
 }
 /** Replay immutable visits, permanent selected-record tombstones and source/global/URL generation barriers. */
-export function projectHistory(input: readonly HistoryOperation[]): HistoryProjection {
-  const byId = new Map<string, HistoryOperation>();
+export function projectHistory(input: readonly HistoryJournalOperation[]): HistoryProjection {
+  const byId = new Map<string, HistoryJournalOperation>();
   for (const op of input) {
-    validateHistoryOperation(op);
+    if (isErasedHistoryOperation(op)) {
+      const v = op.action.visit;
+      if (
+        op.schema_version !== 1 ||
+        !canonicalUuid(op.operation_id) ||
+        !v ||
+        !validHistoryVisitId(v.id) ||
+        v.source_id !== op.revision?.author ||
+        !v.id.startsWith(v.source_id + '/') ||
+        !urlTag(v.url_tag)
+      )
+        throw new Error('Invalid erased history receipt.');
+      validateRevision(op.revision);
+      validateGeneration(v.generation, op.revision);
+    } else validateHistoryOperation(op);
     const old = byId.get(op.operation_id);
     if (old && JSON.stringify(old) !== JSON.stringify(op))
       throw new Error('History operation identity was reused.');
@@ -193,7 +246,9 @@ export function projectHistory(input: readonly HistoryOperation[]): HistoryProje
     },
     visits = new Map<
       string,
-      HistoryOperation & { action: Extract<HistoryAction, { type: 'visit' }> }
+      HistoryJournalOperation & {
+        action: Extract<HistoryAction, { type: 'visit' }> | ErasedHistoryOperation['action'];
+      }
     >();
   for (const op of operations) {
     result.frontier[op.revision.author] = Math.max(
@@ -205,12 +260,16 @@ export function projectHistory(input: readonly HistoryOperation[]): HistoryProje
     else if (op.action.type === 'delete')
       for (const id of op.action.visit_ids) (result.deleted[id] ??= []).push(op.operation_id);
     else {
-      const next = op as HistoryOperation & { action: Extract<HistoryAction, { type: 'visit' }> },
+      const next = op as HistoryJournalOperation & {
+          action: Extract<HistoryAction, { type: 'visit' }> | ErasedHistoryOperation['action'];
+        },
         old = visits.get(next.action.visit.id);
       if (
         old &&
-        (old.action.visit.url !== next.action.visit.url ||
-          old.action.visit.url_tag !== next.action.visit.url_tag)
+        (old.action.visit.url_tag !== next.action.visit.url_tag ||
+          (old.action.type === 'visit' &&
+            next.action.type === 'visit' &&
+            old.action.visit.url !== next.action.visit.url))
       )
         throw new Error('A native history identity was reused with a different URL.');
       // Reconciliation may observe a newer URL-level title. It must never retag an old visit into a new clear generation.
@@ -229,7 +288,9 @@ export function projectHistory(input: readonly HistoryOperation[]): HistoryProje
       )
       .map((b) => b.operation_id);
     if (stale.length) result.stale[id] = stale;
-    else result.visits[id] = { ...structuredClone(v), operation_id: op.operation_id };
+    else if (op.action.type === 'erased-visit')
+      throw new Error('Erased history receipt has no deletion or clear proof.');
+    else result.visits[id] = { ...structuredClone(op.action.visit), operation_id: op.operation_id };
   }
   return result;
 }

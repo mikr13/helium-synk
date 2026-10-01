@@ -329,7 +329,7 @@ it('history retains original visits and suppresses delayed offline uploads after
     const local = (await db.state.get('local'))!,
       source = local.credentials.device_id;
     const tag = await historyUrlTag(await db.ensureHistoryIndexKey(), url);
-    await db.stageHistory({
+    return await db.stageHistory({
       type: 'visit',
       visit: {
         id: historyVisitId(source, incarnation, native, time),
@@ -354,8 +354,9 @@ it('history retains original visits and suppresses delayed offline uploads after
   await new SyncCoordinator(b).sync();
   await new SyncCoordinator(a).sync();
   expect((await a.queryHistory()).visits.map((v) => v.visited_at)).toEqual([2_000.75, 1_000.25]);
+  const originals = (await a.operations.toArray()).map((r) => r.envelope);
   await stop();
-  await visit(a, 'during-outage', 3_000.125);
+  const canceled = await visit(a, 'during-outage', 3_000.125);
   await b.stageHistory({ type: 'clear', scope: 'all' });
   await expect(new SyncCoordinator(a).sync()).rejects.toThrow();
   const name = a.name;
@@ -367,7 +368,12 @@ it('history retains original visits and suppresses delayed offline uploads after
   await new SyncCoordinator(b).sync(); // Clear commits before the stale source returns.
   await new SyncCoordinator(a).sync();
   await new SyncCoordinator(b).sync();
-  expect(await a.historyProjection()).toEqual(await b.historyProjection());
+  expect((await a.historyProjection()).visits).toEqual((await b.historyProjection()).visits);
+  expect((await a.historyProjection()).barriers).toEqual((await b.historyProjection()).barriers);
+  // This never-encrypted visit is now a private suppression receipt, not an upload.
+  expect(await a.historyErasedDrafts.get(canceled)).toBeDefined();
+  expect(await a.outbox.get(canceled)).toBeUndefined();
+  expect(Object.keys((await b.historyProjection()).stale)).toHaveLength(2);
   expect(await a.historyVisits.count()).toBe(0);
   expect(Object.keys((await a.historyProjection()).stale)).toHaveLength(3);
   await visit(a, 'fresh-generation', 4_000.875);
@@ -384,6 +390,10 @@ it('history retains original visits and suppresses delayed offline uploads after
   expect((await a.historyProjection()).deleted[fresh.id]).toHaveLength(1);
   expect(await a.pendingCount()).toBe(0);
   expect(await b.pendingCount()).toBe(0);
+  for (const original of originals)
+    expect((await a.operations.get(original.operation_id))?.envelope).toEqual(original);
+  expect(JSON.stringify(await a.exportReplica())).not.toContain(url);
+  expect(JSON.stringify(await b.exportReplica())).not.toContain('Private history title');
   const stored = execFileSync(
     'sqlite3',
     [
@@ -392,7 +402,7 @@ it('history retains original visits and suppresses delayed offline uploads after
     ],
     { encoding: 'utf8' },
   );
-  expect(stored.trim().split('\n')).toHaveLength(6);
+  expect(stored.trim().split('\n')).toHaveLength(5);
   expect(stored).not.toContain(url);
   expect(stored).not.toContain('Private history title');
   expect(stored).not.toContain(sharedKey);
