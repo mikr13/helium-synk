@@ -1,5 +1,12 @@
+import { ReviewDialog } from '@/components/review-dialog';
+import { AlertDialogCancel } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import React, { useEffect, useState } from 'react';
-import type { Reply, Request, Status, KeySummary } from '../../lib/messages';
+import type { Reply, Request, Status, KeySummary } from '@/lib/messages';
 export function KeyPanel({
   status,
   request,
@@ -28,6 +35,7 @@ export function KeyPanel({
       await action();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to update installation access.');
+      setReview(false);
       try {
         const reply = await request({ type: 'status' });
         if (reply.status) onStatus(reply.status);
@@ -61,7 +69,7 @@ export function KeyPanel({
   const names =
     keys?.devices.filter((d) => selected.includes(d.device_id)).map((d) => d.name) ?? [];
   return (
-    <section className="panel key-panel" id="devices">
+    <Card className="panel key-panel" id="devices">
       <div className="panel-heading">
         <span className="number">◇</span>
         <div>
@@ -74,15 +82,17 @@ export function KeyPanel({
         removed installations. After rotation, save an updated recovery bundle.
       </p>
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <Alert variant="destructive" className="error">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
       {done && (
-        <p role="status" className="key-complete">
-          Access updated. Your profiles now use content-key generation {done}. Save a new recovery
-          bundle from This device.
-        </p>
+        <Alert role="status" className="key-complete">
+          <AlertDescription>
+            Access updated. Your profiles now use content-key generation {done}. Save a new recovery
+            bundle from This device.
+          </AlertDescription>
+        </Alert>
       )}
       {pending && (
         <div className="pairing-review">
@@ -92,7 +102,7 @@ export function KeyPanel({
             its reply was lost.
           </p>
           <div className="actions">
-            <button
+            <Button
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -109,9 +119,9 @@ export function KeyPanel({
             >
               {busy ? 'Updating…' : 'Retry saved rotation'}
               <span>↗</span>
-            </button>
-            <button
-              className="secondary"
+            </Button>
+            <Button
+              variant="outline"
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -122,21 +132,20 @@ export function KeyPanel({
               }
             >
               Review updated devices
-            </button>
+            </Button>
           </div>
         </div>
       )}
       <ul className="key-devices">
         {keys?.devices.map((d) => (
           <li key={d.device_id}>
-            <input
-              type="checkbox"
+            <Checkbox
               id={`remove-${d.device_id}`}
               disabled={busy || d.revoked || d.device_id === keys.device_id}
               checked={selected.includes(d.device_id)}
-              onChange={(e) => {
+              onCheckedChange={(checked) => {
                 setSelected(
-                  e.target.checked
+                  checked === true
                     ? [...selected, d.device_id]
                     : selected.filter((id) => id !== d.device_id),
                 );
@@ -144,7 +153,7 @@ export function KeyPanel({
                 setDone(undefined);
               }}
             />
-            <label htmlFor={`remove-${d.device_id}`}>
+            <Label htmlFor={`remove-${d.device_id}`}>
               <strong>{d.name}</strong>
               <small>
                 {d.device_id === keys.device_id
@@ -155,74 +164,81 @@ export function KeyPanel({
                       ? 'Ready for key rotation'
                       : 'Needs to sync with an upgraded client'}
               </small>
-            </label>
+            </Label>
           </li>
         ))}
       </ul>
       {!keys && !error && <p className="fine">Loading installations…</p>}
       <div className="actions">
-        <button className="secondary" disabled={busy} onClick={() => void run(load)}>
+        <Button variant="outline" disabled={busy} onClick={() => void run(load)}>
           Refresh installations
-        </button>
-        <button
+        </Button>
+        <Button
           disabled={busy || !keys || (!selected.length && !pending)}
           onClick={() => setReview(true)}
         >
           Review removal<span>↗</span>
-        </button>
+        </Button>
       </div>
-      {review && (
-        <div className="pairing-review" role="group" aria-label="Review installation removal">
-          <p>
-            {names.length
-              ? `Remove access for ${names.join(', ')}.`
-              : 'Rotate the keys for the current retained installations.'}{' '}
-            API access and distribution of new keys change together.
-          </p>
-          <p className="fine">
-            Each retained profile needs to have synced with this version. Offline profiles that
-            already have wrapping keys can reconnect later. Replacing a saved proposal cannot undo a
-            removal that already committed.
-          </p>
-          {!!retainedUnready.length && (
-            <p className="error" role="alert">
+      <ReviewDialog
+        open={review}
+        onOpenChange={(open) => {
+          if (!busy) setReview(open);
+        }}
+        title="Review installation removal"
+        description="Review who will keep access before rotating your account keys."
+      >
+        <p>
+          {names.length
+            ? `Remove access for ${names.join(', ')}.`
+            : 'Rotate the keys for the current retained installations.'}{' '}
+          API access and distribution of new keys change together.
+        </p>
+        <p className="fine">
+          Each retained profile needs to have synced with this version. Offline profiles that
+          already have wrapping keys can reconnect later. Replacing a saved proposal cannot undo a
+          removal that already committed.
+        </p>
+        {!!retainedUnready.length && (
+          <Alert variant="destructive" className="error">
+            <AlertDescription>
               Sync or select these installations for removal first:{' '}
               {retainedUnready.map((d) => d.name).join(', ')}.
-            </p>
-          )}
-          <div className="actions">
-            <button className="secondary" disabled={busy} onClick={() => setReview(false)}>
-              Keep access
-            </button>
-            <button
-              disabled={busy || !!retainedUnready.length}
-              onClick={() =>
-                void run(async () => {
-                  const reply = await request({
-                    type: 'keys-rotate',
-                    revoke_ids: selected,
-                    replace: !!pending,
-                  });
-                  if (reply.status) {
-                    onStatus(reply.status);
-                    setDone(reply.status.key_epoch);
-                  }
-                  setSelected([]);
-                  setReview(false);
-                  await load();
-                })
-              }
-            >
-              {busy
-                ? 'Updating access…'
-                : pending
-                  ? 'Replace proposal and rotate'
-                  : 'Remove and rotate keys'}
-              <span>↗</span>
-            </button>
-          </div>
+            </AlertDescription>
+          </Alert>
+        )}
+        <div className="actions">
+          <AlertDialogCancel disabled={busy} onClick={() => setReview(false)}>
+            Keep access
+          </AlertDialogCancel>
+          <Button
+            disabled={busy || !!retainedUnready.length}
+            onClick={() =>
+              void run(async () => {
+                const reply = await request({
+                  type: 'keys-rotate',
+                  revoke_ids: selected,
+                  replace: !!pending,
+                });
+                if (reply.status) {
+                  onStatus(reply.status);
+                  setDone(reply.status.key_epoch);
+                }
+                setSelected([]);
+                setReview(false);
+                await load();
+              })
+            }
+          >
+            {busy
+              ? 'Updating access…'
+              : pending
+                ? 'Replace proposal and rotate'
+                : 'Remove and rotate keys'}
+            <span>↗</span>
+          </Button>
         </div>
-      )}
-    </section>
+      </ReviewDialog>
+    </Card>
   );
 }

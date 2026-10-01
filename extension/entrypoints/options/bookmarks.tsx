@@ -1,6 +1,13 @@
+import { Disclosure } from '@/components/disclosure';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import React, { useState } from 'react';
 import type { BookmarkImport, NativeBookmark, RootSelection } from '@helium-synk/core';
-import type { Reply, Request, Status } from '../../lib/messages';
+import type { Reply, Request, Status } from '@/lib/messages';
 type Success = Reply & { ok: true };
 export function downloadJson(value: unknown, name: string): void {
   const url = URL.createObjectURL(
@@ -54,22 +61,24 @@ export function BookmarkPanel({
     setReview(undefined);
   }
   return (
-    <section id="bookmarks" className="panel bookmarks-panel" aria-labelledby="bookmarks-heading">
+    <Card id="bookmarks" className="panel bookmarks-panel" aria-labelledby="bookmarks-heading">
       <div className="records-heading">
         <div>
           <p className="eyebrow">YOUR BOOKMARK COLLECTION</p>
           <h2 id="bookmarks-heading">A shared place for your links.</h2>
         </div>
-        <span className="tag">{phase === 'active' ? 'SYNC ENABLED' : 'PREVIEW FIRST'}</span>
+        <Badge variant="outline" className="tag">
+          {phase === 'active' ? 'SYNC ENABLED' : 'PREVIEW FIRST'}
+        </Badge>
       </div>
       <p>
         Your browser keeps the collection locally. New edits queue while your Mac Mini is offline
         and reconcile when it returns.
       </p>
       {(error || status.bookmarks.error) && (
-        <div className="error" role="alert">
-          {error || status.bookmarks.error}
-        </div>
+        <Alert variant="destructive" className="error">
+          <AlertDescription>{error || status.bookmarks.error}</AlertDescription>
+        </Alert>
       )}
       {phase !== 'active' ? (
         <>
@@ -83,13 +92,16 @@ export function BookmarkPanel({
               {(['bar', 'other', 'mobile'] as const).map((role) => {
                 const choices = roots.filter((root) => root.role === role);
                 return choices.length > 1 ? (
-                  <label key={role}>
-                    {role === 'bar'
-                      ? 'Bookmarks bar'
-                      : role === 'other'
-                        ? 'Other bookmarks'
-                        : 'Mobile bookmarks'}
-                    <select
+                  <div className="form-field" key={role}>
+                    <Label htmlFor={`bookmark-root-${role}`}>
+                      {role === 'bar'
+                        ? 'Bookmarks bar'
+                        : role === 'other'
+                          ? 'Other bookmarks'
+                          : 'Mobile bookmarks'}
+                    </Label>
+                    <NativeSelect
+                      id={`bookmark-root-${role}`}
                       value={selection[role] ?? ''}
                       onChange={(event) => {
                         setSelection({ ...selection, [role]: event.target.value || undefined });
@@ -97,22 +109,24 @@ export function BookmarkPanel({
                         setSaved(false);
                       }}
                     >
-                      <option value="">Choose automatically when unambiguous</option>
+                      <NativeSelectOption value="">
+                        Choose automatically when unambiguous
+                      </NativeSelectOption>
                       {choices.map((root) => (
-                        <option value={root.id} key={root.id}>
+                        <NativeSelectOption value={root.id} key={root.id}>
                           {root.title} · {root.syncing ? 'Browser account' : 'Local profile'} ·{' '}
                           {root.id}
-                        </option>
+                        </NativeSelectOption>
                       ))}
-                    </select>
-                  </label>
+                    </NativeSelect>
+                  </div>
                 ) : null;
               })}
             </div>
           )}
-          <button className="secondary" disabled={busy} onClick={() => void run(prepare)}>
+          <Button variant="outline" disabled={busy} onClick={() => void run(prepare)}>
             {busy ? 'Preparing…' : preview ? 'Refresh preview' : 'Preview bookmark merge'}
-          </button>
+          </Button>
           {preview && (
             <div className="import-preview">
               <dl className="preview-counts">
@@ -133,8 +147,7 @@ export function BookmarkPanel({
                   <dd>{preview.skipped}</dd>
                 </div>
               </dl>
-              <details>
-                <summary>Review local entries to add ({preview.imports})</summary>
+              <Disclosure title={`Review local entries to add (${preview.imports})`}>
                 <ul className="import-list">
                   {preview.actions.slice(0, 150).map((action) =>
                     action.type === 'create' ? (
@@ -146,15 +159,15 @@ export function BookmarkPanel({
                   )}
                 </ul>
                 {preview.imports > 150 && <p>The full list is included in your backup.</p>}
-              </details>
+              </Disclosure>
               <p className="fine">
                 Save the recovery copy before merging. It includes this profile’s original tree and
                 the shared replica. If bookmarks change while you review, the merge pauses for a
                 fresh preview.
               </p>
               <div className="actions">
-                <button
-                  className="secondary"
+                <Button
+                  variant="outline"
                   disabled={busy}
                   onClick={() => {
                     downloadJson(preview.backup, 'helium-synk-bookmarks-before-merge.json');
@@ -162,8 +175,8 @@ export function BookmarkPanel({
                   }}
                 >
                   Save bookmark backup
-                </button>
-                <button
+                </Button>
+                <Button
                   disabled={busy || !saved}
                   onClick={() =>
                     void run(async () => {
@@ -174,7 +187,7 @@ export function BookmarkPanel({
                   }
                 >
                   Enable bookmark sync <span>↗</span>
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -200,8 +213,8 @@ export function BookmarkPanel({
             runs from a durable journal and pauses for review if an interrupted create cannot be
             identified safely.
           </p>
-          <button
-            className="secondary"
+          <Button
+            variant="outline"
             disabled={busy}
             onClick={() =>
               void run(async () => {
@@ -211,12 +224,12 @@ export function BookmarkPanel({
             }
           >
             Export local replica
-          </button>
+          </Button>
           {status.bookmarks.interrupted.map((effect) => (
             <div className="review-effect" key={effect.id}>
               <p>{effect.message}</p>
-              <button
-                className="secondary"
+              <Button
+                variant="outline"
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -226,7 +239,7 @@ export function BookmarkPanel({
                 }
               >
                 Review possible matches
-              </button>
+              </Button>
             </div>
           ))}
           {review && (
@@ -240,22 +253,18 @@ export function BookmarkPanel({
                 <div className="review-effect" key={node.id}>
                   <strong>{node.title || 'Untitled'}</strong>
                   <p>{node.url ?? 'Folder'}</p>
-                  <button disabled={busy} onClick={() => void run(() => resolve(node.id))}>
+                  <Button disabled={busy} onClick={() => void run(() => resolve(node.id))}>
                     Use this existing entry
-                  </button>
+                  </Button>
                 </div>
               ))}
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() => void run(() => resolve())}
-              >
+              <Button variant="outline" disabled={busy} onClick={() => void run(() => resolve())}>
                 Keep existing entries and add a separate copy
-              </button>
+              </Button>
             </div>
           )}
         </>
       )}
-    </section>
+    </Card>
   );
 }

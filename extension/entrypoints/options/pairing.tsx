@@ -1,8 +1,16 @@
+import { ReviewDialog } from '@/components/review-dialog';
+import { AlertDialogCancel } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import React, { useState } from 'react';
 import { parsePairingBundle } from '@helium-synk/core';
-import type { Reply, Request, Status } from '../../lib/messages';
-import { grantEndpoint } from '../../lib/endpoint-permission';
-import { downloadJson } from './bookmarks';
+import type { Reply, Request, Status } from '@/lib/messages';
+import { grantEndpoint } from '@/lib/endpoint-permission';
+import { downloadJson } from '@/entrypoints/options/bookmarks';
 export function PairingPanel({
   status,
   request,
@@ -38,7 +46,7 @@ export function PairingPanel({
   }
   const pending = status.pairing_pending;
   return (
-    <section className="panel pairing" id="pairing">
+    <Card className="panel pairing" id="pairing">
       <div className="panel-heading">
         <span className="number">↔</span>
         <div>
@@ -57,9 +65,9 @@ export function PairingPanel({
         </div>
       </div>
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <Alert variant="destructive" className="error">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
       {status.enrolled ? (
         <>
@@ -67,7 +75,7 @@ export function PairingPanel({
             The bundle contains your encryption keys. Transfer it privately, then remove the
             transfer copy after pairing. New registrations expire after 15 minutes.
           </p>
-          <button
+          <Button
             disabled={busy}
             onClick={() =>
               void run(async () => {
@@ -80,7 +88,7 @@ export function PairingPanel({
           >
             {busy ? 'Creating invitation…' : 'Save pairing bundle'}
             <span>↗</span>
-          </button>
+          </Button>
           {expires && (
             <p className="fine" role="status">
               Invitation saved. Register the new profile before{' '}
@@ -99,7 +107,7 @@ export function PairingPanel({
             its reply was lost. An accepted claim can retry for one hour after invitation expiry.
           </p>
           <div className="actions">
-            <button
+            <Button
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -111,39 +119,49 @@ export function PairingPanel({
             >
               {busy ? 'Connecting…' : 'Retry connection'}
               <span>↗</span>
-            </button>
-            <button className="secondary" disabled={busy} onClick={() => setDiscard(true)}>
+            </Button>
+            <Button variant="outline" disabled={busy} onClick={() => setDiscard(true)}>
               Discard setup attempt
-            </button>
+            </Button>
           </div>
-          {discard && (
-            <div className="pairing-review" role="group" aria-label="Discard connection attempt">
-              <p>
-                This removes the saved setup secrets. The relay may already have registered this
-                profile; revoke that installation from the relay if you discard it.
-              </p>
-              <p className="fine">
-                Installation: <code>{pending.device_id}</code>
-              </p>
-              <div className="actions">
-                <button className="secondary" disabled={busy} onClick={() => setDiscard(false)}>
-                  Keep and retry
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const reply = await request({ type: 'pairing-discard' });
-                      if (reply.status) onStatus(reply.status);
-                      setDiscard(false);
-                    })
-                  }
-                >
-                  Discard saved attempt
-                </button>
-              </div>
+          <ReviewDialog
+            open={discard}
+            onOpenChange={(open) => {
+              if (!busy) setDiscard(open);
+            }}
+            title="Discard connection attempt"
+            description="The relay may already have registered this installation. Review the saved attempt before removing its local setup secrets."
+          >
+            {error && (
+              <Alert variant="destructive" className="error">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <p>
+              This removes the saved setup secrets. The relay may already have registered this
+              profile; revoke that installation from the relay if you discard it.
+            </p>
+            <p className="fine">
+              Installation: <code>{pending.device_id}</code>
+            </p>
+            <div className="actions">
+              <AlertDialogCancel disabled={busy} onClick={() => setDiscard(false)}>
+                Keep and retry
+              </AlertDialogCancel>
+              <Button
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    const reply = await request({ type: 'pairing-discard' });
+                    if (reply.status) onStatus(reply.status);
+                    setDiscard(false);
+                  })
+                }
+              >
+                Discard saved attempt
+              </Button>
             </div>
-          )}
+          </ReviewDialog>
         </>
       ) : (
         <form
@@ -159,8 +177,8 @@ export function PairingPanel({
             });
           }}
         >
-          <label htmlFor="pairing-name">Profile name</label>
-          <input
+          <Label htmlFor="pairing-name">Profile name</Label>
+          <Input
             id="pairing-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -169,8 +187,8 @@ export function PairingPanel({
             autoComplete="off"
             placeholder="My MacBook · Helium"
           />
-          <label htmlFor="pairing-bundle">Private pairing bundle JSON</label>
-          <textarea
+          <Label htmlFor="pairing-bundle">Private pairing bundle JSON</Label>
+          <Textarea
             id="pairing-bundle"
             value={json}
             onChange={(e) => setJson(e.target.value)}
@@ -184,12 +202,12 @@ export function PairingPanel({
             Each browser profile receives its own relay credential. This build unlocks automatically
             using keys saved in the local profile.
           </p>
-          <button disabled={busy || !name.trim() || !json.trim()}>
+          <Button disabled={busy || !name.trim() || !json.trim()}>
             {busy ? 'Connecting…' : 'Connect with invitation'}
             <span>↗</span>
-          </button>
+          </Button>
         </form>
       )}
-    </section>
+    </Card>
   );
 }

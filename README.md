@@ -10,6 +10,8 @@ Read the [bookmark merge contract](docs/bookmark-merge.md) and [native adapter/r
 
 Follow the [implementation checklist](docs/plan.md) and [verification record](docs/progress.md). Development source lives at `/Users/mihirpandey/Work/fun/helium-synk`, outside Documents/iCloud.
 
+The dashboard and restoration page share a dark navy/blue/mint [design system](docs/design-system.md), with square Tailwind/shadcn controls and bundled local fonts. Extension TypeScript source uses the `@/` alias.
+
 ## Development
 
 Use Node 24+, pnpm 12.8.1, Rust 1.87+, and patched SQLite with development headers. On macOS, `scripts/cargo.sh` selects the installed Homebrew SQLite headers/library. The relay refuses SQLite versions vulnerable to the documented WAL-reset corruption issue. See [SQLite's WAL guidance](https://sqlite.org/wal.html#wal_reset_bug).

@@ -21,10 +21,10 @@ import {
   flattenBookmarks,
   type BookmarkEvent,
 } from '@helium-synk/core';
-import type { Reply, Request, Status } from '../lib/messages';
-import { bookmarkBrowser } from '../lib/bookmark-browser';
-import { historyBrowser } from '../lib/history-browser';
-import { sessionBrowser, restoreBrowser, nativeTab, nativeWindow } from '../lib/session-browser';
+import type { Reply, Request, Status } from '@/lib/messages';
+import { bookmarkBrowser } from '@/lib/bookmark-browser';
+import { historyBrowser } from '@/lib/history-browser';
+import { sessionBrowser, restoreBrowser, nativeTab, nativeWindow } from '@/lib/session-browser';
 
 export default defineBackground(() => {
   const db = new SynkDatabase();

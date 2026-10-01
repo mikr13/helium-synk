@@ -1,7 +1,11 @@
 import { defineConfig } from 'wxt';
+import tailwindcss from '@tailwindcss/vite';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
+  alias: { '@': fileURLToPath(new URL('.', import.meta.url)) },
+  vite: () => ({ plugins: [tailwindcss()] }),
   manifest: {
     name: 'Helium Synk',
     description:

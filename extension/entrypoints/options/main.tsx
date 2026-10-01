@@ -1,15 +1,31 @@
+import {
+  ArrowUpRight,
+  Bookmark,
+  History,
+  LayoutDashboard,
+  PanelsTopLeft,
+  ShieldCheck,
+} from 'lucide-react';
+import { Disclosure } from '@/components/disclosure';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser } from 'wxt/browser';
 import { generateRecoveryKey, parseCredentials } from '@helium-synk/core';
-import type { Reply, Request, Status } from '../../lib/messages';
-import './style.css';
-import { BookmarkPanel, downloadJson } from './bookmarks';
-import { SessionPanel } from './sessions';
-import { HistoryPanel } from './history';
-import { PairingPanel } from './pairing';
-import { KeyPanel } from './keys';
-import { grantEndpoint } from '../../lib/endpoint-permission';
+import type { Reply, Request, Status } from '@/lib/messages';
+import '@/entrypoints/options/style.css';
+import { BookmarkPanel, downloadJson } from '@/entrypoints/options/bookmarks';
+import { SessionPanel } from '@/entrypoints/options/sessions';
+import { HistoryPanel } from '@/entrypoints/options/history';
+import { PairingPanel } from '@/entrypoints/options/pairing';
+import { KeyPanel } from '@/entrypoints/options/keys';
+import { grantEndpoint } from '@/lib/endpoint-permission';
 
 async function request(message: Request): Promise<Reply & { ok: true }> {
   const response = (await browser.runtime.sendMessage(message)) as Reply;
@@ -77,7 +93,7 @@ function App() {
   }
   return (
     <div className="shell">
-      <aside>
+      <aside className="sidebar">
         <div className="brand">
           <img className="brand-mark" src="/icons/128.png" alt="" width="55" height="55" />
           <span>
@@ -87,30 +103,66 @@ function App() {
           </span>
         </div>
         <p className="eyebrow">YOUR PRIVATE ORBIT</p>
-        <div className="nav active">
-          Overview <span>01</span>
-        </div>
-        <a className="nav" href="#bookmarks">
-          Bookmarks <small>Preview</small>
-        </a>
-        <a className="nav" href="#sessions">
-          Sessions <small>Open</small>
-        </a>
-        <a className="nav" href="#history">
-          History <small>Search</small>
-        </a>
+        <nav className="sidebar-nav" aria-label="Dashboard sections">
+          <a className="nav active" href="#overview">
+            <span className="nav-label">
+              <LayoutDashboard aria-hidden="true" />
+              Overview
+            </span>
+            <span>01</span>
+          </a>
+          {status?.enrolled && (
+            <>
+              <a className="nav" href="#bookmarks">
+                <span className="nav-label">
+                  <Bookmark aria-hidden="true" />
+                  Bookmarks
+                </span>
+                <small>02</small>
+              </a>
+              <a className="nav" href="#sessions">
+                <span className="nav-label">
+                  <PanelsTopLeft aria-hidden="true" />
+                  Sessions
+                </span>
+                <small>03</small>
+              </a>
+              <a className="nav" href="#history">
+                <span className="nav-label">
+                  <History aria-hidden="true" />
+                  History
+                </span>
+                <small>04</small>
+              </a>
+              <a className="nav" href="#devices">
+                <span className="nav-label">
+                  <ShieldCheck aria-hidden="true" />
+                  Access
+                </span>
+                <small>05</small>
+              </a>
+            </>
+          )}
+        </nav>
         <div className="aside-footer">
           <span className="dot" /> Local first.
           <br />
           Yours to host.
         </div>
       </aside>
-      <main>
-        <header>
+      <main className="workspace" id="overview">
+        <header className="workspace-header">
           <span className="eyebrow">HELIUM SYNK / OVERVIEW</span>
-          <span className="tag">DEVELOPMENT BUILD</span>
+          <Badge variant="outline" className="tag">
+            DEVELOPMENT BUILD
+          </Badge>
         </header>
         <div className="hero">
+          <div className="hero-index" aria-hidden="true">
+            <strong>PRIVATE CONNECTION</strong>YOUR DEVICES / YOUR RELAY
+            <br />
+            LOCAL FIRST, ALWAYS
+          </div>
           <p className="eyebrow">A PLACE FOR EVERY DEVICE</p>
           <h1>
             Pick up where
@@ -140,15 +192,15 @@ function App() {
           </div>
         </div>
         {(error || status?.error) && (
-          <div className="error" role="alert">
-            {error || status?.error}
-          </div>
+          <Alert variant="destructive" className="error">
+            <AlertDescription>{error || status?.error}</AlertDescription>
+          </Alert>
         )}
         {!status && !error && <p>Opening your local database…</p>}
         {status && <PairingPanel status={status} request={request} onStatus={setStatus} />}
         {status?.enrolled && <KeyPanel status={status} request={request} onStatus={setStatus} />}
         {status && !status.enrolled && !status.pairing_pending && (
-          <section className="panel">
+          <Card className="panel">
             <div className="panel-heading">
               <span className="number">01</span>
               <div>
@@ -162,8 +214,8 @@ function App() {
                 void run(enroll);
               }}
             >
-              <label htmlFor="credential">Device credential JSON</label>
-              <textarea
+              <Label htmlFor="credential">Device credential JSON</Label>
+              <Textarea
                 id="credential"
                 value={credential}
                 onChange={(e) => setCredential(e.target.value)}
@@ -172,11 +224,11 @@ function App() {
                 spellCheck={false}
                 placeholder="Paste the file created by synk-server issue-device"
               />
-              <label htmlFor="key">
+              <Label htmlFor="key">
                 Shared recovery key{' '}
                 <span className="muted">/ leave blank on your first device</span>
-              </label>
-              <input
+              </Label>
+              <Input
                 id="key"
                 type="password"
                 value={key}
@@ -188,14 +240,16 @@ function App() {
                 The first device creates the encryption key. Use a pairing invitation for later
                 profiles. This build unlocks automatically from your browser profile.
               </p>
-              <details className="recovery-import">
-                <summary>Restore from a private recovery bundle</summary>
+              <Disclosure
+                className="recovery-import"
+                title="Restore from a private recovery bundle"
+              >
                 <p className="fine">
                   Issue a fresh installation credential first. Recovery restores content keys and
                   downloads the relay journal; it does not restore local-only edits.
                 </p>
-                <label htmlFor="recovery-bundle">Private recovery bundle JSON</label>
-                <textarea
+                <Label htmlFor="recovery-bundle">Private recovery bundle JSON</Label>
+                <Textarea
                   id="recovery-bundle"
                   value={recoveryJson}
                   onChange={(e) => setRecoveryJson(e.target.value)}
@@ -204,16 +258,16 @@ function App() {
                   autoComplete="off"
                   placeholder="Paste the separately saved private recovery bundle"
                 />
-              </details>
-              <button disabled={busy}>
-                {busy ? 'Connecting…' : 'Connect device'} <span>↗</span>
-              </button>
+              </Disclosure>
+              <Button type="submit" disabled={busy}>
+                {busy ? 'Connecting…' : 'Connect device'} <ArrowUpRight aria-hidden="true" />
+              </Button>
             </form>
-          </section>
+          </Card>
         )}
         {status?.enrolled && (
           <div className="columns">
-            <section className="panel device">
+            <Card className="panel device">
               <p className="eyebrow">THIS DEVICE</p>
               <h2>{status.name}</h2>
               <p className="endpoint">{status.endpoint}</p>
@@ -228,7 +282,7 @@ function App() {
                 <dd>IndexedDB · survives restarts</dd>
               </dl>
               <div className="actions">
-                <button
+                <Button
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
@@ -237,13 +291,13 @@ function App() {
                     })
                   }
                 >
-                  {busy ? 'Working…' : 'Sync now'} <span>↗</span>
-                </button>
-                <button className="secondary" disabled={busy} onClick={() => void run(recovery)}>
+                  {busy ? 'Working…' : 'Sync now'} <ArrowUpRight aria-hidden="true" />
+                </Button>
+                <Button variant="outline" disabled={busy} onClick={() => void run(recovery)}>
                   Save recovery bundle
-                </button>
-                <button
-                  className="secondary"
+                </Button>
+                <Button
+                  variant="outline"
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
@@ -253,10 +307,10 @@ function App() {
                   }
                 >
                   Export local replica
-                </button>
+                </Button>
               </div>
-            </section>
-            <section className="panel">
+            </Card>
+            <Card className="panel">
               <p className="eyebrow">CHECK THE CONNECTION</p>
               <h2>Send a small signal.</h2>
               <p>
@@ -273,8 +327,8 @@ function App() {
                   });
                 }}
               >
-                <label htmlFor="note">Test note</label>
-                <input
+                <Label htmlFor="note">Test note</Label>
+                <Input
                   id="note"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
@@ -282,18 +336,18 @@ function App() {
                   required
                   placeholder="Hello from my Mac Mini"
                 />
-                <button disabled={busy || !note.trim()}>
-                  Queue encrypted note <span>↗</span>
-                </button>
+                <Button type="submit" disabled={busy || !note.trim()}>
+                  Queue encrypted note <ArrowUpRight aria-hidden="true" />
+                </Button>
               </form>
-            </section>
+            </Card>
           </div>
         )}
         {status?.enrolled && (
           <BookmarkPanel status={status} request={request} onStatus={setStatus} />
         )}
         {status?.enrolled && (
-          <section className="records">
+          <Card className="records">
             <div className="records-heading">
               <h2>Signals from your devices</h2>
               <span className="eyebrow">LATEST 100</span>
@@ -311,9 +365,9 @@ function App() {
                       · {new Date(record.payload.created_at).toLocaleString()}
                     </p>
                   </div>
-                  <span className="record-state">
+                  <Badge variant="outline" className="record-state">
                     {record.sequence ? 'RECEIVED BY SERVER' : 'QUEUED LOCALLY'}
-                  </span>
+                  </Badge>
                 </article>
               ))
             ) : (
@@ -321,7 +375,7 @@ function App() {
                 Your first signal will appear here. Open a second profile to verify it arrives.
               </div>
             )}
-          </section>
+          </Card>
         )}
         {status?.enrolled && (
           <>
@@ -329,7 +383,7 @@ function App() {
             <HistoryPanel status={status} request={request} onStatus={setStatus} />
           </>
         )}
-        <footer>
+        <footer className="workspace-footer">
           <span>PRIVATE BY DESIGN</span>
           <p>Bookmarks, sessions and history begin after you enable their collection.</p>
         </footer>

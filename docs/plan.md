@@ -15,6 +15,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                   | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
 | Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
 | Logo and favicon                                                   | Complete branding implementation checkpoint          | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open | 176 TS, 11 real-process tests, production build and responsive UI   |
 | History plaintext/ciphertext erasure                               | Pending                                              | Section 7                                                           |
 | Local budgets, retention, full-scale journal performance, recovery | Pending                                              | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                | Disposable profiles only                                            |
@@ -165,6 +166,19 @@ Checkpoint commit: `9b2e6da feat(extension): add Helium sync logo and favicon`.
 - [ ] Verify toolbar, extension listing and tab favicon rendering during joint native Helium acceptance.
 
 The [branding record](branding.md) preserves the source, assets and exact built-in image-generation prompt. Existing goal gates remain open; this checkpoint does not complete M7 or the production release.
+
+## Dark interface and TypeScript aliases checkpoint — 2026-10-01
+
+- [x] Share logo-derived navy/blue/mint Tailwind tokens across dashboard, setup/recovery and restoration pages; dark mode only, all radius tokens zero.
+- [x] Install actual shadcn/ui components and compose cards, forms, alerts, badges, tabs, checkboxes, disclosures and accessible confirmations from that toolkit.
+- [x] Bundle Manrope/IBM Plex Mono fonts and license notices locally; retain existing logo/favicon assets.
+- [x] Configure `@/` extension source imports consistently in TypeScript, WXT/Vite, both Vitest configs and the shadcn registry.
+- [x] Verify 176 TypeScript and 11 real-process tests, typechecks and the production WXT package.
+- [x] Exercise actual components with synthetic responses: saved rotation retry, bookmark preview/backup gate, session filtering/restoration progress, history search/selection/scoped confirmation and keyboard cancellation/tabs.
+- [x] Verify desktop/390 px layouts, zero-radius controls/cards/dialogs, local font loading and no page overflow or console warnings/errors.
+- [ ] Verify the packaged UI and interactions in disposable native Helium profiles together.
+
+See [design-system.md](design-system.md) for shared theme/component/import conventions and [progress.md](progress.md) for evidence. Existing history erasure, storage/scale/recovery and native milestone gates remain open. No production or release gate is completed by this UI checkpoint.
 
 ## 1. Product requirements and boundaries
 

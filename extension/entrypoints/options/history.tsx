@@ -1,6 +1,17 @@
+import { ReviewDialog } from '@/components/review-dialog';
+import { AlertDialogCancel } from '@/components/ui/alert-dialog';
+import { Disclosure } from '@/components/disclosure';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card } from '@/components/ui/card';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import React, { useEffect, useState, useRef } from 'react';
 import { restoreUrl, type HistoryVisit } from '@helium-synk/core';
-import type { Status, Request, Reply } from '../../lib/messages';
+import type { Status, Request, Reply } from '@/lib/messages';
 type Props = {
   status: Status;
   request: (r: Request) => Promise<Reply & { ok: true }>;
@@ -129,7 +140,7 @@ export function HistoryPanel({ status, request, onStatus }: Props) {
     setSelected([]);
   }
   return (
-    <section className="panel history-panel" id="history">
+    <Card className="panel history-panel" id="history">
       <div className="panel-heading">
         <span className="number">04</span>
         <div>
@@ -141,38 +152,40 @@ export function HistoryPanel({ status, request, onStatus }: Props) {
           </p>
         </div>
       </div>
-      <details className="history-settings" open={!status.history.enabled}>
-        <summary>
-          Capture settings · {status.history.phase === 'off' ? 'not enabled' : status.history.phase}
-        </summary>
+      <Disclosure
+        className="history-settings"
+        defaultOpen={!status.history.enabled}
+        title={`Capture settings · ${status.history.phase === 'off' ? 'not enabled' : status.history.phase}`}
+      >
         <div className="history-settings-grid">
-          <label>
-            Initial import
-            <select
+          <div className="form-field">
+            <Label htmlFor="history-import-days">Initial import</Label>
+            <NativeSelect
+              id="history-import-days"
               value={days}
               onChange={(e) => setDays(Number(e.target.value))}
               disabled={status.history.enabled}
             >
-              <option value={0}>New visits only</option>
-              <option value={7}>Past 7 days</option>
-              <option value={30}>Past 30 days</option>
-              <option value={90}>Past 90 days</option>
-              <option value={365}>Past year</option>
-            </select>
-          </label>
-          <label>
+              <NativeSelectOption value={0}>New visits only</NativeSelectOption>
+              <NativeSelectOption value={7}>Past 7 days</NativeSelectOption>
+              <NativeSelectOption value={30}>Past 30 days</NativeSelectOption>
+              <NativeSelectOption value={90}>Past 90 days</NativeSelectOption>
+              <NativeSelectOption value={365}>Past year</NativeSelectOption>
+            </NativeSelect>
+          </div>
+          <Label>
             Excluded domains <span className="muted">/ one per line, including subdomains</span>
-            <textarea
+            <Textarea
               value={domains}
               onChange={(e) => setDomains(e.target.value)}
               rows={3}
               placeholder="example.com"
               spellCheck={false}
             />
-          </label>
+          </Label>
         </div>
         <div className="actions">
-          <button
+          <Button
             disabled={busy}
             onClick={() =>
               void run(() =>
@@ -192,15 +205,15 @@ export function HistoryPanel({ status, request, onStatus }: Props) {
               : status.history.phase === 'off'
                 ? 'Enable history capture'
                 : 'Resume history capture'}
-          </button>
+          </Button>
           {status.history.enabled && (
-            <button
-              className="secondary"
+            <Button
+              variant="outline"
               disabled={busy}
               onClick={() => void run(() => action({ type: 'history-pause' }))}
             >
               Pause capture
-            </button>
+            </Button>
           )}
         </div>
         <p className="fine">
@@ -208,66 +221,72 @@ export function HistoryPanel({ status, request, onStatus }: Props) {
           imported browser visits are excluded. Exclusions affect future collection; existing
           entries remain until removed.
         </p>
-      </details>
+      </Disclosure>
       {status.history.phase === 'baseline' && (
-        <p className="history-notice" role="status">
-          Collection is paused while the browser history baseline is checked. Existing visits will
-          stay excluded when collection resumes.
-        </p>
+        <Alert className="notice" role="status">
+          <AlertDescription>
+            Collection is paused while the browser history baseline is checked. Existing visits will
+            stay excluded when collection resumes.
+          </AlertDescription>
+        </Alert>
       )}
       {status.history.pending > 0 && (
         <p className="fine">{status.history.pending} capture/import task(s) saved locally.</p>
       )}
       {(error || status.history.error) && (
-        <div className="error" role="alert">
-          {error || status.history.error}
-        </div>
+        <Alert variant="destructive" className="error">
+          <AlertDescription>{error || status.history.error}</AlertDescription>
+        </Alert>
       )}
       <div className="history-filters">
-        <label className="history-search">
+        <Label className="history-search">
           Search your timeline
-          <input
+          <Input
             type="search"
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={1000}
             placeholder="Title, URL or profile name"
           />
-        </label>
-        <label>
-          Source profile
-          <select value={source} onChange={(e) => setSource(e.target.value)}>
-            <option value="all">All profiles</option>
+        </Label>
+        <div className="form-field">
+          <Label htmlFor="history-source">Source profile</Label>
+          <NativeSelect
+            id="history-source"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+          >
+            <NativeSelectOption value="all">All profiles</NativeSelectOption>
             {sources.map((s) => (
-              <option key={s.id} value={s.id}>
+              <NativeSelectOption key={s.id} value={s.id}>
                 {s.name} · {s.id.slice(0, 8)}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
-        </label>
-        <label>
+          </NativeSelect>
+        </div>
+        <Label>
           From
-          <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-        </label>
-        <label>
+          <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+        </Label>
+        <Label>
           Through
-          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
-        </label>
+          <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+        </Label>
       </div>
       <div className="history-actions">
         <span className="fine">
           {visits.length} shown · {selected.length} selected
         </span>
         <div className="actions">
-          <button
-            className="secondary"
+          <Button
+            variant="outline"
             disabled={busy || loading || !selected.length}
             onClick={() => setRemoval({ type: 'selected', ids: [...selected] })}
           >
             Remove selected
-          </button>
-          <button
-            className="secondary"
+          </Button>
+          <Button
+            variant="outline"
             disabled={busy || loading || !status.history.visits}
             onClick={() =>
               setRemoval({
@@ -283,34 +302,45 @@ export function HistoryPanel({ status, request, onStatus }: Props) {
             }
           >
             {source === 'all' ? 'Clear all profiles' : 'Clear this profile'}
-          </button>
+          </Button>
         </div>
       </div>
-      {removal && (
-        <div className="history-removal" role="region" aria-label="Confirm history removal">
-          <strong>
+      <ReviewDialog
+        open={!!removal}
+        onOpenChange={(open) => {
+          if (!open && !busy) setRemoval(undefined);
+        }}
+        title={
+          <>
             Remove{' '}
-            {removal.type === 'selected'
+            {removal?.type === 'selected'
               ? `${removal.ids.length} selected visit(s)`
-              : removal.source
-                ? `history from ${removal.source.name}`
+              : removal?.source
+                ? `history from ${removal?.source.name}`
                 : 'history from all profiles'}
             ?
-          </strong>
-          <p>
-            Applies to synchronized history across profiles. Native browser history stays local.
-            Permanent erasure of stored copies is still being implemented in this development build.
-          </p>
-          <div className="actions">
-            <button disabled={busy} onClick={() => void run(remove)}>
-              Confirm removal
-            </button>
-            <button className="secondary" disabled={busy} onClick={() => setRemoval(undefined)}>
-              Cancel
-            </button>
-          </div>
+          </>
+        }
+        description="Review the scope before removing synchronized visits."
+      >
+        {error && (
+          <Alert variant="destructive" className="error">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <p className="text-sm leading-6 text-muted-foreground">
+          Applies to synchronized history across profiles. Native browser history stays local.
+          Permanent erasure of stored copies is still being implemented in this development build.
+        </p>
+        <div className="actions">
+          <Button disabled={busy} onClick={() => void run(remove)}>
+            Confirm removal
+          </Button>
+          <AlertDialogCancel disabled={busy} onClick={() => setRemoval(undefined)}>
+            Cancel
+          </AlertDialogCancel>
         </div>
-      )}
+      </ReviewDialog>
       {loading ? (
         <p role="status">Searching your local timeline…</p>
       ) : (
@@ -325,10 +355,9 @@ export function HistoryPanel({ status, request, onStatus }: Props) {
       <ol className="history-visits">
         {visits.map((v) => (
           <li key={v.id}>
-            <input
-              type="checkbox"
+            <Checkbox
               checked={selected.includes(v.id)}
-              onChange={() => toggle(v.id)}
+              onCheckedChange={() => toggle(v.id)}
               disabled={busy}
               aria-label={`Select visit to ${v.title || v.url} at ${new Date(v.visited_at).toLocaleString()}`}
             />
@@ -353,14 +382,14 @@ export function HistoryPanel({ status, request, onStatus }: Props) {
         ))}
       </ol>
       {page?.has_more && (
-        <button className="secondary" disabled={busy || loading} onClick={() => void run(loadMore)}>
+        <Button variant="outline" disabled={busy || loading} onClick={() => void run(loadMore)}>
           {page.visits.length ? 'Load older visits' : 'Continue searching older visits'}
-        </button>
+        </Button>
       )}
       <p className="fine">
         Titles reflect what the browser supplied when captured. Remote visits appear here; they keep
         their original timestamps.
       </p>
-    </section>
+    </Card>
   );
 }

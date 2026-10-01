@@ -22,6 +22,10 @@ pnpm format:check
 
 Do browser compatibility tests in disposable profiles. Never point test adapters at the user's normal bookmarks/history. Mark plan gates complete only with recorded evidence.
 
+## Interface conventions
+
+Use the shared dark-only Tailwind theme and shadcn/ui components for every interface. Keep all corners square and use the logo's navy/blue/mint tokens. Import extension source with `@/…`; use `@helium-synk/core` for the shared workspace package. Keep TypeScript, WXT and Vitest alias mappings aligned. See [the design system](docs/design-system.md) for component, font and accessibility conventions.
+
 ## Release procedure
 
 1. Review pending `.changeset/*.md` entries with `pnpm changeset status`.

@@ -1,26 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Restoring your session — Helium Synk</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/32.png" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main>
-      <p class="brand">helium synk</p>
-      <h1>Your session is opening.</h1>
-      <p>
-        This temporary tab helps recover progress if restoration is interrupted. It closes once this
-        window is ready.
-      </p>
-      <p>
-        If it remains, open Helium Synk to review progress. Cancelling keeps the tabs already
-        opened.
-      </p>
-      <a href="/options.html">Open Helium Synk ↗</a>
-    </main>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
   </body>
 </html>
