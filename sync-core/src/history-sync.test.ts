@@ -24,6 +24,59 @@ afterEach(async () => {
 });
 
 describe('local history journal erasure', () => {
+  it('commits remote clear capture cleanup with the durable cursor and rolls it back on failure', async () => {
+    const { a, b } = await pair(),
+      relay = new Relay(),
+      v = await visit(b);
+    const syncA = new SyncCoordinator(a, () => relay),
+      syncB = new SyncCoordinator(b, () => relay);
+    await b.stageHistory({ type: 'visit', visit: v });
+    await syncB.sync();
+    await syncA.sync();
+    const metadata = await b.historyMetadata();
+    await b.historyInbox.add({
+      event: { type: 'visited', item: { id: 'queued', url, title: v.title, lastVisitTime: 2000 } },
+      context: metadata.frontier,
+      barriers: metadata.barriers,
+      incarnation: v.incarnation,
+      created_at: 2000,
+    });
+    await b.historyLookups.add({
+      id: 'saved',
+      job_id: 'event',
+      kind: 'event',
+      item: { id: 'queued', url, title: v.title, lastVisitTime: 2000 },
+      url_tag: v.url_tag,
+      start: 2000,
+      end: 2001,
+      context: metadata.frontier,
+      barriers: metadata.barriers,
+      incarnation: v.incarnation,
+      position: 0,
+      attempts: 0,
+    });
+    await a.stageHistory({
+      type: 'clear',
+      scope: 'url',
+      source_id: v.source_id,
+      url_tag: v.url_tag,
+    });
+    await syncA.sync();
+    const before = await b.exportReplica();
+    const fail = () => {
+      throw new Error('Cleanup storage failure');
+    };
+    b.historyInbox.hook('deleting', fail);
+    await expect(syncB.sync()).rejects.toThrow('Cleanup storage failure');
+    expect(await b.exportReplica()).toEqual(before);
+    b.historyInbox.hook('deleting').unsubscribe(fail);
+    await syncB.sync();
+    expect(await b.historyInbox.count()).toBe(0);
+    expect(await b.historyLookups.count()).toBe(0);
+    expect((await b.state.get('local'))!.cursor).toBe(relay.rows.length);
+    expect(JSON.stringify(await b.exportReplica())).not.toContain(url);
+    expect(JSON.stringify(await b.exportReplica())).not.toContain(v.title);
+  });
   it('does not resurrect a draft when deletion commits while its encryption is in flight', async () => {
     const { a } = await pair(),
       v = await visit(a);

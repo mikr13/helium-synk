@@ -195,6 +195,7 @@ export class SyncCoordinator {
             this.db.historyReplicas,
             this.db.historyErasedDrafts,
             this.db.historyVisits,
+            ...this.db.historyCaptureTables(),
             this.db.state,
             this.db.quarantine,
           ],

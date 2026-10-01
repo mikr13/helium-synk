@@ -1,6 +1,7 @@
 import { SynkDatabase } from './database';
 import { historyGeneration, historyVisitId, type HistoryVisit, type HistoryClear } from './history';
 import { historyUrlTag } from './crypto';
+import { cleanHistoryLookup, unseenHistoryClear } from './history-capture-cleanup';
 import {
   exclusionDomains,
   excludedHistoryUrl,
@@ -320,17 +321,10 @@ export class HistoryCapture {
     tag: string,
     old: HistoryClear[],
   ): boolean {
-    const current = historyGeneration(
-      { visits: {}, barriers, deleted: {}, stale: {}, frontier: {}, logical: 0 },
-      source,
-      tag,
-    );
-    const observed = historyGeneration(
-      { visits: {}, barriers: old, deleted: {}, stale: {}, frontier: {}, logical: 0 },
-      source,
-      tag,
-    );
-    return Object.entries(current).some(([a, c]) => (observed[a] ?? 0) < c);
+    return unseenHistoryClear(barriers, source, tag, old);
+  }
+  private async currentInbox(row: HistoryInbox): Promise<boolean> {
+    return JSON.stringify(await this.db.historyInbox.get(row.id!)) === JSON.stringify(row);
   }
   private async applyBarriers(): Promise<void> {
     const local = (await this.db.state.get('local'))!;
@@ -422,6 +416,7 @@ export class HistoryCapture {
     if (row.event.type === 'removed') {
       if (row.event.all) {
         await this.db.transaction('rw', this.tables(), async () => {
+          if (!(await this.currentInbox(row))) return;
           await this.db.stageHistory({
             type: 'clear',
             scope: 'source',
@@ -448,6 +443,7 @@ export class HistoryCapture {
           throw new Error('Native removal lookup is incomplete. The removal intent remains saved.');
         if (!records.length) {
           await this.db.transaction('rw', this.tables(), async () => {
+            if (!(await this.currentInbox(row))) return;
             await this.db.stageHistory({
               type: 'clear',
               scope: 'url',
@@ -471,10 +467,17 @@ export class HistoryCapture {
               !actual.has(JSON.stringify([v.native_id, v.visited_at])),
           )
           .map((v) => v.id);
-        row = { ...row, removal_ids: missing };
-        await this.db.historyInbox.put(row);
+        const original = row;
+        const saved = await this.db.transaction('rw', this.tables(), async () => {
+          if (!(await this.currentInbox(original))) return false;
+          row = { ...original, removal_ids: missing };
+          await this.db.historyInbox.put(row);
+          return true;
+        });
+        if (!saved) return;
       }
       await this.db.transaction('rw', this.tables(), async () => {
+        if (!(await this.currentInbox(row))) return;
         const ids = row.removal_ids!.slice(0, 800);
         if (ids.length)
           await this.db.stageHistories(
@@ -504,10 +507,22 @@ export class HistoryCapture {
       throw new Error('Native event time is missing; saved intent was retained.');
     const epoch = await this.db.historyUrlEpochs.get(tag);
     if (epoch?.baseline_pending) {
-      await this.ensureUrlBaseline(tag, item);
+      await this.db.transaction('rw', this.tables(), async () => {
+        if (!(await this.currentInbox(row))) return;
+        const current = await this.db.historyMetadata();
+        if (this.unseenClear(current.barriers, local.credentials.device_id, tag, row.barriers))
+          return;
+        await this.ensureUrlBaseline(tag, item);
+      });
       return;
     }
     await this.db.transaction('rw', this.tables(), async () => {
+      if (!(await this.currentInbox(row))) return;
+      const current = await this.db.historyMetadata();
+      if (this.unseenClear(current.barriers, local.credentials.device_id, tag, row.barriers)) {
+        await this.db.historyInbox.delete(row.id!);
+        return;
+      }
       if ((await this.db.historyLookups.count()) >= 20_000)
         throw new Error('History lookup queue is full. Saved events will retry as it drains.');
       await this.db.historyLookups.put({
@@ -530,9 +545,16 @@ export class HistoryCapture {
   }
   private async advanceRemoved(row: HistoryInbox): Promise<void> {
     if (row.event.type !== 'removed') return;
+    if (!(await this.currentInbox(row))) return;
     const next = (row.url_position ?? 0) + 1;
     if (next === row.event.urls.length) await this.db.historyInbox.delete(row.id!);
-    else await this.db.historyInbox.put({ ...row, url_position: next, removal_ids: undefined });
+    else
+      await this.db.historyInbox.put({
+        ...row,
+        event: { ...row.event, urls: row.event.urls.slice(next) },
+        url_position: 0,
+        removal_ids: undefined,
+      });
   }
   private async enqueueLookup(
     scan: HistoryScan,
@@ -568,6 +590,7 @@ export class HistoryCapture {
       const source = (await this.db.state.get('local'))!.credentials.device_id;
       const page = await this.db.localHistoryUrls(source, scan.audit_cursor);
       await this.db.transaction('rw', this.tables(), async () => {
+        if (!(await this.db.historyScans.get(scan.id))) return;
         const meta = await this.db.historyMetadata();
         for (const visit of page.items) {
           if (this.unseenClear(meta.barriers, source, visit.url_tag, scan.barriers)) continue;
@@ -632,14 +655,21 @@ export class HistoryCapture {
           )
         )
           continue;
-        if (scan.kind !== 'baseline' && epoch?.baseline_pending) {
-          await this.ensureUrlBaseline(tag, item);
-          continue;
-        }
         prepared.push({ item, tag, incarnation: epoch?.incarnation ?? scan.incarnation });
       }
     await this.db.transaction('rw', this.tables(), async () => {
-      for (const p of prepared) await this.enqueueLookup(scan, p.item, p.tag, p.incarnation);
+      if (!(await this.db.historyScans.get(scan.id))) return;
+      const meta = await this.db.historyMetadata();
+      for (const p of prepared) {
+        if (this.unseenClear(meta.barriers, local.credentials.device_id, p.tag, scan.barriers))
+          continue;
+        const epoch = await this.db.historyUrlEpochs.get(p.tag);
+        if (scan.kind !== 'baseline' && epoch?.baseline_pending) {
+          await this.ensureUrlBaseline(p.tag, p.item);
+          continue;
+        }
+        await this.enqueueLookup(scan, p.item, p.tag, p.incarnation);
+      }
       await this.db.historyScans.update(scan.id, {
         ranges: scan.ranges.slice(1),
         discovery_done: scan.ranges.length === 1,
@@ -650,6 +680,7 @@ export class HistoryCapture {
   }
   private async finishScan(scan: HistoryScan): Promise<void> {
     await this.db.transaction('rw', this.tables(), async () => {
+      if (!(await this.db.historyScans.get(scan.id))) return;
       if (scan.kind === 'baseline' && scan.url_tag) {
         const epoch = await this.db.historyUrlEpochs.get(scan.url_tag);
         if (epoch?.incarnation === scan.incarnation)
@@ -667,6 +698,7 @@ export class HistoryCapture {
       return;
     }
     if (!lookup.records) {
+      const original = lookup;
       const checked_counter = (await this.db.state.get('local'))!.next_counter;
       const records = await this.native.getVisits(lookup.item.url);
       if (records.length > 100_000)
@@ -677,12 +709,33 @@ export class HistoryCapture {
         throw new Error(
           'An event visit is unavailable in native history. Saved intent will retry.',
         );
-      lookup = { ...lookup, records, checked_counter, error: undefined, retry_at: undefined };
-      await this.db.historyLookups.put(lookup);
+      const saved = await this.db.transaction('rw', this.tables(), async () => {
+        if (
+          JSON.stringify(await this.db.historyLookups.get(original.id)) !== JSON.stringify(original)
+        )
+          return false;
+        const local = (await this.db.state.get('local'))!;
+        const cleaned = cleanHistoryLookup(
+          { ...original, records, checked_counter, error: undefined, retry_at: undefined },
+          await this.db.historyMetadata(),
+          local.credentials.device_id,
+        );
+        if (!cleaned) {
+          await this.db.historyLookups.delete(original.id);
+          return false;
+        }
+        lookup = cleaned;
+        await this.db.historyLookups.put(lookup);
+        return true;
+      });
+      if (!saved) return;
     }
     const local = (await this.db.state.get('local'))!;
     await this.db.transaction('rw', this.tables(), async () => {
       const meta = await this.db.historyMetadata();
+      const current = await this.db.historyLookups.get(lookup.id);
+      if (!current) return;
+      lookup = current;
       if (
         this.unseenClear(
           meta.barriers,
@@ -722,6 +775,7 @@ export class HistoryCapture {
           v.visitId,
           v.visitTime,
         );
+        if (v.erased || meta.deleted[id]) continue;
         const priorSeen = await this.db.historySeen.get(id);
         if (priorSeen && !(lookup.preserve_captured && priorSeen.suppressed)) continue;
         if (lookup.kind !== 'audit')

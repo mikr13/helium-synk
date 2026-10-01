@@ -95,7 +95,8 @@ export interface HistoryLookup {
   context: VectorClock;
   barriers: HistoryClear[];
   incarnation: string;
-  records?: NativeHistoryVisit[];
+  /** Local erased markers retain only identity and must never be recaptured. */
+  records?: (NativeHistoryVisit & { erased?: true })[];
   checked_counter?: number;
   preserve_captured?: boolean;
   removal_ids?: string[];

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SynkDatabase } from './database';
+import Dexie from 'dexie';
+import { historyVisitId } from './history';
 import { generateRecoveryKey, historyUrlTag } from './crypto';
 import { HistoryCapture } from './history-capture';
 import {
@@ -325,7 +327,10 @@ describe('durable native history capture', () => {
     f.native.records.clear();
     await f.capture.capture({ type: 'removed', all: false, urls: [URL_A, URL_B] });
     await f.capture.reconcile();
-    expect((await f.db.historyInbox.toArray())[0]?.url_position).toBe(1);
+    expect((await f.db.historyInbox.toArray())[0]).toMatchObject({
+      event: { urls: [URL_B] },
+      url_position: 0,
+    }); // Completed removal URLs are erased rather than retained before a position cursor.
     expect(await f.db.historyVisits.count()).toBe(1);
     await drain(f.db, f.capture);
     await f.capture.capture({ type: 'removed', all: true, urls: [] });
@@ -540,5 +545,179 @@ describe('durable native history capture', () => {
     expect(
       (await f.db.historySeen.toArray()).find((v) => v.native_id === 'paused')?.suppressed,
     ).toBe(true);
+  });
+  it('erases obsolete inbox, lookup and scan copies in the clear transaction even while capture is paused', async () => {
+    const f = await fixture(1, (n) => n.add(URL_A, 'initial', 999_800));
+    await f.capture.reconcile(); // Persist an import lookup containing a URL/title.
+    const item = f.native.add(URL_B, 'queued', 999_900);
+    await f.capture.capture({ type: 'visited', item });
+    await f.capture.pause();
+    expect(await f.db.historyInbox.count()).toBe(1);
+    await f.db.stageHistory({ type: 'clear', scope: 'all' });
+    expect(await f.db.historyInbox.count()).toBe(0);
+    expect(await f.db.historyLookups.count()).toBe(0);
+    expect(await f.db.historyScans.count()).toBe(0);
+    const exported = JSON.stringify(await f.db.exportReplica());
+    expect(exported).not.toContain(URL_A);
+    expect(exported).not.toContain(URL_B);
+    expect((await f.db.historySetup.get('history'))?.enabled).toBe(false);
+  });
+  it('erases only an obsolete URL generation and preserves unrelated and newly observed work', async () => {
+    const f = await fixture();
+    f.native.fail.add(URL_A);
+    f.native.fail.add(URL_B);
+    await f.capture.capture({ type: 'visited', item: f.native.add(URL_A, 'old', 999_800) });
+    await f.capture.capture({ type: 'visited', item: f.native.add(URL_B, 'other', 999_801) });
+    await f.capture.reconcile();
+    await f.capture.capture({ type: 'visited', item: f.native.add(URL_A, 'queued', 999_802) });
+    await f.capture.capture({ type: 'removed', all: false, urls: [URL_A, URL_B] });
+    const tag = await historyUrlTag(await f.db.ensureHistoryIndexKey(), URL_A);
+    await f.db.stageHistory({ type: 'clear', scope: 'url', source_id: f.source, url_tag: tag });
+    expect((await f.db.historyLookups.toArray()).map((l) => l.item.url)).toEqual([URL_B]);
+    expect(await f.db.historyInbox.toArray()).toMatchObject([
+      { event: { type: 'removed', urls: [URL_B] }, url_position: 0 },
+    ]);
+    expect(JSON.stringify(await f.db.exportReplica())).not.toContain(URL_A);
+    // Capture now observes the URL barrier. Cleanup of older work must not delete this intent.
+    await f.capture.capture({ type: 'visited', item: f.native.add(URL_A, 'new', 999_803) });
+    await f.db.stageHistory({
+      type: 'clear',
+      scope: 'source',
+      source_id: crypto.randomUUID(),
+    });
+    expect((await f.db.historyInbox.toArray()).some((r) => r.event.type === 'visited')).toBe(true);
+    expect(await f.db.historyLookups.count()).toBe(1);
+  });
+  it('scrubs selected native metadata in a cached batch without dropping its unrelated visits or position', async () => {
+    const f = await fixture(1, (n) => {
+      for (let i = 0; i < 201; i++) n.add(URL_A, String(i), 999_000 + i);
+    });
+    await f.capture.reconcile();
+    await f.capture.reconcile(); // First 100 records published; the rest are saved.
+    const before = (await f.db.historyLookups.toArray())[0]!;
+    const erased = (await f.db.queryHistory({ limit: 200 })).visits.find(
+      (v) => v.native_id === '0',
+    )!;
+    await f.db.stageHistory({ type: 'delete', visit_ids: [erased.id] });
+    const cleaned = (await f.db.historyLookups.get(before.id))!;
+    expect(cleaned.position).toBe(100);
+    expect(cleaned.records).toHaveLength(201);
+    expect(cleaned.records![0]).toEqual({
+      visitId: '0',
+      visitTime: 999_000,
+      isLocal: true,
+      erased: true,
+    });
+    expect(cleaned.item.title).toBeUndefined();
+    await drain(f.db, f.capture);
+    expect(await f.db.historyVisits.count()).toBe(200);
+    expect((await f.db.historyMetadata()).deleted[erased.id]).toBeDefined();
+  });
+  it('does not resurrect a cleared lookup when native I/O finishes after deletion', async () => {
+    const f = await fixture();
+    await f.db.historySetup.update('history', { last_scan: f.clock.time });
+    await f.capture.capture({ type: 'visited', item: f.native.add(URL_A, 'racing', 999_900) });
+    const original = f.native.getVisits.bind(f.native);
+    vi.spyOn(f.native, 'getVisits').mockImplementationOnce(async (url) => {
+      const records = await original(url);
+      await f.db.stageHistory({ type: 'clear', scope: 'source', source_id: f.source });
+      expect(await f.db.historyLookups.count()).toBe(0);
+      return records;
+    });
+    await f.capture.reconcile();
+    expect(await f.db.historyLookups.count()).toBe(0);
+    expect(await f.db.historyInbox.count()).toBe(0);
+    expect(await f.db.historyVisits.count()).toBe(0);
+    expect(JSON.stringify(await f.db.exportReplica())).not.toContain(URL_A);
+  });
+  it('does not persist selected native content returned after its deletion proof', async () => {
+    const f = await fixture();
+    await f.db.historySetup.update('history', { last_scan: f.clock.time });
+    const setup = (await f.db.historySetup.get('history'))!;
+    await f.capture.capture({ type: 'visited', item: f.native.add(URL_A, 'racing', 999_900) });
+    const id = historyVisitId(f.source, setup.incarnation, 'racing', 999_900);
+    const original = f.native.getVisits.bind(f.native);
+    vi.spyOn(f.native, 'getVisits').mockImplementationOnce(async (url) => {
+      const records = await original(url);
+      await f.db.stageHistory({ type: 'delete', visit_ids: [id] });
+      return records;
+    });
+    await f.capture.reconcile();
+    expect(await f.db.historyLookups.count()).toBe(0);
+    expect(await f.db.historyVisits.count()).toBe(0);
+    expect(JSON.stringify(await f.db.exportReplica())).not.toContain(URL_A);
+    expect((await f.db.historyMetadata()).deleted[id]).toBeDefined();
+  });
+  it('rechecks a discovery job and URL generations after native search returns', async () => {
+    const f = await fixture(1, (n) => {
+      n.add(URL_A, 'erased', 999_800);
+      n.add(URL_B, 'other', 999_801);
+    });
+    const original = f.native.search.bind(f.native);
+    const tag = await historyUrlTag(await f.db.ensureHistoryIndexKey(), URL_A);
+    vi.spyOn(f.native, 'search').mockImplementationOnce(async (...args) => {
+      const items = await original(...args);
+      await f.db.stageHistory({ type: 'clear', scope: 'url', source_id: f.source, url_tag: tag });
+      return items;
+    });
+    await f.capture.reconcile();
+    expect((await f.db.historyLookups.toArray()).map((l) => l.item.url)).toEqual([URL_B]);
+    const full = await fixture(1, (n) => n.add(URL_A, 'erased', 999_800));
+    const search = full.native.search.bind(full.native);
+    vi.spyOn(full.native, 'search').mockImplementationOnce(async (...args) => {
+      const items = await search(...args);
+      await full.db.stageHistory({ type: 'clear', scope: 'all' });
+      return items;
+    });
+    await full.capture.reconcile();
+    expect(await full.db.historyLookups.count()).toBe(0);
+    expect(JSON.stringify(await full.db.exportReplica())).not.toContain(URL_A);
+  });
+  it('rolls back capture cleanup, deletion proof and counter on a failed cleanup write', async () => {
+    const f = await fixture();
+    await f.capture.capture({ type: 'visited', item: f.native.add(URL_A, 'queued', 999_900) });
+    const state = (await f.db.state.get('local'))!;
+    const before = await f.db.exportReplica();
+    const fail = () => {
+      throw new Error('Storage failure');
+    };
+    f.db.historyInbox.hook('deleting', fail);
+    await expect(f.db.stageHistory({ type: 'clear', scope: 'all' })).rejects.toThrow(
+      'Storage failure',
+    );
+    expect(await f.db.exportReplica()).toEqual(before);
+    expect((await f.db.state.get('local'))!.next_counter).toBe(state.next_counter);
+    f.db.historyInbox.hook('deleting').unsubscribe(fail);
+  });
+  it('upgrades v8 saved capture copies with existing deletion proofs without altering pending ciphertext', async () => {
+    const f = await fixture();
+    await event(f, URL_A, 'old', 999_800);
+    await f.db.flushDrafts();
+    await f.capture.capture({ type: 'visited', item: f.native.add(URL_A, 'queued', 999_900) });
+    const inbox = await f.db.historyInbox.toArray();
+    await f.db.stageHistory({ type: 'clear', scope: 'all' });
+    const legacy = new Dexie(`history-capture-v8-${crypto.randomUUID()}`);
+    legacy
+      .version(8)
+      .stores(
+        Object.fromEntries(
+          f.db.tables.map((t) => [
+            t.name,
+            [t.schema.primKey.src, ...t.schema.indexes.map((i) => i.src)].join(','),
+          ]),
+        ),
+      );
+    for (const table of f.db.tables) await legacy.table(table.name).bulkPut(await table.toArray());
+    // The old schema retained these plaintext jobs after the clear.
+    await legacy.table('historyInbox').bulkPut(inbox);
+    const bytes = await legacy.table('outbox').toArray();
+    const state = await legacy.table('state').get('local');
+    legacy.close();
+    const upgraded = new SynkDatabase(legacy.name);
+    dbs.push(upgraded);
+    expect(await upgraded.historyInbox.count()).toBe(0);
+    expect(await upgraded.outbox.toArray()).toEqual(bytes);
+    expect(await upgraded.state.get('local')).toEqual(state);
+    expect(JSON.stringify(await upgraded.exportReplica())).not.toContain(URL_A);
   });
 });

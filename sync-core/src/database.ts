@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import { cleanHistoryCapture } from './history-capture-cleanup';
 import type { PairingCandidate } from './pairing';
 import {
   parseKeyRing,
@@ -230,6 +231,12 @@ export class SynkDatabase extends Dexie {
             await tx.table('drafts').delete(draft.operation_id);
           }
         }
+      });
+    this.version(9)
+      .stores({})
+      .upgrade(async (tx) => {
+        const metadata = await tx.table('historyReplicas').get('history');
+        if (metadata) await cleanHistoryCapture(tx, metadata.value);
       });
   }
   async enroll(
@@ -601,6 +608,7 @@ export class SynkDatabase extends Dexie {
     );
     const { visits: _visits, ...value } = projection;
     await this.historyReplicas.put({ id: 'history', value });
+    await cleanHistoryCapture(Dexie.currentTransaction!, value);
     // Suppressed visit content is removed locally, while ciphertext remains immutable until relay purge.
     for (const record of await this.operations
       .where('envelope.domain')
@@ -643,6 +651,7 @@ export class SynkDatabase extends Dexie {
         this.historyReplicas,
         this.historyVisits,
         this.historyErasedDrafts,
+        ...this.historyCaptureTables(),
       ],
       async () => {
         const local = await this.state.get('local');
@@ -693,6 +702,9 @@ export class SynkDatabase extends Dexie {
         return drafts.map((d) => d.operation_id);
       },
     );
+  }
+  historyCaptureTables() {
+    return [this.historyInbox, this.historyLookups, this.historyScans, this.historyScanUrls];
   }
   async localHistoryUrls(source: string, after?: string) {
     const keys = await this.historyVisits
