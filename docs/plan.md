@@ -16,7 +16,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
 | Logo and favicon                                                   | Complete branding implementation checkpoint          | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
 | Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
-| History plaintext/ciphertext erasure                               | In progress: journal plaintext cleanup implemented   | Section 7                                                           |
+| History plaintext/ciphertext erasure                               | In progress: journal plaintext cleanup implemented   | `884a2a3`; 185 TS, 11 real-process tests; full purge pending        |
 | Local budgets, retention, full-scale journal performance, recovery | Pending                                              | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                | Disposable profiles only                                            |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing      | Section 10 onward                                                   |
@@ -183,6 +183,8 @@ Checkpoint commit: `93bea2c feat(extension): adopt dark Tailwind and shadcn UI`.
 See [design-system.md](design-system.md) for shared theme/component/import conventions and [progress.md](progress.md) for evidence. Existing history erasure, storage/scale/recovery and native milestone gates remain open. No production or release gate is completed by this UI checkpoint.
 
 ## History journal plaintext cleanup checkpoint — 2026-10-01
+
+Checkpoint commit: `884a2a3 feat(history): erase suppressed journal plaintext`.
 
 - [x] Replace suppressed encrypted-history journal payloads with local suppression receipts; retain exact envelopes and deletion/clear proofs.
 - [x] Cancel suppressed unencrypted drafts into IndexedDB v8 receipts while preserving operation headers, revisions and reserved author counters.
