@@ -13,7 +13,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass           | `a0429bd` and earlier checkpoints; native gates open                |
 | Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint              | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
 | Single-use private pairing and durable enrollment                  | Complete implementation checkpoint              | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
-| Future-data key rotation / compromised-installation recovery       | Protocol verified; client/UI pending            | 158 TS, 31 Rust, 10 real-process tests; section 8                   |
+| Future-data key rotation / compromised-installation recovery       | Protocol verified; client/UI pending            | `a437f25`; 158 TS, 31 Rust, 10 real-process tests; section 8        |
 | History plaintext/ciphertext erasure                               | Pending                                         | Section 7                                                           |
 | Local budgets, retention, full-scale journal performance, recovery | Pending                                         | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                           | Disposable profiles only                                            |
@@ -135,7 +135,7 @@ Checkpoint commit: `4d34eed feat(security): add single-use durable profile pairi
 - [ ] Integrate safe outbox/draft rekey, versioned private pairing/recovery bundles and device-removal/retry controls.
 - [ ] Complete the future-data rotation product gate and joint native/recovery acceptance.
 
-Evidence: 158 TypeScript, 31 Rust and 10 real-process tests plus WXT/typecheck, rustfmt/clippy and format/version checks. The real process discards a committed rotation reply, restarts, excludes the removed installation and proves safe offline rekey eligibility. See [key-rotation.md](key-rotation.md) for the exact protocol and its relay/membership trust boundary. Ordinary extension use stays at epoch 1; rotation is not yet exposed to profiles. No whole milestone exit gate is complete.
+Checkpoint commit: `a437f25 feat(security): add recipient key rotation protocol`. Evidence: 158 TypeScript, 31 Rust and 10 real-process tests plus WXT/typecheck, rustfmt/clippy and format/version checks. The real process discards a committed rotation reply, restarts, excludes the removed installation and proves safe offline rekey eligibility. See [key-rotation.md](key-rotation.md) for the exact protocol and its relay/membership trust boundary. Ordinary extension use stays at epoch 1; rotation is not yet exposed to profiles. No whole milestone exit gate is complete.
 
 ## 1. Product requirements and boundaries
 
