@@ -102,6 +102,8 @@ At that protocol checkpoint the client lifecycle and controls were pending and o
 
 ## Client key lifecycle checkpoint
 
+`3d1e9f3 feat(security): persist client key lifecycle and recovery` completes this implementation checkpoint.
+
 IndexedDB schema 7 adds dedicated root/identity and rotation-proposal stores. Independent private wrapping identity/proof state commits before registration; the exact random root/recipient proposal commits before rotation HTTP. Refresh runs before pull/push, validates account/server/author metadata, adopts authenticated roots/current epoch atomically and decrypts historical ciphertext using its original root. Missing local author state or a lost/conflicting private identity pauses safely rather than cloning counters. Normal sync resumes a still-current proposal; superseded proposals require explicit review/replacement.
 
 For old queued ciphertext, complete relay proofs separate immutable committed envelopes from proven missing records. Only missing records are re-encrypted with the current root/fresh nonce; journal/outbox replacement commits together with epoch/record guards and unchanged logical identity/counter/payload. Capture drafts use the current epoch at preparation. The history-index key remains stable. Version-2 private pairing/recovery bundles retain the complete historical root ring; fresh recovery requires a new CLI credential/wrapping identity and starts a separate author at counter 1. Ordinary exports/status exclude private roots, wrapping identities, proposal secrets and pending pairing material.
