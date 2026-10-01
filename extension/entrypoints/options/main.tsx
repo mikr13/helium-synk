@@ -79,7 +79,7 @@ function App() {
     <div className="shell">
       <aside>
         <div className="brand">
-          <span className="brand-mark">h.</span>
+          <img className="brand-mark" src="/icons/128.png" alt="" width="55" height="55" />
           <span>
             helium
             <br />

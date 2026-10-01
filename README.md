@@ -1,5 +1,7 @@
 # Helium Synk
 
+<img src="extension/public/icons/128.png" alt="Helium Synk" width="80" height="80" />
+
 Private browser sync for Helium, built with WXT/TypeScript and a self-hosted Rust/Axum/SQLite relay on a Mac Mini behind Tailscale.
 
 The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. It also supports **opt-in session capture and restoration**: source-owned current/closed/previous snapshots, encrypted multipart transport and a durable restoration journal. It also supports **opt-in history capture and local search**, with original timestamps, profile filters and logical removal. The dashboard also supports private pairing, installation removal with future-content key rotation, durable rotation retries and private recovery bundles. Permanent history erasure remains pending. Production hosting and real Helium lifecycle/API acceptance remain pending.

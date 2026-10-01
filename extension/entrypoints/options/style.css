@@ -71,17 +71,11 @@ aside {
   margin-bottom: 70px;
 }
 .brand-mark {
-  font:
-    38px Georgia,
-    serif;
-  color: #f4f3ed;
-  background: var(--ink);
-  border-radius: 50%;
   width: 55px;
   height: 55px;
-  display: grid;
-  place-items: center;
-  padding-bottom: 6px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .brand strong {
   font-size: 23px;
@@ -381,7 +375,6 @@ footer p {
   .brand-mark {
     width: 40px;
     height: 40px;
-    font-size: 29px;
   }
   main {
     padding: 26px;

@@ -7,7 +7,16 @@ export default defineConfig({
     description:
       'Private encrypted browser sync with durable offline bookmarks, sessions and history.',
     minimum_chrome_version: '134',
-    action: { default_title: 'Open Helium Synk' },
+    icons: {
+      16: 'icons/16.png',
+      32: 'icons/32.png',
+      48: 'icons/48.png',
+      128: 'icons/128.png',
+    },
+    action: {
+      default_title: 'Open Helium Synk',
+      default_icon: { 16: 'icons/16.png', 32: 'icons/32.png' },
+    },
     permissions: [
       'storage',
       'unlimitedStorage',

@@ -14,6 +14,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                   | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
 | Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                   | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
 | Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
+| Logo and favicon                                                   | Complete branding implementation checkpoint          | PNG/ICO assets; typechecks/build and synthetic UI pass              |
 | History plaintext/ciphertext erasure                               | Pending                                              | Section 7                                                           |
 | Local budgets, retention, full-scale journal performance, recovery | Pending                                              | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                | Disposable profiles only                                            |
@@ -153,6 +154,15 @@ Checkpoint commit: `3d1e9f3 feat(security): persist client key lifecycle and rec
 - [ ] Complete older-backup/server-loss recovery, history erasure, local budgets/retention and scale gates.
 
 Evidence: 176 TypeScript, 31 Rust and 11 real-process tests, production WXT/typechecks, rustfmt/clippy and format/version/Changeset checks. The new real-process flow drops a committed rotation reply, reopens both sides, preserves immutable historical ciphertext, re-encrypts missing offline work in all four domains, retries pairing across another rotation and recovers roots 1–4 into a fresh author. The synthetic mobile UI had no overflow or console warnings/errors. See [key-rotation.md](key-rotation.md) and [progress.md](progress.md); native acceptance and every whole milestone exit gate remain open.
+
+## Branding checkpoint — 2026-10-01
+
+- [x] Derive a Helium Synk logo from the supplied official icon with a mint synchronization ring and transparent background.
+- [x] Package 16/32/48/128/256/512 px PNGs and a multi-size favicon; wire dashboard, toolbar/install icons and both extension page favicons.
+- [x] Verify production asset references/dimensions, typechecks/WXT build and actual options rendering with synthetic responses at desktop/390 px.
+- [ ] Verify toolbar, extension listing and tab favicon rendering during joint native Helium acceptance.
+
+The [branding record](branding.md) preserves the source, assets and exact built-in image-generation prompt. Existing goal gates remain open; this checkpoint does not complete M7 or the production release.
 
 ## 1. Product requirements and boundaries
 
@@ -356,7 +366,7 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 - [x] Specify deterministic handling of missing/deleted parents and invalid placement.
 - [x] Prove convergence from the same operation set regardless of arrival order.
 
-**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 151 TypeScript tests, 23 relay tests and 9 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
+**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 176 TypeScript tests, 31 relay tests and 11 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
 
 ### Browser integration and onboarding
 
