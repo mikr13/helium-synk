@@ -1,6 +1,6 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Implementation active through sections 1–9; bookmark and session adapters/transport implemented; native Helium acceptance, history and security/server hardening pending.
+**Status:** Implementation active through sections 1–9; bookmark/session/history capture and transport implemented; native Helium acceptance, history erasure/scale and security/server hardening pending.
 
 **Updated:** 2026-10-01  
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
@@ -15,15 +15,15 @@
 - Record evidence beside completed gates: test results, relevant commits, or manual verification notes.
 - If an item is blocked, add a short `Blocked: ...` note below it and continue independent work.
 
-| Milestone                                        | Status                 | Depends on | Exit evidence                                                 |
-| ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------- |
-| M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 106 TS + 10 relay + 4 cross-stack tests; native gates pending |
-| M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                 |
-| M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending      |
-| M5 — Cross-device history and deletion           | In progress            | M2         | Nine model tests; native/transport/purge gates pending        |
-| M6 — Production hosting and recovery             | Planned                | M3–M5      | —                                                             |
-| M7 — Product polish and release                  | Planned                | M6         | —                                                             |
+| Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
+| ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
+| M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 135 TS + 10 relay + 5 cross-stack tests; native gates pending       |
+| M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
+| M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
+| M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
+| M6 — Production hosting and recovery             | Planned                | M3–M5      | —                                                                   |
+| M7 — Product polish and release                  | Planned                | M6         | —                                                                   |
 
 ## Initial implementation checkpoint — 2026-10-01
 
@@ -56,7 +56,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 106 TypeScript, 10 Rust and 4 real-relay integration tests.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 135 TypeScript, 10 Rust and 5 real-relay integration tests.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -70,14 +70,17 @@ The checked implementation items use compiled code and simulated browser-port ev
 
 The [session contract](sessions.md) records supported behavior and recovery limits. Implementation evidence is separate from the live acceptance items in section 6 and M4; no whole milestone exit gate is complete.
 
-## History model checkpoint — 2026-10-01
+## History implementation checkpoint — 2026-10-01
 
 - [x] Define individual visit identities, original timestamps, local queries and permanent selected-record deletion markers.
 - [x] Verify concurrent global/source/URL generation barriers, delayed uploads and prevention of retagged re-import across delivery permutations.
-- [ ] Implement native capture/reconciliation baselines, history storage/transport and the indexed dashboard.
+- [x] Verify eight history pipeline/index/migration tests and 21 native capture/audit tests, including pause boundaries and captured-batch preservation.
+- [x] Verify original visit timestamps and stale-upload suppression across real relay/client restart; exercise synthetic history UI at desktop and 390 px.
+- [x] Implement native capture/reconciliation baselines, history storage/transport and the indexed dashboard; verify through simulated ports and the real relay.
+- [ ] Verify full-scale journal behavior and real Helium history/event/lifecycle/clock behavior.
 - [ ] Coordinate logical removal with local content removal, ciphertext purge and backup-retention behavior.
 
-These are reference-model checks only. The [history contract](history.md) records remaining work; browser history is not collected yet and section 7/M5 acceptance gates remain open.
+These checks use simulated native ports, synthetic UI responses and the real relay. History collection is opt-in in the development build. The [history contract](history.md) records the remaining erasure/scale/live acceptance work; section 7/M5 exit gates remain open.
 
 ## 1. Product requirements and boundaries
 
@@ -281,7 +284,7 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 - [x] Specify deterministic handling of missing/deleted parents and invalid placement.
 - [x] Prove convergence from the same operation set regardless of arrival order.
 
-**Bookmark model evidence (2026-10-01):** Causal merge and encrypted journal are implemented; 41 TypeScript tests, 8 relay tests, and 3 real-process integration tests pass. Native mappings, capture, onboarding and application below remain pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
+**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 135 TypeScript tests, 10 relay tests and 5 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
 
 ### Browser integration and onboarding
 

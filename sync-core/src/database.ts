@@ -1,6 +1,28 @@
 import Dexie, { type Table } from 'dexie';
+import type {
+  HistorySetup,
+  HistoryInbox,
+  HistorySeen,
+  HistoryScan,
+  HistoryLookup,
+  HistoryUrlEpoch,
+  HistoryScanUrl,
+} from './history-native';
 import type { SessionRestoreJob } from './session-restore';
-import { encryptDiagnostic, encryptPayload, validateRecoveryKey } from './crypto';
+import {
+  encryptDiagnostic,
+  encryptPayload,
+  validateRecoveryKey,
+  deriveHistoryIndexKey,
+} from './crypto';
+import {
+  projectHistory,
+  validHistoryVisitId,
+  type HistoryOperation,
+  type HistoryAction,
+  type HistoryProjection,
+  type HistoryVisit,
+} from './history';
 import {
   parseCredentials,
   MAX_BATCH,
@@ -22,7 +44,7 @@ import {
   type SessionProjection,
 } from './sessions';
 import { validatePayload, type EnvelopeHeader } from './payload';
-import type { VectorClock, Revision } from './revision';
+import { canonicalUuid, type VectorClock, type Revision } from './revision';
 import type {
   SessionSetup,
   SessionIdentity,
@@ -46,6 +68,8 @@ export interface LocalState {
   last_synced?: string;
   logical?: number;
   context?: VectorClock;
+  history_index_key?: string;
+  history_logical?: number;
 }
 export interface LocalRecord {
   operation_id: string;
@@ -56,13 +80,13 @@ export interface LocalRecord {
 export interface StoredOperation {
   operation_id: string;
   envelope: Envelope;
-  payload: BookmarkOperation | SessionPart;
+  payload: BookmarkOperation | SessionPart | HistoryOperation;
   sequence?: number;
 }
 export interface DraftOperation {
   operation_id: string;
   header: EnvelopeHeader;
-  payload: BookmarkOperation | SessionPart;
+  payload: BookmarkOperation | SessionPart | HistoryOperation;
 }
 export interface Replica {
   domain: 'bookmark';
@@ -92,6 +116,15 @@ export class SynkDatabase extends Dexie {
   bookmarkBindings!: Table<BookmarkBinding, string>;
   bookmarkInbox!: Table<BookmarkInbox, number>;
   bookmarkEffects!: Table<BookmarkEffect, string>;
+  historyReplicas!: Table<{ id: 'history'; value: Omit<HistoryProjection, 'visits'> }, string>;
+  historyVisits!: Table<HistoryVisit & { operation_id: string }, string>;
+  historySetup!: Table<HistorySetup, string>;
+  historyInbox!: Table<HistoryInbox, number>;
+  historySeen!: Table<HistorySeen, string>;
+  historyScans!: Table<HistoryScan, string>;
+  historyLookups!: Table<HistoryLookup, string>;
+  historyUrlEpochs!: Table<HistoryUrlEpoch, string>;
+  historyScanUrls!: Table<HistoryScanUrl, string>;
   private encrypting?: Promise<void>;
 
   constructor(name = 'helium-synk-v1') {
@@ -122,16 +155,36 @@ export class SynkDatabase extends Dexie {
       sessionWindows: 'runtime_id',
       sessionClosedSeen: 'id, fingerprint',
     });
+    this.version(5).stores({
+      historyReplicas: 'id',
+      historySetup: 'id',
+      historyInbox: '++id',
+      historySeen: 'id, url_tag',
+      historyScans: 'id, created_at',
+      historyLookups: 'id, job_id',
+      historyUrlEpochs: 'url_tag',
+      historyScanUrls: 'id, job_id',
+      historyVisits:
+        'id, [visited_at+id], [source_id+visited_at+id], [source_id+url_tag], url_tag, source_id',
+    });
   }
-  async enroll(credentials: Credentials, recoveryKey: string): Promise<void> {
+  async enroll(
+    credentials: Credentials,
+    recoveryKey: string,
+    historyIndexKey?: string,
+  ): Promise<void> {
     const parsed = parseCredentials(credentials);
     validateRecoveryKey(recoveryKey);
+    const indexKey =
+      historyIndexKey ?? (await deriveHistoryIndexKey(recoveryKey, parsed.account_id));
+    validateRecoveryKey(indexKey);
     await this.transaction('rw', this.state, async () => {
       if (await this.state.get('local')) throw new Error('This profile is already enrolled.');
       await this.state.add({
         id: 'local',
         credentials: parsed,
         recovery_key: recoveryKey,
+        history_index_key: indexKey,
         next_counter: 1,
         cursor: 0,
         logical: 0,
@@ -300,7 +353,12 @@ export class SynkDatabase extends Dexie {
     if (!local) return;
     const drafts = await this.drafts.orderBy('header.counter').limit(MAX_BATCH).toArray();
     for (const draft of drafts) {
-      const envelope = await encryptPayload(local.recovery_key, draft.header, draft.payload);
+      const envelope = await encryptPayload(
+        local.recovery_key,
+        draft.header,
+        draft.payload,
+        local.history_index_key,
+      );
       await this.transaction('rw', [this.drafts, this.operations, this.outbox], async () => {
         // Another worker/database instance may have committed ciphertext while encryption was running.
         if (!(await this.drafts.get(draft.operation_id))) return;
@@ -392,6 +450,212 @@ export class SynkDatabase extends Dexie {
       },
     );
   }
+  async ensureHistoryIndexKey(): Promise<string> {
+    const local = await this.state.get('local');
+    if (!local) throw new Error('Connect this device first.');
+    if (local.history_index_key) return local.history_index_key;
+    const key = await deriveHistoryIndexKey(local.recovery_key, local.credentials.account_id);
+    return this.transaction('rw', this.state, async () => {
+      const current = (await this.state.get('local'))!;
+      if (current.history_index_key) return current.history_index_key;
+      await this.state.update('local', { history_index_key: key });
+      return key;
+    });
+  }
+  async historyOperations(): Promise<HistoryOperation[]> {
+    return this.transaction('r', [this.operations, this.drafts], async () => [
+      ...(await this.operations.where('envelope.domain').equals('history').toArray()).map(
+        (o) => o.payload as HistoryOperation,
+      ),
+      ...(await this.drafts.where('header.domain').equals('history').toArray()).map(
+        (o) => o.payload as HistoryOperation,
+      ),
+    ]);
+  }
+  async historyMetadata(): Promise<Omit<HistoryProjection, 'visits'>> {
+    const old = await this.historyReplicas.get('history');
+    if (old) return old.value;
+    const { visits: _visits, ...metadata } = projectHistory([]);
+    return metadata;
+  }
+  async historyProjection(): Promise<HistoryProjection> {
+    return this.transaction('r', [this.historyReplicas, this.historyVisits], async () => ({
+      ...(await this.historyMetadata()),
+      visits: Object.fromEntries((await this.historyVisits.toArray()).map((v) => [v.id, v])),
+    }));
+  }
+  /** Caller transaction includes history tables. Rewrite only changed rows, keeping the timeline index small. */
+  async persistHistory(projection: HistoryProjection): Promise<void> {
+    const existing = new Map((await this.historyVisits.toArray()).map((v) => [v.id, v]));
+    await this.historyVisits.bulkDelete(
+      [...existing.keys()].filter((id) => !projection.visits[id]),
+    );
+    await this.historyVisits.bulkPut(
+      Object.values(projection.visits).filter(
+        (v) => JSON.stringify(existing.get(v.id)) !== JSON.stringify(v),
+      ),
+    );
+    const { visits: _visits, ...value } = projection;
+    await this.historyReplicas.put({ id: 'history', value });
+  }
+  async stageHistory(action: HistoryAction, observedContext?: VectorClock): Promise<string> {
+    return (await this.stageHistories([action], observedContext))[0]!;
+  }
+  async stageHistories(actions: HistoryAction[], observedContext?: VectorClock): Promise<string[]> {
+    if (!actions.length || actions.length > MAX_BATCH)
+      throw new Error('Invalid history capture batch.');
+    return this.transaction(
+      'rw',
+      [this.state, this.operations, this.drafts, this.historyReplicas, this.historyVisits],
+      async () => {
+        const local = await this.state.get('local');
+        if (!local) throw new Error('Connect this device first.');
+        const old = await this.historyMetadata();
+        let counter = local.next_counter,
+          logical = Math.max(local.history_logical ?? 0, old.logical);
+        const context = { ...(observedContext ?? old.frontier) },
+          drafts: DraftOperation[] = [];
+        for (const action of actions) {
+          if (counter >= Number.MAX_SAFE_INTEGER) throw new Error('Device counter exhausted.');
+          logical = Math.max(logical + 1, counter);
+          if (!Number.isSafeInteger(logical)) throw new Error('History logical clock exhausted.');
+          const operation_id = crypto.randomUUID(),
+            revision = {
+              author: local.credentials.device_id,
+              counter: counter++,
+              logical,
+              context: { ...context },
+            };
+          const payload: HistoryOperation = {
+            kind: 'history',
+            schema_version: 1,
+            operation_id,
+            revision,
+            action: structuredClone(action),
+          };
+          const header: EnvelopeHeader = {
+            protocol_version: 1,
+            operation_id,
+            account_id: local.credentials.account_id,
+            device_id: revision.author,
+            counter: revision.counter,
+            domain: 'history',
+            key_epoch: 1,
+          };
+          validatePayload(payload, header);
+          drafts.push({ operation_id, header, payload });
+          context[revision.author] = revision.counter;
+        }
+        const projection = projectHistory([
+          ...(await this.historyOperations()),
+          ...drafts.map((d) => d.payload as HistoryOperation),
+        ]);
+        await this.drafts.bulkAdd(drafts);
+        await this.persistHistory(projection);
+        await this.state.update('local', { next_counter: counter, history_logical: logical });
+        return drafts.map((d) => d.operation_id);
+      },
+    );
+  }
+  async localHistoryUrls(source: string, after?: string) {
+    const keys = await this.historyVisits
+      .where('[source_id+url_tag]')
+      .between([source, after ?? Dexie.minKey], [source, Dexie.maxKey], !after, true)
+      .limit(51)
+      .uniqueKeys();
+    const tags = keys.map((key) => {
+      if (!Array.isArray(key) || typeof key[1] !== 'string')
+        throw new Error('Invalid local history URL index.');
+      return key[1];
+    });
+    const items: (HistoryVisit & { operation_id: string })[] = [];
+    for (const tag of tags.slice(0, 50)) {
+      const visit = await this.historyVisits
+        .where('[source_id+url_tag]')
+        .equals([source, tag])
+        .first();
+      if (visit) items.push(visit);
+    }
+    return { items, has_more: tags.length > 50, cursor: tags[Math.min(50, tags.length) - 1] };
+  }
+  async historySources(): Promise<{ id: string; name: string }[]> {
+    const ids = await this.historyVisits.orderBy('source_id').uniqueKeys();
+    const sources: { id: string; name: string }[] = [];
+    for (const id of ids.slice(0, 256)) {
+      const visit = await this.historyVisits.where('source_id').equals(id).first();
+      if (visit) sources.push({ id: visit.source_id, name: visit.source_name });
+    }
+    return sources;
+  }
+  /** Bounded indexed scan. Resume after the last examined row, including rows excluded by filters. */
+  async queryHistory(
+    query: {
+      text?: string;
+      source_id?: string;
+      start_time?: number;
+      end_time?: number;
+      limit?: number;
+      cursor?: { visited_at: number; id: string };
+    } = {},
+  ) {
+    const limit = query.limit ?? 100,
+      start = query.start_time ?? 0,
+      end = query.end_time ?? 8_640_000_000_000_000;
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 200 ||
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start < 0 ||
+      end < start ||
+      end > 8_640_000_000_000_000 ||
+      (query.text !== undefined && (typeof query.text !== 'string' || query.text.length > 1000)) ||
+      (query.source_id !== undefined && !canonicalUuid(query.source_id)) ||
+      (query.cursor &&
+        (!Number.isFinite(query.cursor.visited_at) ||
+          query.cursor.visited_at < start ||
+          query.cursor.visited_at > end ||
+          !validHistoryVisitId(query.cursor.id)))
+    )
+      throw new Error('Invalid history query.');
+    if (start === end) return { visits: [], examined: 0, has_more: false, cursor: undefined };
+    if (query.source_id && query.cursor && !query.cursor.id.startsWith(query.source_id + '/'))
+      throw new Error('History cursor does not match its source.');
+    const prefix = query.source_id ? [query.source_id] : [];
+    const lower = [...prefix, start, Dexie.minKey],
+      upper = query.cursor
+        ? [...prefix, query.cursor.visited_at, query.cursor.id]
+        : [...prefix, end, query.end_time === undefined ? Dexie.maxKey : Dexie.minKey];
+    const rows = await this.historyVisits
+      .where(query.source_id ? '[source_id+visited_at+id]' : '[visited_at+id]')
+      .between(lower, upper, true, !query.cursor && query.end_time === undefined)
+      .reverse()
+      .limit(2000)
+      .toArray();
+    const text = (query.text ?? '').trim().toLowerCase(),
+      visits = [];
+    let examined = 0;
+    for (const row of rows) {
+      examined++;
+      if (
+        !text ||
+        row.url.toLowerCase().includes(text) ||
+        row.title.toLowerCase().includes(text) ||
+        row.source_name.toLowerCase().includes(text)
+      )
+        visits.push(row);
+      if (visits.length === limit) break;
+    }
+    const last = rows[examined - 1],
+      has_more = examined < rows.length || rows.length === 2000;
+    return {
+      visits,
+      examined,
+      has_more,
+      cursor: has_more && last ? { visited_at: last.visited_at, id: last.id } : undefined,
+    };
+  }
   async bookmarkProjection(): Promise<BookmarkProjection> {
     return (await this.replicas.get('bookmark'))?.value ?? projectBookmarks([]);
   }
@@ -419,6 +683,15 @@ export class SynkDatabase extends Dexie {
         this.sessionWindows,
         this.sessionClosedSeen,
         this.sessionRestores,
+        this.historyReplicas,
+        this.historyVisits,
+        this.historySetup,
+        this.historyInbox,
+        this.historySeen,
+        this.historyScans,
+        this.historyLookups,
+        this.historyUrlEpochs,
+        this.historyScanUrls,
         this.bookmarkSetup,
         this.bookmarkBindings,
         this.bookmarkInbox,
@@ -428,7 +701,12 @@ export class SynkDatabase extends Dexie {
         const state = await this.state.get('local');
         if (!state) throw new Error('Connect this device first.');
         // No API token or root key in ordinary logical-state exports. Recovery-key export is separate.
-        const { credentials, recovery_key: _key, ...progress } = state;
+        const {
+          credentials,
+          recovery_key: _key,
+          history_index_key: _indexKey,
+          ...progress
+        } = state;
         return {
           format: 'helium-synk-replica',
           version: 1,
@@ -447,6 +725,15 @@ export class SynkDatabase extends Dexie {
           session_windows: await this.sessionWindows.toArray(),
           session_closed_seen: await this.sessionClosedSeen.toArray(),
           session_restores: await this.sessionRestores.toArray(),
+          history_metadata: await this.historyReplicas.toArray(),
+          history_visits: await this.historyVisits.toArray(),
+          history_setup: await this.historySetup.toArray(),
+          history_inbox: await this.historyInbox.toArray(),
+          history_seen: await this.historySeen.toArray(),
+          history_scans: await this.historyScans.toArray(),
+          history_lookups: await this.historyLookups.toArray(),
+          history_url_epochs: await this.historyUrlEpochs.toArray(),
+          history_scan_urls: await this.historyScanUrls.toArray(),
           bookmark_setup: await this.bookmarkSetup.toArray(),
           bookmark_bindings: await this.bookmarkBindings.toArray(),
           bookmark_inbox: await this.bookmarkInbox.toArray(),

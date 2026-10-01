@@ -10,7 +10,7 @@ export interface Envelope {
   account_id: string;
   device_id: string;
   counter: number;
-  domain: 'diagnostic' | 'bookmark' | 'session';
+  domain: 'diagnostic' | 'bookmark' | 'session' | 'history';
   key_epoch: 1;
   nonce: string;
   ciphertext: string;
@@ -54,7 +54,7 @@ export function validateEnvelope(e: Envelope): void {
   if (
     !e ||
     e.protocol_version !== 1 ||
-    !['diagnostic', 'bookmark', 'session'].includes(e.domain) ||
+    !['diagnostic', 'bookmark', 'session', 'history'].includes(e.domain) ||
     e.key_epoch !== 1 ||
     !isUuid(e.operation_id) ||
     !isUuid(e.account_id) ||

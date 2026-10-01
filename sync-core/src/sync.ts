@@ -1,4 +1,5 @@
 import { decryptPayload } from './crypto';
+import { projectHistory } from './history';
 import { projectSessions } from './sessions';
 import { projectBookmarks } from './bookmarks';
 import { type LocalState, type LocalRecord, type StoredOperation, SynkDatabase } from './database';
@@ -111,7 +112,11 @@ export class SyncCoordinator {
           throw new Error('Invalid record sequence or account.');
         previous = entry.sequence;
         try {
-          const payload = await decryptPayload(state.recovery_key, entry.envelope);
+          const payload = await decryptPayload(
+            state.recovery_key,
+            entry.envelope,
+            state.history_index_key,
+          );
           const record = {
             operation_id: entry.envelope.operation_id,
             envelope: entry.envelope,
@@ -147,6 +152,8 @@ export class SyncCoordinator {
             this.db.drafts,
             this.db.replicas,
             this.db.sessionReplicas,
+            this.db.historyReplicas,
+            this.db.historyVisits,
             this.db.state,
             this.db.quarantine,
           ],
@@ -169,10 +176,17 @@ export class SyncCoordinator {
             for (const record of operations)
               if (record.payload.kind === 'session')
                 sessionsById.set(record.operation_id, record.payload);
-            let projection, sessions;
+            const historyById = new Map(
+              (await this.db.historyOperations()).map((op) => [op.operation_id, op]),
+            );
+            for (const record of operations)
+              if (record.payload.kind === 'history')
+                historyById.set(record.operation_id, record.payload);
+            let projection, sessions, history;
             try {
               projection = projectBookmarks([...byId.values()]);
               sessions = projectSessions([...sessionsById.values()]);
+              history = projectHistory([...historyById.values()]);
               const counters = new Map<string, string>();
               const headers = [
                 ...(await this.db.records.toArray()).map((r) => r.envelope),
@@ -197,6 +211,7 @@ export class SyncCoordinator {
             await this.db.operations.bulkPut(operations);
             await this.db.replicas.put({ domain: 'bookmark', value: projection });
             await this.db.sessionReplicas.put({ id: 'session', value: sessions });
+            await this.db.persistHistory(history);
             await this.db.quarantine.bulkDelete(
               [...records, ...operations].map((r) => r.operation_id),
             );

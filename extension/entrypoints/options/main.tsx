@@ -6,6 +6,7 @@ import type { Reply, Request, Status } from '../../lib/messages';
 import './style.css';
 import { BookmarkPanel, downloadJson } from './bookmarks';
 import { SessionPanel } from './sessions';
+import { HistoryPanel } from './history';
 
 async function request(message: Request): Promise<Reply & { ok: true }> {
   const response = (await browser.runtime.sendMessage(message)) as Reply;
@@ -96,9 +97,9 @@ function App() {
         <a className="nav" href="#sessions">
           Sessions <small>Open</small>
         </a>
-        <div className="nav">
-          History <small>Planned</small>
-        </div>
+        <a className="nav" href="#history">
+          History <small>Search</small>
+        </a>
         <div className="aside-footer">
           <span className="dot" /> Local first.
           <br />
@@ -306,14 +307,14 @@ function App() {
           </section>
         )}
         {status?.enrolled && (
-          <SessionPanel status={status} request={request} onStatus={setStatus} />
+          <>
+            <SessionPanel status={status} request={request} onStatus={setStatus} />
+            <HistoryPanel status={status} request={request} onStatus={setStatus} />
+          </>
         )}
         <footer>
           <span>PRIVATE BY DESIGN</span>
-          <p>
-            Bookmarks and sessions begin after you enable their collection. History is not collected
-            yet.
-          </p>
+          <p>Bookmarks, sessions and history begin after you enable their collection.</p>
         </footer>
       </main>
     </div>

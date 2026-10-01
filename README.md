@@ -2,7 +2,7 @@
 
 Private browser sync for Helium, built with WXT/TypeScript and a self-hosted Rust/Axum/SQLite relay on a Mac Mini behind Tailscale.
 
-The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. It also supports **opt-in session capture and restoration**: source-owned current/closed/previous snapshots, encrypted multipart transport and a durable restoration journal. History is still upcoming. Production hosting and real Helium lifecycle/API acceptance remain pending.
+The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. It also supports **opt-in session capture and restoration**: source-owned current/closed/previous snapshots, encrypted multipart transport and a durable restoration journal. It also supports **opt-in history capture and local search**, with original timestamps, profile filters and logical removal. Permanent history erasure remains pending. Production hosting and real Helium lifecycle/API acceptance remain pending.
 
 Read the [bookmark merge contract](docs/bookmark-merge.md) and [native adapter/recovery contract](docs/bookmark-browser.md). Read the [session capture/restoration contract](docs/sessions.md). Automated native-adapter tests use a simulated browser port; they do not establish live Helium compatibility.
 

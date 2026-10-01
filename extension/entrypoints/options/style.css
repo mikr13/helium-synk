@@ -688,3 +688,134 @@ footer p {
     overflow-wrap: anywhere;
   }
 }
+.history-panel {
+  margin-top: 22px;
+}
+.history-settings {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+}
+.history-settings summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.history-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 16px;
+  align-items: start;
+}
+.history-settings-grid label,
+.history-filters label {
+  margin-top: 0;
+}
+.history-filters {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr;
+  gap: 12px;
+}
+.history-filters input,
+.history-filters select,
+.history-settings select {
+  width: 100%;
+  min-width: 0;
+}
+.history-settings-grid > *,
+.history-filters > * {
+  min-width: 0;
+}
+.history-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.history-notice,
+.history-removal {
+  padding: 16px;
+  background: #f2eadc;
+  border: 1px solid #e0c7ac;
+  border-radius: 4px;
+}
+.history-removal {
+  margin: 12px 0;
+}
+.history-removal strong {
+  font-size: 13px;
+}
+.history-visits {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0;
+}
+.history-visits li {
+  display: grid;
+  grid-template-columns: 18px 1fr 150px;
+  gap: 14px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+  align-items: start;
+}
+.history-visits input[type='checkbox'] {
+  width: 16px;
+  margin: 3px 0 0;
+}
+.history-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.history-copy strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.history-copy a,
+.history-copy span {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.history-copy small,
+.history-visits time {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.history-visits time {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 1050px) {
+  .history-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .history-settings-grid,
+  .history-filters {
+    grid-template-columns: 1fr;
+  }
+  .history-visits li {
+    grid-template-columns: 18px 1fr;
+    gap: 10px;
+  }
+  .history-visits time {
+    grid-column: 2;
+    text-align: left;
+  }
+}
+
+.history-panel select {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #f4f3ed;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}

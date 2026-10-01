@@ -5,6 +5,8 @@ import {
   SyncCoordinator,
   BookmarkAdapter,
   SessionCapture,
+  HistoryCapture,
+  type HistoryInbox,
   SessionRestorer,
   restoreSummary,
   flattenBookmarks,
@@ -12,6 +14,7 @@ import {
 } from '@helium-synk/core';
 import type { Reply, Request, Status } from '../lib/messages';
 import { bookmarkBrowser } from '../lib/bookmark-browser';
+import { historyBrowser } from '../lib/history-browser';
 import { sessionBrowser, restoreBrowser, nativeTab, nativeWindow } from '../lib/session-browser';
 
 export default defineBackground(() => {
@@ -19,6 +22,11 @@ export default defineBackground(() => {
   const coordinator = new SyncCoordinator(db);
   const bookmarks = new BookmarkAdapter(db, bookmarkBrowser);
   const sessions = new SessionCapture(db, sessionBrowser);
+  const history = new HistoryCapture(db, historyBrowser);
+  let historyError: string | undefined;
+  let historyTimer: ReturnType<typeof setTimeout> | undefined;
+  let historyWorkTimer: ReturnType<typeof setTimeout> | undefined;
+  let firstHistoryEvent = 0;
   const restorer = new SessionRestorer(db, restoreBrowser);
   let sessionError: string | undefined;
   let sessionTimer: ReturnType<typeof setTimeout> | undefined;
@@ -39,10 +47,12 @@ export default defineBackground(() => {
     if (!(await db.state.get('local'))) return;
     await reconcileBookmarks();
     await reconcileSessions();
+    await reconcileHistory();
     connection = 'syncing';
     try {
       await coordinator.sync();
       await reconcileBookmarks();
+      await reconcileHistory();
       connection = 'online';
       error = undefined;
       failures = 0;
@@ -101,6 +111,7 @@ export default defineBackground(() => {
     };
   }
   async function status(): Promise<Status> {
+    const historySetup = await db.historySetup.get('history');
     const setup = await db.bookmarkSetup.get('bookmark'),
       replica = await db.bookmarkProjection();
     const interrupted = await db.bookmarkEffects.where('status').equals('blocked').toArray();
@@ -117,6 +128,17 @@ export default defineBackground(() => {
       .map(restoreSummary);
     return {
       enrolled: !!local,
+      history: {
+        enabled: !!historySetup?.enabled,
+        phase: historySetup?.phase ?? 'off',
+        visits: await db.historyVisits.count(),
+        pending:
+          (await db.historyInbox.count()) +
+          (await db.historyLookups.count()) +
+          (await db.historyScans.count()),
+        exclusions: historySetup?.exclusions ?? [],
+        error: historyError ?? historySetup?.error,
+      },
       sessions: {
         enabled: !!sessionSetup?.enabled,
         snapshots: Object.keys(sessionProjection.snapshots).length,
@@ -149,6 +171,38 @@ export default defineBackground(() => {
   }
   async function handle(request: Request): Promise<Reply> {
     try {
+      if (request.type === 'history-query') {
+        return {
+          ok: true,
+          history_page: await db.queryHistory(request.query),
+          history_sources: await db.historySources(),
+        };
+      }
+      if (request.type === 'history-enable') {
+        await history.enable(request.days, request.exclusions);
+        await reconcileHistory();
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'history-pause') {
+        await history.pause();
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'history-delete') {
+        await db.stageHistory({ type: 'delete', visit_ids: request.ids });
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'history-clear') {
+        await db.stageHistory(
+          request.source_id !== undefined
+            ? { type: 'clear', scope: 'source', source_id: request.source_id }
+            : { type: 'clear', scope: 'all' },
+        );
+        await reconcileHistory();
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
       if (request.type === 'session-list') {
         const offset = request.offset ?? 0;
         if (!Number.isSafeInteger(offset) || offset < 0)
@@ -268,6 +322,7 @@ export default defineBackground(() => {
         await db.queueDiagnostic(request.note);
         void sync(true);
       } else if (request.type === 'sync') {
+        await history.audit();
         await connect();
         await sync(true);
       } else if (request.type === 'recovery') {
@@ -278,6 +333,7 @@ export default defineBackground(() => {
           recovery: {
             account_id: local.credentials.account_id,
             recovery_key: local.recovery_key,
+            history_index_key: await db.ensureHistoryIndexKey(),
             server_url: local.credentials.server_url,
           },
         };
@@ -290,6 +346,58 @@ export default defineBackground(() => {
       };
     }
   }
+
+  async function reconcileHistory(): Promise<void> {
+    try {
+      await history.reconcile();
+      historyError = undefined;
+      const setup = await db.historySetup.get('history');
+      if (!setup?.enabled || setup.phase === 'blocked' || historyWorkTimer) return;
+      const now = Date.now();
+      const ready =
+        (await db.historyInbox.filter((i) => (i.retry_at ?? 0) <= now).count()) > 0 ||
+        (await db.historyLookups.filter((l) => (l.retry_at ?? 0) <= now).count()) > 0 ||
+        (await db.historyScans.filter((s) => (s.retry_at ?? 0) <= now).count()) > 0;
+      if (ready)
+        historyWorkTimer = setTimeout(() => {
+          historyWorkTimer = undefined;
+          void sync(true);
+        }, 500);
+    } catch {
+      historyError =
+        'Unable to persist history progress. Saved records remain queued; check local storage.';
+    }
+  }
+  function historyEvent(event: HistoryInbox['event']): void {
+    void history
+      .capture(event)
+      .then((accepted) => {
+        if (!accepted) {
+          void reconcileHistory();
+          return;
+        }
+        const now = Date.now();
+        if (!firstHistoryEvent) firstHistoryEvent = now;
+        if (historyTimer) clearTimeout(historyTimer);
+        historyTimer = setTimeout(
+          () => {
+            historyTimer = undefined;
+            firstHistoryEvent = 0;
+            void sync(true);
+          },
+          Math.min(500, Math.max(0, firstHistoryEvent + 2000 - now)),
+        );
+      })
+      .catch(() => {
+        historyError =
+          'A history event could not be saved. Check local storage; reconciliation will retry what the browser still retains.';
+      });
+  }
+  // Registration is synchronous. Essential intent is in IndexedDB before debounce.
+  browser.history.onVisited.addListener((item) => historyEvent({ type: 'visited', item }));
+  browser.history.onVisitRemoved.addListener((event) =>
+    historyEvent({ type: 'removed', all: event.allHistory, urls: event.urls ?? [] }),
+  );
 
   async function reconcileSessions(): Promise<void> {
     try {
@@ -449,7 +557,10 @@ export default defineBackground(() => {
     if (alarm.name === 'reconcile') void start().catch(initializationError);
   });
   browser.runtime.onStartup.addListener(() => {
-    void start().catch(initializationError);
+    void history
+      .audit()
+      .then(() => start())
+      .catch(initializationError);
   });
   browser.runtime.onInstalled.addListener(() => {
     void start().catch(initializationError);
@@ -459,6 +570,7 @@ export default defineBackground(() => {
     await browser.alarms.create('reconcile', { periodInMinutes: 0.5 });
     await reconcileBookmarks();
     await reconcileSessions();
+    await reconcileHistory();
     void resumeRestores();
     await connect();
     await sync();

@@ -1,7 +1,8 @@
 import { validateBookmarkOperation, type BookmarkOperation } from './bookmarks';
 import { validateSessionPart, type SessionPart } from './sessions';
+import { validateHistoryOperation, type HistoryOperation } from './history';
 import type { Diagnostic, Envelope } from './protocol';
-export type Payload = Diagnostic | BookmarkOperation | SessionPart;
+export type Payload = Diagnostic | BookmarkOperation | SessionPart | HistoryOperation;
 export type EnvelopeHeader = Omit<Envelope, 'nonce' | 'ciphertext'>;
 export const MAX_PLAINTEXT_BYTES = 65_536 - 16;
 export function validatePayload(payload: Payload, header: EnvelopeHeader): void {
@@ -25,13 +26,14 @@ export function validatePayload(payload: Payload, header: EnvelopeHeader): void 
     )
       throw new Error('Session source/revision does not match its envelope.');
   } else {
-    validateBookmarkOperation(payload);
+    if (payload.kind === 'history') validateHistoryOperation(payload);
+    else validateBookmarkOperation(payload);
     if (
       payload.operation_id !== header.operation_id ||
       payload.revision.author !== header.device_id ||
       payload.revision.counter !== header.counter
     )
-      throw new Error('Bookmark author/revision does not match its envelope.');
+      throw new Error(`${payload.kind} author/revision does not match its envelope.`);
   }
   if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > MAX_PLAINTEXT_BYTES)
     throw new Error(

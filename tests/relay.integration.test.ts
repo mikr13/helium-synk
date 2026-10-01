@@ -10,6 +10,9 @@ import {
   SynkDatabase,
   SyncCoordinator,
   type Credentials,
+  historyVisitId,
+  historyGeneration,
+  historyUrlTag,
 } from '../sync-core/src/index';
 import { sessionWindow } from './session-fixtures';
 
@@ -25,6 +28,8 @@ let credentialsD: Credentials;
 let credentialsE: Credentials;
 let credentialsF: Credentials;
 let credentialsG: Credentials;
+let credentialsH: Credentials;
+let credentialsI: Credentials;
 const sharedKey = generateRecoveryKey();
 const localDatabases: SynkDatabase[] = [];
 const sockets: WebSocket[] = [];
@@ -65,7 +70,7 @@ async function stop(): Promise<void> {
 }
 beforeAll(async () => {
   port = await freePort();
-  for (const name of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
+  for (const name of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']) {
     execFileSync(
       binary,
       [
@@ -89,6 +94,8 @@ beforeAll(async () => {
   credentialsE = JSON.parse(readFileSync(join(directory, 'E.credential.json'), 'utf8'));
   credentialsF = JSON.parse(readFileSync(join(directory, 'F.credential.json'), 'utf8'));
   credentialsG = JSON.parse(readFileSync(join(directory, 'G.credential.json'), 'utf8'));
+  credentialsH = JSON.parse(readFileSync(join(directory, 'H.credential.json'), 'utf8'));
+  credentialsI = JSON.parse(readFileSync(join(directory, 'I.credential.json'), 'utf8'));
   await start();
 });
 afterAll(async () => {
@@ -290,4 +297,83 @@ it('encrypted multipart sessions and offline closed windows survive client and R
   expect(stored).not.toContain('https://example.com/');
   expect(stored).not.toContain(sharedKey);
   expect(stored.trim().split('\n').length).toBeGreaterThan(4);
+});
+
+it('history retains original visits and suppresses delayed offline uploads after clears across real relay restarts', async () => {
+  let a = await local(credentialsH, sharedKey);
+  const b = await local(credentialsI, sharedKey),
+    incarnation = crypto.randomUUID();
+  const url = 'https://history-integration.example/private-research';
+  async function visit(db: SynkDatabase, native: string, time: number) {
+    const local = (await db.state.get('local'))!,
+      source = local.credentials.device_id;
+    const tag = await historyUrlTag(await db.ensureHistoryIndexKey(), url);
+    await db.stageHistory({
+      type: 'visit',
+      visit: {
+        id: historyVisitId(source, incarnation, native, time),
+        source_id: source,
+        source_name: local.credentials.name,
+        incarnation,
+        native_id: native,
+        visited_at: time,
+        url,
+        url_tag: tag,
+        title: 'Private history title',
+        transition: 'typed',
+        referring_native_id: '0',
+        generation: historyGeneration(await db.historyProjection(), source, tag),
+      },
+    });
+  }
+  await visit(a, 'first', 1_000.25);
+  await new SyncCoordinator(a).sync();
+  await new SyncCoordinator(b).sync();
+  await visit(b, 'second', 2_000.75);
+  await new SyncCoordinator(b).sync();
+  await new SyncCoordinator(a).sync();
+  expect((await a.queryHistory()).visits.map((v) => v.visited_at)).toEqual([2_000.75, 1_000.25]);
+  await stop();
+  await visit(a, 'during-outage', 3_000.125);
+  await b.stageHistory({ type: 'clear', scope: 'all' });
+  await expect(new SyncCoordinator(a).sync()).rejects.toThrow();
+  const name = a.name;
+  a.close();
+  a = new SynkDatabase(name);
+  localDatabases.push(a);
+  expect(await a.pendingCount()).toBe(1);
+  await start();
+  await new SyncCoordinator(b).sync(); // Clear commits before the stale source returns.
+  await new SyncCoordinator(a).sync();
+  await new SyncCoordinator(b).sync();
+  expect(await a.historyProjection()).toEqual(await b.historyProjection());
+  expect(await a.historyVisits.count()).toBe(0);
+  expect(Object.keys((await a.historyProjection()).stale)).toHaveLength(3);
+  await visit(a, 'fresh-generation', 4_000.875);
+  await new SyncCoordinator(a).sync();
+  await new SyncCoordinator(b).sync();
+  const fresh = (await b.queryHistory()).visits[0]!;
+  expect(fresh.visited_at).toBe(4_000.875);
+  await b.stageHistory({ type: 'delete', visit_ids: [fresh.id] });
+  await new SyncCoordinator(b).sync();
+  await stop();
+  await start();
+  await new SyncCoordinator(a).sync();
+  expect(await a.historyVisits.count()).toBe(0);
+  expect((await a.historyProjection()).deleted[fresh.id]).toHaveLength(1);
+  expect(await a.pendingCount()).toBe(0);
+  expect(await b.pendingCount()).toBe(0);
+  const stored = execFileSync(
+    'sqlite3',
+    [
+      database,
+      "SELECT envelope FROM operations WHERE json_extract(envelope, '$.domain') = 'history';",
+    ],
+    { encoding: 'utf8' },
+  );
+  expect(stored.trim().split('\n')).toHaveLength(6);
+  expect(stored).not.toContain(url);
+  expect(stored).not.toContain('Private history title');
+  expect(stored).not.toContain(sharedKey);
+  expect(stored).not.toContain(await a.ensureHistoryIndexKey());
 });

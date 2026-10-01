@@ -1,15 +1,15 @@
 # Verification record
 
-Updated 2026-10-01. The dashboard supports diagnostic notes, opt-in bookmarks and opt-in current/closed/previous sessions with restoration progress. The native adapter is implemented and tested through a browser port; real Helium acceptance is pending. The [main checklist](plan.md) keeps all milestone exit gates open.
+Updated 2026-10-01. The dashboard supports diagnostic notes, opt-in bookmarks and opt-in current/closed/previous sessions with restoration progress, and opt-in history capture/search with logical removal. The native adapter is implemented and tested through a browser port; real Helium acceptance is pending. The [main checklist](plan.md) keeps all milestone exit gates open.
 
 ## Completed automated checks
 
 | Check                            | Evidence                                                                                                                                                                         | Boundary                                                                                    |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Move outside iCloud Documents    | Checkout, Git history, dependencies, and builds verified at `/Users/mihirpandey/Work/fun/helium-synk`; old checkout removed                                                      | The original planning document remains in Documents; it contains no credentials             |
-| TypeScript core                  | 106 tests across diagnostic/core, bookmarks, sessions, native capture/restoration and history model suites                                                                       | Uses fake IndexedDB; not a browser lifecycle test                                           |
+| TypeScript core                  | 135 tests across diagnostic/core, bookmarks, sessions, native capture/restoration and history model/pipeline/native-adapter suites                                               | Uses fake IndexedDB; not a browser lifecycle test                                           |
 | Rust/SQLite relay                | 10 tests in `server/tests/relay.rs`; rustfmt and clippy with warnings denied                                                                                                     | Real temporary SQLite files; no production deployment                                       |
-| Cross-stack transport            | 4 tests in `tests/relay.integration.test.ts`                                                                                                                                     | Real Rust process, HTTP and authenticated WebSocket; client IndexedDB simulated             |
+| Cross-stack transport            | 5 tests in `tests/relay.integration.test.ts`                                                                                                                                     | Real Rust process, HTTP and authenticated WebSocket; client IndexedDB simulated             |
 | WXT production extension         | `pnpm check` builds Chromium MV3 options page/background worker                                                                                                                  | Browser rendering, permissions, alarms and worker revival still require manual verification |
 | Version alignment and changesets | `pnpm check:versions`; full `pnpm version-packages` smoke test in an ignored disposable copy generated all three changelogs and aligned Cargo/package/lockfile versions at 0.2.0 | Changelogs generated at an intentional release, not this unreleased checkpoint              |
 
@@ -28,7 +28,7 @@ The cross-stack outage test stops the relay, queues independent notes on both cl
 - [ ] Verify bookmark/history/window/tab/group APIs and restoration without touching the user's normal profile.
 - [ ] Verify Tailscale HTTPS/WSS, access rules, service restart, logout, reboot, and FileVault recovery.
 - [ ] Implement account quotas, pairing invitations, and older-backup/server-loss recovery.
-- [ ] Implement history/deletion; verify bookmark and session/restoration adapters in disposable Helium profiles.
+- [ ] Complete history content/ciphertext erasure and scale gates; verify all native adapters in disposable Helium profiles.
 
 The installed Helium app is 0.18.1.1 with Chromium framework 154.0.8037.57. The manifest floor is now 134 for root-role capabilities; an older Helium release has not been verified. WXT development mode built successfully but requested manual unpacked loading. Native inspection selected an existing unrelated profile; it was left untouched, so no native compatibility result is claimed.
 
@@ -50,7 +50,7 @@ The IndexedDB v2 migration preserves earlier notes/outbox/counters. Capture draf
 
 The third real Rust-process test bootstraps a bookmark on two clients, stops the relay, persists an unencrypted capture draft for a rename, reopens that client's database, captures an offline move on the other client, restarts the relay, and proves equal replicas with empty queues. It inspects the actual SQLite envelopes for absence of bookmark title/URL/root key. This is transport/model evidence; it does not prove native browser application.
 
-Sections 1–9 remain the active goal. Live session/restoration acceptance, history/deletion, pairing/key lifecycle, server quotas/progress APIs, and remaining setup checks are still required before the joint Helium session; live bookmark acceptance is deferred to that session. No whole milestone exit gate is complete.
+Sections 1–9 remain the active goal. Live adapter acceptance, history erasure/scale, pairing/key lifecycle, server quotas/progress APIs, and remaining setup checks are still required before the joint Helium session; live bookmark acceptance is deferred to that session. No whole milestone exit gate is complete.
 
 ## Transfer-size and disk-full checkpoint
 
@@ -66,6 +66,8 @@ The [session contract](sessions.md) describes IndexedDB v4 capture caches, multi
 
 Real Helium capture/restoration and lifecycle acceptance is deferred to the joint disposable-profile test. Browser restarts or changed pages during an ambiguous restore pause safely and keep opened tabs; they do not claim automatic recovery in every case. Recently-closed API-only records disclose missing group metadata. Local/relay quotas, retention and key lifecycle remain pending; no whole milestone is complete.
 
-## History model checkpoint
+## History model and capture checkpoint
 
-The [history reference contract](history.md) defines stable individual visits, local search, permanent selected-record tombstones and per-source/global/URL clear generations. Nine model tests include all 120 delivery orders of an offline-source clear case, concurrent clears and prevention of retagged re-import. Native history capture, generation baselines, encrypted transport, indexed UI search and coordinated plaintext/ciphertext purge remain pending. History collection is not enabled. Sections 1–9 remain active.
+The [history contract](history.md) records the nine model tests plus eight transport/index/migration tests and 21 native capture/audit tests. IndexedDB v5 preserves older pending work and restoration jobs. The WXT build includes synchronous history listeners, opt-in settings, exclusions/pause, text/source/date search, bounded pagination and scoped logical-removal controls. The fifth real relay integration test verifies original fractional timestamps, delayed offline uploads after a clear, logical selected deletion and ciphertext storage.
+
+The actual history components passed a synthetic localhost preview including removal refresh and exact source scope. The 390 px view had no horizontal overflow or warning/error logs. The preview and server were closed; no native Helium profile was touched. Permanent plaintext/ciphertext erasure, full-scale journal performance, real native lifecycle/API/clock behavior and hours-long outage acceptance remain open. Sections 1–9 remain the active goal; no whole milestone exit gate is complete.

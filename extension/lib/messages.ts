@@ -7,10 +7,17 @@ import type {
   SessionSnapshot,
   SessionRestoreSummary,
   RestoreSelection,
+  SynkDatabase,
+  HistorySetup,
 } from '@helium-synk/core';
 
 export type Request =
   | { type: 'status' }
+  | { type: 'history-enable'; days: number; exclusions: string[] }
+  | { type: 'history-pause' }
+  | { type: 'history-query'; query?: Parameters<SynkDatabase['queryHistory']>[0] }
+  | { type: 'history-delete'; ids: string[] }
+  | { type: 'history-clear'; source_id?: string }
   | { type: 'session-enable' }
   | { type: 'session-pause' }
   | { type: 'session-save' }
@@ -39,6 +46,14 @@ export interface Status {
   pending: number;
   records: LocalRecord[];
   browser_version: string;
+  history: {
+    enabled: boolean;
+    phase: HistorySetup['phase'] | 'off';
+    visits: number;
+    pending: number;
+    exclusions: string[];
+    error?: string;
+  };
   sessions: {
     enabled: boolean;
     snapshots: number;
@@ -62,6 +77,7 @@ export type SessionListItem = Pick<
 export interface RecoveryBundle {
   account_id: string;
   recovery_key: string;
+  history_index_key: string;
   server_url: string;
 }
 export type Reply =
@@ -70,6 +86,8 @@ export type Reply =
       status?: Status;
       recovery?: RecoveryBundle;
       replica?: unknown;
+      history_page?: Awaited<ReturnType<SynkDatabase['queryHistory']>>;
+      history_sources?: { id: string; name: string }[];
       session_list?: SessionListItem[];
       session_more?: boolean;
       session_snapshot?: SessionSnapshot;
