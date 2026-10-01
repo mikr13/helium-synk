@@ -1,4 +1,5 @@
 import { validateEnvelope, type Diagnostic, type Envelope } from './protocol';
+import { validatePayload, type Payload } from './payload';
 
 export function base64(bytes: Uint8Array): string {
   return btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''));
@@ -49,11 +50,13 @@ async function authorKey(root: string, e: Header): Promise<CryptoKey> {
     ['encrypt', 'decrypt'],
   );
 }
-export async function encryptDiagnostic(
+export async function encryptPayload(
   root: string,
   header: Header,
-  payload: Diagnostic,
+  payload: Payload,
 ): Promise<Envelope> {
+  validateEnvelope({ ...header, nonce: '', ciphertext: '' });
+  validatePayload(payload, header);
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const key = await authorKey(root, header);
   const encrypted = await crypto.subtle.encrypt(
@@ -68,7 +71,7 @@ export async function encryptDiagnostic(
   );
   return { ...header, nonce: base64(nonce), ciphertext: base64(new Uint8Array(encrypted)) };
 }
-export async function decryptDiagnostic(root: string, envelope: Envelope): Promise<Diagnostic> {
+export async function decryptPayload(root: string, envelope: Envelope): Promise<Payload> {
   validateEnvelope(envelope);
   const iv = unbase64(envelope.nonce);
   if (iv.length !== 12) throw new Error('Invalid encryption nonce.');
@@ -82,15 +85,19 @@ export async function decryptDiagnostic(root: string, envelope: Envelope): Promi
     await authorKey(root, envelope),
     unbase64(envelope.ciphertext),
   );
-  const payload = JSON.parse(new TextDecoder().decode(plaintext)) as Diagnostic;
-  if (
-    payload.kind !== 'diagnostic' ||
-    typeof payload.note !== 'string' ||
-    payload.note.length > 2_000 ||
-    typeof payload.created_at !== 'string' ||
-    !Number.isFinite(Date.parse(payload.created_at))
-  ) {
-    throw new Error('Invalid diagnostic payload.');
-  }
+  const payload = JSON.parse(new TextDecoder().decode(plaintext)) as Payload;
+  validatePayload(payload, envelope);
+  return payload;
+}
+export function encryptDiagnostic(
+  root: string,
+  header: Header,
+  payload: Diagnostic,
+): Promise<Envelope> {
+  return encryptPayload(root, header, payload);
+}
+export async function decryptDiagnostic(root: string, envelope: Envelope): Promise<Diagnostic> {
+  const payload = await decryptPayload(root, envelope);
+  if (payload.kind !== 'diagnostic') throw new Error('Expected a diagnostic record.');
   return payload;
 }

@@ -5,3 +5,4 @@ export * from './sync';
 export * from './revision';
 export * from './position';
 export * from './bookmarks';
+export * from './payload';

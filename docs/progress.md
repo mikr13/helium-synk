@@ -1,15 +1,15 @@
 # Verification record
 
-Updated 2026-10-01. This checkpoint handles encrypted diagnostic notes only. The [main checklist](plan.md) keeps all milestone exit gates open.
+Updated 2026-10-01. The dashboard still handles diagnostic notes; the core and relay now also support durable encrypted bookmark operations. Native bookmark adapters are pending. The [main checklist](plan.md) keeps all milestone exit gates open.
 
 ## Completed automated checks
 
 | Check                            | Evidence                                                                                                                                                                         | Boundary                                                                                    |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Move outside iCloud Documents    | Checkout, Git history, dependencies, and builds verified at `/Users/mihirpandey/Work/fun/helium-synk`; old checkout removed                                                      | The original planning document remains in Documents; it contains no credentials             |
-| TypeScript core                  | 12 tests in `sync-core/src/core.test.ts`                                                                                                                                         | Uses fake IndexedDB; not a browser lifecycle test                                           |
-| Rust/SQLite relay                | 7 tests in `server/tests/relay.rs`; rustfmt and clippy with warnings denied                                                                                                      | Real temporary SQLite files; no production deployment                                       |
-| Cross-stack transport            | 2 tests in `tests/relay.integration.test.ts`                                                                                                                                     | Real Rust process, HTTP and authenticated WebSocket; client IndexedDB simulated             |
+| TypeScript core                  | 41 tests across `core.test.ts`, `bookmarks.test.ts`, and `bookmark-sync.test.ts`                                                                                                 | Uses fake IndexedDB; not a browser lifecycle test                                           |
+| Rust/SQLite relay                | 8 tests in `server/tests/relay.rs`; rustfmt and clippy with warnings denied                                                                                                      | Real temporary SQLite files; no production deployment                                       |
+| Cross-stack transport            | 3 tests in `tests/relay.integration.test.ts`                                                                                                                                     | Real Rust process, HTTP and authenticated WebSocket; client IndexedDB simulated             |
 | WXT production extension         | `pnpm check` builds Chromium MV3 options page/background worker                                                                                                                  | Browser rendering, permissions, alarms and worker revival still require manual verification |
 | Version alignment and changesets | `pnpm check:versions`; full `pnpm version-packages` smoke test in an ignored disposable copy generated all three changelogs and aligned Cargo/package/lockfile versions at 0.2.0 | Changelogs generated at an intentional release, not this unreleased checkpoint              |
 
@@ -41,3 +41,13 @@ The client stores its root key, API credential, and decrypted notes in its local
 API revocation rejects HTTP requests immediately; open sockets recheck authorization on messages/heartbeats. A CLI invocation runs separately from the relay, so it does not directly broadcast to that process. Revocation does not rotate the shared content key or erase downloaded data.
 
 The server epoch persists across ordinary restarts. Clients refuse a changed epoch, but there is no older-backup epoch-rotation/recovery CLI yet. Restoring a stale database with its old epoch can hide lost acknowledged records; do not use that as a production recovery path. Keep backups isolated until the recovery gate passes.
+
+## Bookmark model and durable transport checkpoint
+
+`feat(core): implement causal bookmark merge and recovery` implements the section 5 merge policies. The six-operation concurrent reorder/insert/move case checks all 720 delivery permutations. Other permutations cover independent fields, delete/edit recovery, folder cycles and observed deletion sets. Previous values remain recoverable from the uncompacted journal after an explicit conflict resolution.
+
+The IndexedDB v2 migration preserves earlier notes/outbox/counters. Capture drafts, logical replicas and revisions commit before async encryption; a subsequent transaction creates immutable ciphertext plus the outbox entry. Worker/database reopen resumes unfinished drafts. Incoming ciphertext validation and causal merge complete before the page cursor commits. Bad ciphertext and impossible causal clocks enter quarantine with the cursor unchanged. Replica exports include pending drafts/operations/tombstones but exclude API credentials and root keys.
+
+The third real Rust-process test bootstraps a bookmark on two clients, stops the relay, persists an unencrypted capture draft for a rename, reopens that client's database, captures an offline move on the other client, restarts the relay, and proves equal replicas with empty queues. It inspects the actual SQLite envelopes for absence of bookmark title/URL/root key. This is transport/model evidence; it does not prove native browser application.
+
+Sections 1–9 remain the active goal. Browser bookmark adapters/onboarding/application journals, sessions/restoration, history/deletion, pairing/key lifecycle, server quotas/progress APIs, and remaining setup checks are still required before the joint Helium session. No whole milestone exit gate is complete.

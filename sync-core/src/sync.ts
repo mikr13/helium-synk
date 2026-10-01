@@ -1,6 +1,7 @@
-import { decryptDiagnostic } from './crypto';
-import { type LocalState, type LocalRecord, SynkDatabase } from './database';
-import { MAX_BATCH, type Envelope, type PullPage, type PushReply } from './protocol';
+import { decryptPayload } from './crypto';
+import { projectBookmarks } from './bookmarks';
+import { type LocalState, type LocalRecord, type StoredOperation, SynkDatabase } from './database';
+import { MAX_BATCH, sameEnvelope, type Envelope, type PullPage, type PushReply } from './protocol';
 
 export interface Transport {
   pull(cursor: number): Promise<PullPage>;
@@ -50,13 +51,23 @@ function checkEpoch(state: LocalState, epoch: string): void {
 
 export class SyncCoordinator {
   private running?: Promise<void>;
+  private requested = false;
   constructor(
     private db: SynkDatabase,
     private makeTransport: (s: LocalState) => Transport = (s) => new HttpTransport(s),
   ) {}
   sync(): Promise<void> {
-    if (this.running) return this.running;
-    this.running = this.perform().finally(() => {
+    if (this.running) {
+      this.requested = true;
+      return this.running;
+    }
+    this.running = (async () => {
+      for (let pass = 0; pass < 3; pass++) {
+        this.requested = false;
+        await this.perform();
+        if (!this.requested) break;
+      }
+    })().finally(() => {
       this.running = undefined;
     });
     return this.running;
@@ -76,6 +87,7 @@ export class SyncCoordinator {
         throw new Error('Invalid server cursor page.');
       let previous = state.cursor;
       const records: LocalRecord[] = [];
+      const operations: StoredOperation[] = [];
       for (const entry of page.records) {
         if (
           !Number.isSafeInteger(entry.sequence) ||
@@ -85,12 +97,24 @@ export class SyncCoordinator {
         )
           throw new Error('Invalid record sequence or account.');
         previous = entry.sequence;
-        records.push({
-          operation_id: entry.envelope.operation_id,
-          envelope: entry.envelope,
-          payload: await decryptDiagnostic(state.recovery_key, entry.envelope),
-          sequence: entry.sequence,
-        });
+        try {
+          const payload = await decryptPayload(state.recovery_key, entry.envelope);
+          const record = {
+            operation_id: entry.envelope.operation_id,
+            envelope: entry.envelope,
+            sequence: entry.sequence,
+          };
+          if (payload.kind === 'diagnostic') records.push({ ...record, payload });
+          else operations.push({ ...record, payload });
+        } catch (cause) {
+          await this.db.quarantine.put({
+            operation_id: entry.envelope.operation_id,
+            sequence: entry.sequence,
+            envelope: entry.envelope,
+            reason: cause instanceof Error ? cause.message : 'Unable to validate encrypted record.',
+          });
+          throw cause;
+        }
       }
       if (
         (page.records.length === 0 && page.next_cursor !== state.cursor) ||
@@ -100,13 +124,66 @@ export class SyncCoordinator {
         throw new Error('Server cursor skipped unprocessed records.');
       }
       // Decrypt outside the transaction; no cursor moves on authentication/decryption failure.
-      await this.db.transaction('rw', this.db.records, this.db.state, async () => {
-        await this.db.records.bulkPut(records);
-        await this.db.state.update('local', {
-          cursor: page.next_cursor,
-          server_epoch: page.server_epoch,
-        });
-      });
+      let validationFailure: Error | undefined;
+      try {
+        await this.db.transaction(
+          'rw',
+          [
+            this.db.records,
+            this.db.operations,
+            this.db.drafts,
+            this.db.replicas,
+            this.db.state,
+            this.db.quarantine,
+          ],
+          async () => {
+            for (const record of [...records, ...operations]) {
+              const existing =
+                (await this.db.records.get(record.operation_id)) ??
+                (await this.db.operations.get(record.operation_id));
+              if (existing && !sameEnvelope(existing.envelope, record.envelope)) {
+                validationFailure = new Error('Received operation identity was reused.');
+                throw validationFailure;
+              }
+            }
+            const bookmarkOperations = await this.db.bookmarkOperations();
+            const byId = new Map(bookmarkOperations.map((op) => [op.operation_id, op]));
+            for (const record of operations) byId.set(record.operation_id, record.payload);
+            let projection;
+            try {
+              projection = projectBookmarks([...byId.values()]);
+            } catch (cause) {
+              validationFailure =
+                cause instanceof Error ? cause : new Error('Invalid bookmark journal.');
+              throw validationFailure;
+            }
+            await this.db.records.bulkPut(records);
+            await this.db.operations.bulkPut(operations);
+            await this.db.replicas.put({ domain: 'bookmark', value: projection });
+            await this.db.quarantine.bulkDelete(
+              [...records, ...operations].map((r) => r.operation_id),
+            );
+            const current = (await this.db.state.get('local'))!;
+            await this.db.state.update('local', {
+              cursor: page.next_cursor,
+              server_epoch: page.server_epoch,
+              logical: Math.max(current.logical ?? 0, projection.logical),
+              context: projection.frontier,
+            });
+          },
+        );
+      } catch (cause) {
+        if (validationFailure)
+          await this.db.quarantine.bulkPut(
+            [...records, ...operations].map((record) => ({
+              operation_id: record.operation_id,
+              sequence: record.sequence!,
+              envelope: record.envelope,
+              reason: validationFailure!.message,
+            })),
+          );
+        throw cause;
+      }
       if (!page.has_more) return;
     }
     throw new Error('More data remains to download. Sync again to continue.');
@@ -118,6 +195,7 @@ export class SyncCoordinator {
     // Establish/check epoch before acknowledging any queued work.
     await this.pull(transport);
     for (let batchNumber = 0; batchNumber < 20; batchNumber++) {
+      await this.db.flushDrafts();
       const batch = await this.db.outbox.orderBy('counter').limit(MAX_BATCH).toArray();
       if (batch.length === 0) break;
       const reply = await transport.push(batch, (await this.db.state.get('local'))!.server_epoch!);
@@ -133,15 +211,20 @@ export class SyncCoordinator {
         )
           throw new Error('Invalid acknowledgement.');
       }
-      await this.db.transaction('rw', this.db.outbox, this.db.records, async () => {
-        for (const ack of reply.acknowledgements) {
-          await this.db.records.update(ack.operation_id, { sequence: ack.sequence });
-          await this.db.outbox.delete(ack.operation_id);
-        }
-      });
+      await this.db.transaction(
+        'rw',
+        [this.db.outbox, this.db.records, this.db.operations],
+        async () => {
+          for (const ack of reply.acknowledgements) {
+            await this.db.records.update(ack.operation_id, { sequence: ack.sequence });
+            await this.db.operations.update(ack.operation_id, { sequence: ack.sequence });
+            await this.db.outbox.delete(ack.operation_id);
+          }
+        },
+      );
     }
     await this.pull(transport);
-    if (await this.db.outbox.count())
+    if (await this.db.pendingCount())
       throw new Error('More pending work remains. Sync again to continue.');
     await this.db.state.update('local', { last_synced: new Date().toISOString() });
   }

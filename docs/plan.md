@@ -226,15 +226,15 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 ### Identity and merge policy
 
 - [ ] Assign each logical bookmark/folder a sync UUID; map it to installation-local Chromium IDs.
-- [ ] Merge title and URL as independent fields.
-- [ ] Treat parent and position as an atomic placement value.
-- [ ] Track logical revisions plus causal context to distinguish sequential edits from concurrent edits.
-- [ ] Use deterministic logical-counter/installation-ID ordering for same-field concurrent edits.
-- [ ] Retain alternate concurrent values in a conflict/recovery journal.
+- [x] Merge title and URL as independent fields.
+- [x] Treat parent and position as an atomic placement value.
+- [x] Track logical revisions plus causal context to distinguish sequential edits from concurrent edits.
+- [x] Use deterministic logical-counter/installation-ID ordering for same-field concurrent edits.
+- [x] Retain alternate concurrent values in a conflict/recovery journal.
 - [ ] Use sortable position tokens with deterministic collision tie-breaking; translate into browser indexes.
-- [ ] Make ordering rebalance deterministic and test it against concurrent offline inserts/moves.
-- [ ] Retain deletion tombstones throughout V1; never garbage-collect them merely by age.
-- [ ] Make explicit restoration create a new entity linked to the deleted entity.
+- [x] Make ordering rebalance deterministic and test it against concurrent offline inserts/moves.
+- [x] Retain deletion tombstones throughout V1; never garbage-collect them merely by age.
+- [x] Make explicit restoration create a new entity linked to the deleted entity.
 
 | Conflict                                | Required result                                                                 |
 | --------------------------------------- | ------------------------------------------------------------------------------- |
@@ -245,9 +245,11 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 | Offline child created in deleted folder | Preserve it in a shared deterministic Recovered bookmarks folder                |
 | Concurrent inserts at same position     | Stable, identical order on all clients                                          |
 
-- [ ] Specify folder deletion against the descendants it actually observed, so unseen concurrent children are not silently erased.
-- [ ] Specify deterministic handling of missing/deleted parents and invalid placement.
-- [ ] Prove convergence from the same operation set regardless of arrival order.
+- [x] Specify folder deletion against the descendants it actually observed, so unseen concurrent children are not silently erased.
+- [x] Specify deterministic handling of missing/deleted parents and invalid placement.
+- [x] Prove convergence from the same operation set regardless of arrival order.
+
+**Bookmark model evidence (2026-10-01):** Causal merge and encrypted journal are implemented; 41 TypeScript tests, 8 relay tests, and 3 real-process integration tests pass. Native mappings, capture, onboarding and application below remain pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
 
 ### Browser integration and onboarding
 

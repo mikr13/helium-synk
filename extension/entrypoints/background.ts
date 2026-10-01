@@ -84,7 +84,7 @@ export default defineBackground(() => {
       connection,
       error,
       last_synced: local?.last_synced,
-      pending: await db.outbox.count(),
+      pending: await db.pendingCount(),
       records: (await db.records.toArray())
         .sort((a, b) => b.payload.created_at.localeCompare(a.payload.created_at))
         .slice(0, 100),

@@ -4,6 +4,8 @@ Private browser sync for Helium, built with WXT/TypeScript and a self-hosted Rus
 
 The current foundation build exchanges **encrypted diagnostic notes** between separately enrolled browser profiles. It includes a durable IndexedDB outbox, authenticated push/pull, idempotent acknowledgements, WebSocket hints, and an options dashboard. Bookmarks, history, and session capture/restoration are upcoming milestones. This is a development checkpoint; production hosting and browser lifecycle gates are pending.
 
+The TypeScript core now also implements causal bookmark merges and an encrypted, durable bookmark-operation pipeline through the Rust relay. Browser capture, import preview, and application journaling are not enabled yet. See the [bookmark merge contract](docs/bookmark-merge.md).
+
 Follow the [implementation checklist](docs/plan.md) and [verification record](docs/progress.md). Development source lives at `/Users/mihirpandey/Work/fun/helium-synk`, outside Documents/iCloud.
 
 ## Development

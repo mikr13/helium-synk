@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import {
   generateRecoveryKey,
+  BOOKMARK_ROOTS,
   SynkDatabase,
   SyncCoordinator,
   type Credentials,
@@ -19,6 +20,8 @@ let port: number;
 let credentialsA: Credentials;
 let credentialsB: Credentials;
 let credentialsC: Credentials;
+let credentialsD: Credentials;
+let credentialsE: Credentials;
 const sharedKey = generateRecoveryKey();
 const localDatabases: SynkDatabase[] = [];
 const sockets: WebSocket[] = [];
@@ -59,7 +62,7 @@ async function stop(): Promise<void> {
 }
 beforeAll(async () => {
   port = await freePort();
-  for (const name of ['A', 'B', 'C']) {
+  for (const name of ['A', 'B', 'C', 'D', 'E']) {
     execFileSync(
       binary,
       [
@@ -79,6 +82,8 @@ beforeAll(async () => {
   credentialsA = JSON.parse(readFileSync(join(directory, 'A.credential.json'), 'utf8'));
   credentialsB = JSON.parse(readFileSync(join(directory, 'B.credential.json'), 'utf8'));
   credentialsC = JSON.parse(readFileSync(join(directory, 'C.credential.json'), 'utf8'));
+  credentialsD = JSON.parse(readFileSync(join(directory, 'D.credential.json'), 'utf8'));
+  credentialsE = JSON.parse(readFileSync(join(directory, 'E.credential.json'), 'utf8'));
   await start();
 });
 afterAll(async () => {
@@ -161,4 +166,60 @@ it('authenticates WebSockets and announces committed changes without data or URL
   expect(response.ok).toBe(true);
   await expect.poll(() => events.includes('sync_available')).toBe(true);
   socket.close();
+});
+
+it('causal bookmarks survive a relay outage and pre-encryption client restart across Rust HTTP', async () => {
+  let a = await local(credentialsD, sharedKey);
+  const b = await local(credentialsE, sharedKey),
+    id = crypto.randomUUID();
+  await a.queueBookmark({
+    type: 'create',
+    node_id: id,
+    node_type: 'bookmark',
+    title: 'Before outage',
+    url: 'https://example.test/private-bookmark',
+    placement: { parent: BOOKMARK_ROOTS.bar, position: '1/1' },
+  });
+  await new SyncCoordinator(a).sync();
+  await new SyncCoordinator(b).sync();
+  await stop();
+  await a.stageBookmark({ type: 'edit', node_id: id, title: 'Offline bookmark rename' });
+  await b.queueBookmark({
+    type: 'move',
+    node_id: id,
+    placement: { parent: BOOKMARK_ROOTS.other, position: '5/3' },
+  });
+  const name = a.name;
+  a.close();
+  a = new SynkDatabase(name);
+  localDatabases.push(a);
+  expect(await a.drafts.count()).toBe(1);
+  expect((await a.bookmarkProjection()).nodes[id].title).toBe('Offline bookmark rename');
+  await expect(new SyncCoordinator(a).sync()).rejects.toThrow();
+  expect(await a.pendingCount()).toBe(1);
+  expect(await b.pendingCount()).toBe(1);
+  await start();
+  await new SyncCoordinator(a).sync();
+  await new SyncCoordinator(b).sync();
+  await new SyncCoordinator(a).sync();
+  expect(await a.bookmarkProjection()).toEqual(await b.bookmarkProjection());
+  expect((await a.bookmarkProjection()).nodes[id]).toMatchObject({
+    title: 'Offline bookmark rename',
+    parent: BOOKMARK_ROOTS.other,
+    position: '5/3',
+  });
+  expect(await a.pendingCount()).toBe(0);
+  expect(await b.pendingCount()).toBe(0);
+  const stored = execFileSync(
+    'sqlite3',
+    [
+      database,
+      "SELECT envelope FROM operations WHERE json_extract(envelope, '$.domain') = 'bookmark';",
+    ],
+    { encoding: 'utf8' },
+  );
+  expect(stored).not.toContain('Offline bookmark rename');
+  expect(stored).not.toContain('https://example.test/private-bookmark');
+  expect(stored).not.toContain(sharedKey);
+  expect(stored.trim().split('\n')).toHaveLength(3);
 });

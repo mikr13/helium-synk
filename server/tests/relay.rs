@@ -220,3 +220,17 @@ async fn uses_full_durability_and_never_stores_plain_credentials() {
     assert_eq!(synchronous, 2);
     assert_ne!(token, c.token);
 }
+
+#[tokio::test]
+async fn relays_encrypted_bookmark_records_without_reading_their_contents() {
+    let (_temp, app, c) = setup().await;
+    let mut e = envelope(&c, 1);
+    e.domain = "bookmark".into();
+    let (status, result) = push(&app, &c, std::slice::from_ref(&e)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, retry) = push(&app, &c, std::slice::from_ref(&e)).await;
+    assert_eq!(result, retry);
+    let (_, page) = request(&app, Some(&c), "GET", "/v1/sync/pull?cursor=0", None).await;
+    assert_eq!(page["records"][0]["envelope"]["domain"], "bookmark");
+    assert_eq!(page["records"][0]["envelope"]["ciphertext"], e.ciphertext);
+}

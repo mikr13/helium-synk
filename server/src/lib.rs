@@ -262,7 +262,7 @@ async fn ready(State(app): State<App>) -> Result<Json<serde_json::Value>, ApiErr
 
 fn validate(e: &Envelope, app: &App, author: &str) -> Result<(), ApiError> {
     if e.protocol_version != 1
-        || e.domain != "diagnostic"
+        || !matches!(e.domain.as_str(), "diagnostic" | "bookmark")
         || e.key_epoch != 1
         || e.device_id != author
         || e.account_id != app.account_id

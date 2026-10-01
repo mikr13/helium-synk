@@ -2,14 +2,14 @@ export const PROTOCOL_VERSION = 1 as const;
 export const MAX_BATCH = 100;
 export const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
 
-// Only synthetic probes are enabled until the browser adapters/merge gates pass.
+// Browser permissions are enabled only when their capture/application adapters are ready.
 export interface Envelope {
   protocol_version: 1;
   operation_id: string;
   account_id: string;
   device_id: string;
   counter: number;
-  domain: 'diagnostic';
+  domain: 'diagnostic' | 'bookmark';
   key_epoch: 1;
   nonce: string;
   ciphertext: string;
@@ -53,7 +53,7 @@ export function validateEnvelope(e: Envelope): void {
   if (
     !e ||
     e.protocol_version !== 1 ||
-    e.domain !== 'diagnostic' ||
+    !['diagnostic', 'bookmark'].includes(e.domain) ||
     e.key_epoch !== 1 ||
     !isUuid(e.operation_id) ||
     !isUuid(e.account_id) ||
@@ -98,4 +98,20 @@ export function parseCredentials(value: unknown): Credentials {
     throw new Error('Invalid device credential file.');
   }
   return { ...c, server_url: serverUrl(c.server_url) };
+}
+
+const ENVELOPE_FIELDS = [
+  'protocol_version',
+  'operation_id',
+  'account_id',
+  'device_id',
+  'counter',
+  'domain',
+  'key_epoch',
+  'nonce',
+  'ciphertext',
+] as const;
+/** JSON member order is not part of envelope identity across Rust/JavaScript serializers. */
+export function sameEnvelope(a: Envelope, b: Envelope): boolean {
+  return ENVELOPE_FIELDS.every((field) => a[field] === b[field]);
 }
