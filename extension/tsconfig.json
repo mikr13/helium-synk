@@ -1,1 +1,1 @@
-{ "extends": "./.wxt/tsconfig.json", "compilerOptions": { "strict": true } }
+{ "extends": "./.wxt/tsconfig.json", "compilerOptions": { "strict": true, "jsx": "react-jsx" } }
