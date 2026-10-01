@@ -652,3 +652,200 @@ async fn sequence_exhaustion_rejects_without_advancing_usage() {
     );
     assert_eq!(status(&app, &c).await["journal_operations"], 1);
 }
+
+async fn invitation(app: &App, c: &Credentials) -> Value {
+    let (code, invite) =
+        request(app, Some(c), "POST", "/v1/pairing/invites", Some(json!({}))).await;
+    assert_eq!(code, StatusCode::OK);
+    invite
+}
+fn claim(app: &App, invitation: &Value) -> Value {
+    json!({"account_id":app.account_id,"expected_epoch":app.server_epoch,"invitation_token":invitation["invitation_token"],"device_id":Uuid::new_v4().to_string(),"name":"Paired profile","token":"b".repeat(64)})
+}
+async fn register(app: &App, claim: Value) -> (StatusCode, Value) {
+    request(app, None, "POST", "/v1/pairing/register", Some(claim)).await
+}
+#[tokio::test]
+async fn pairing_is_single_use_idempotent_hashed_and_durable_after_reopen() {
+    let (temp, app, c) = setup().await;
+    assert_eq!(
+        request(&app, None, "POST", "/v1/pairing/invites", Some(json!({})))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let invitation = invitation(&app, &c).await;
+    let first = claim(&app, &invitation);
+    let (code, reply) = register(&app, first.clone()).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(register(&app, first.clone()).await.1, reply);
+    let mut other = first.clone();
+    other["device_id"] = json!(Uuid::new_v4().to_string());
+    assert_eq!(register(&app, other).await.0, StatusCode::CONFLICT);
+    let mut other = first.clone();
+    other["token"] = json!("c".repeat(64));
+    assert_eq!(register(&app, other).await.0, StatusCode::CONFLICT);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM devices")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+    let hashes: (String, String) =
+        sqlx::query_as("SELECT invitation_hash,claim_hash FROM pairing_invites")
+            .fetch_one(&app.pool)
+            .await
+            .unwrap();
+    assert_ne!(hashes.0, invitation["invitation_token"].as_str().unwrap());
+    assert!(!hashes.1.contains(&"b".repeat(64)));
+    let token: String = sqlx::query_scalar("SELECT token_hash FROM devices WHERE id = ?")
+        .bind(first["device_id"].as_str().unwrap())
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_ne!(token, "b".repeat(64));
+    app.pool.close().await;
+    let reopened = App::open(&temp.path().join("synk.sqlite")).await.unwrap();
+    assert_eq!(register(&reopened, first.clone()).await.1, reply);
+    let paired = Credentials {
+        account_id: reopened.account_id.clone(),
+        device_id: first["device_id"].as_str().unwrap().into(),
+        name: "Paired profile".into(),
+        token: "b".repeat(64),
+        server_url: c.server_url,
+    };
+    assert_eq!(
+        request(&reopened, Some(&paired), "GET", "/v1/sync/pull", None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    reopened.revoke(&paired.device_id).await.unwrap();
+    assert_eq!(register(&reopened, first).await.0, StatusCode::UNAUTHORIZED);
+}
+#[tokio::test]
+async fn expired_and_revoked_issuer_invitations_cannot_enroll_new_devices() {
+    let (_temp, app, c) = setup().await;
+    let invite = invitation(&app, &c).await;
+    let pending = claim(&app, &invite);
+    sqlx::query("UPDATE pairing_invites SET expires_at = strftime('%s','now') - 1")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(register(&app, pending).await.0, StatusCode::GONE);
+    let active = invitation(&app, &c).await;
+    let pending = claim(&app, &active);
+    app.revoke(&c.device_id).await.unwrap();
+    assert_eq!(register(&app, pending).await.0, StatusCode::GONE);
+}
+#[tokio::test]
+async fn committed_claim_retries_after_invite_expiry_but_new_claims_cannot() {
+    let (_temp, app, c) = setup().await;
+    let invite = invitation(&app, &c).await;
+    let pending = claim(&app, &invite);
+    let reply = register(&app, pending.clone()).await;
+    assert_eq!(reply.0, StatusCode::OK);
+    sqlx::query("UPDATE pairing_invites SET expires_at = strftime('%s','now') - 1")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(register(&app, pending.clone()).await, reply);
+    let mut different = pending.clone();
+    different["name"] = json!("changed");
+    assert_eq!(register(&app, different).await.0, StatusCode::CONFLICT);
+    sqlx::query("UPDATE pairing_invites SET expires_at = strftime('%s','now') - 3600")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(register(&app, pending).await.0, StatusCode::GONE);
+}
+#[tokio::test]
+async fn pairing_quota_rollback_retains_the_unused_invitation_and_concurrent_claims_have_one_winner()
+ {
+    let (_temp, app, c) = setup().await;
+    app.configure_limits(synk_server::Limits {
+        max_devices: 1,
+        max_operations: 100,
+        max_journal_bytes: 1_000_000,
+    })
+    .await
+    .unwrap();
+    let invite = invitation(&app, &c).await;
+    let pending = claim(&app, &invite);
+    assert_eq!(
+        register(&app, pending.clone()).await.0,
+        StatusCode::INSUFFICIENT_STORAGE
+    );
+    let claimed: Option<String> =
+        sqlx::query_scalar("SELECT claimed_device_id FROM pairing_invites")
+            .fetch_one(&app.pool)
+            .await
+            .unwrap();
+    assert!(claimed.is_none());
+    app.configure_limits(synk_server::Limits {
+        max_devices: 3,
+        max_operations: 100,
+        max_journal_bytes: 1_000_000,
+    })
+    .await
+    .unwrap();
+    let mut other = pending.clone();
+    other["token"] = json!("c".repeat(64));
+    other["device_id"] = json!(Uuid::new_v4().to_string());
+    let (one, two) = tokio::join!(register(&app, pending), register(&app, other));
+    assert!(matches!(
+        (one.0, two.0),
+        (StatusCode::OK, StatusCode::CONFLICT) | (StatusCode::CONFLICT, StatusCode::OK)
+    ));
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM devices")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+}
+#[tokio::test]
+async fn pairing_rejects_mismatched_accounts_epochs_keys_and_bounds_invitation_growth() {
+    let (_temp, app, c) = setup().await;
+    let invite = invitation(&app, &c).await;
+    let pending = claim(&app, &invite);
+    for field in ["account_id", "expected_epoch"] {
+        let mut invalid = pending.clone();
+        invalid[field] = json!(Uuid::new_v4().to_string());
+        assert_eq!(register(&app, invalid).await.0, StatusCode::CONFLICT);
+    }
+    let mut leaked_key = pending.clone();
+    leaked_key["recovery_key"] = json!("must-never-arrive-here");
+    assert_eq!(
+        register(&app, leaked_key).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    for field in ["token", "invitation_token", "device_id", "name"] {
+        let mut invalid = pending.clone();
+        invalid[field] = json!("");
+        assert_eq!(register(&app, invalid).await.0, StatusCode::BAD_REQUEST);
+    }
+    for _ in 1..16 {
+        invitation(&app, &c).await;
+    }
+    assert_eq!(
+        request(
+            &app,
+            Some(&c),
+            "POST",
+            "/v1/pairing/invites",
+            Some(json!({}))
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    sqlx::query("UPDATE pairing_invites SET expires_at = strftime('%s','now') - 3601")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    invitation(&app, &c).await;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pairing_invites")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}

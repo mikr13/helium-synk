@@ -7,6 +7,8 @@ import './style.css';
 import { BookmarkPanel, downloadJson } from './bookmarks';
 import { SessionPanel } from './sessions';
 import { HistoryPanel } from './history';
+import { PairingPanel } from './pairing';
+import { grantEndpoint } from '../../lib/endpoint-permission';
 
 async function request(message: Request): Promise<Reply & { ok: true }> {
   const response = (await browser.runtime.sendMessage(message)) as Reply;
@@ -55,14 +57,7 @@ function App() {
   }
   async function enroll() {
     const credentials = parseCredentials(JSON.parse(credential));
-    const origin = `${credentials.server_url}/*`;
-    const hostname = new URL(credentials.server_url).hostname;
-    if (hostname !== '127.0.0.1' && hostname !== 'localhost') {
-      if (!hostname.endsWith('.ts.net'))
-        throw new Error('This build supports localhost and Tailscale HTTPS endpoints.');
-      if (!(await browser.permissions.request({ origins: [origin] })))
-        throw new Error('Server access permission was not granted.');
-    }
+    await grantEndpoint(credentials.server_url);
     const response = await request({
       type: 'enroll',
       credentials,
@@ -146,13 +141,14 @@ function App() {
           </div>
         )}
         {!status && !error && <p>Opening your local database…</p>}
-        {status && !status.enrolled && (
+        {status && <PairingPanel status={status} request={request} onStatus={setStatus} />}
+        {status && !status.enrolled && !status.pairing_pending && (
           <section className="panel">
             <div className="panel-heading">
               <span className="number">01</span>
               <div>
-                <h2>Connect this device</h2>
-                <p>Use a separate credential file for each browser profile.</p>
+                <h2>First profile setup</h2>
+                <p>Start your account with a credential file from the relay.</p>
               </div>
             </div>
             <form

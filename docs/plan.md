@@ -1,8 +1,26 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Implementation active through sections 1–9; bookmark/session/history capture and transport implemented; native Helium acceptance, history erasure/scale and security/server hardening pending.
+**Status:** Implementation active through sections 1–9; bookmark/session/history capture and transport implemented; native Helium acceptance, key rotation, history erasure/scale and local storage/recovery pending.
 
-**Updated:** 2026-10-01  
+**Updated:** 2026-10-01
+
+## Current goal status
+
+Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress; every whole milestone and native acceptance gate remains open.
+
+| Checkpoint                                                         | Status                                          | Commit / evidence                                                                                       |
+| ------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass           | `a0429bd` and earlier checkpoints; native gates open                                                    |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint              | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint                                     |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint              | `feat(security): add single-use durable profile pairing`; current 151 TS, 23 Rust, 9 real-process tests |
+| Future-data key rotation / compromised-installation recovery       | Pending                                         | Section 8                                                                                               |
+| History plaintext/ciphertext erasure                               | Pending                                         | Section 7                                                                                               |
+| Local budgets, retention, full-scale journal performance, recovery | Pending                                         | Sections 2–4, 7–9                                                                                       |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                           | Disposable profiles only                                                                                |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing | Section 10 onward                                                                                       |
+
+This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
+
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
 **Phase-one scope:** Bookmarks, history, current sessions, closed/previous sessions, encryption, offline operation, and self-hosting.  
 **Future research:** Optional iCloud backup or alternate sync transport. No iCloud implementation in phase one.
@@ -18,7 +36,7 @@
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 142 TS + 18 relay + 8 cross-stack tests; native gates pending       |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 151 TS + 23 relay + 9 cross-stack tests; native gates pending       |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
 | M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
@@ -56,7 +74,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 142 TypeScript, 18 Rust and 8 real-relay integration tests.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 151 TypeScript, 23 Rust and 9 real-relay integration tests.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -93,6 +111,18 @@ These checks use simulated native ports, synthetic UI responses and the real rel
 - [ ] Complete the real Helium and hours-long outage gates together in disposable profiles.
 
 Evidence: 142 TypeScript, 18 Rust and 8 real-process integration tests, WXT production build/typechecks and format/version checks. See `docs/relay-protocol.md` and `docs/progress.md`. Processed ACKs attest to durable journal processing; native browser effects have separate progress. No whole milestone exit gate is complete.
+
+## Pairing implementation checkpoint — 2026-10-01
+
+- [x] Issue short-lived, single-use hashed invitations from authenticated trusted installations.
+- [x] Export private client-side pairing bundles without transmitting encryption keys to the relay.
+- [x] Persist candidate identities/API credentials before registration and retry exact claims across lost replies/restarts.
+- [x] Commit invitation/device and local enrollment state atomically; retain claims on quota/storage failures.
+- [x] Bound invitation growth and reject expired, mismatched, revoked or competing claims.
+- [x] Add saved-claim retry and explicit discard controls; verify synthetic 390 px UI.
+- [ ] Complete future-data content-key rotation and the native pairing/permissions gates.
+
+Evidence: 151 TypeScript, 23 Rust and 9 real-process integration tests, WXT production build/typechecks and format/version checks. See `docs/pairing.md` and `docs/progress.md`. Profile-local auto-unlock and decrypted caches remain the local protection policy; no milestone exit gate is complete.
 
 ## 1. Product requirements and boundaries
 
@@ -296,7 +326,7 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 - [x] Specify deterministic handling of missing/deleted parents and invalid placement.
 - [x] Prove convergence from the same operation set regardless of arrival order.
 
-**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 142 TypeScript tests, 18 relay tests and 8 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
+**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 151 TypeScript tests, 23 relay tests and 9 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
 
 ### Browser integration and onboarding
 
@@ -354,18 +384,18 @@ Public APIs support window/tab/group restoration, but do not let the extension i
 
 ## 8. Encryption, registration, and permissions
 
-- [ ] Generate a random master key on the first trusted client; never send it unprotected to the server.
-- [ ] Derive separate domain/author-installation keys using HKDF.
-- [ ] Encrypt with AES-256-GCM, fresh 96-bit nonces, and authenticated envelope metadata.
-- [ ] Persist immutable ciphertext for retries; prevent operation-ID reuse with changed contents.
+- [x] Generate a random master key on the first trusted client; never send it unprotected to the server.
+- [x] Derive separate domain/author-installation keys using HKDF.
+- [x] Encrypt with AES-256-GCM, fresh 96-bit nonces, and authenticated envelope metadata.
+- [x] Persist immutable ciphertext for retries; prevent operation-ID reuse with changed contents.
 - [ ] Version encryption envelopes and key epochs; define nonce safety across installation resets and restores.
-- [ ] Define whether each installation auto-unlocks or requires an unlock secret; document local cached-data/key protection.
-- [ ] Use distinct high-entropy API credentials per installation and store only credential hashes on the server.
-- [ ] Provide a high-entropy out-of-band pairing bundle with a short-lived, single-use server registration invitation.
-- [ ] Keep master-key material local to clients during registration and out of logs/ordinary URL parameters.
-- [ ] Export a separate recovery bundle and document that server backups alone cannot decrypt data.
+- [x] Define whether each installation auto-unlocks or requires an unlock secret; document local cached-data/key protection.
+- [x] Use distinct high-entropy API credentials per installation and store only credential hashes on the server.
+- [x] Provide a high-entropy out-of-band pairing bundle with a short-lived, single-use server registration invitation.
+- [x] Keep master-key material local to clients during registration and out of logs/ordinary URL parameters.
+- [x] Export a separate recovery bundle and document that server backups alone cannot decrypt data.
 - [ ] Revoke API access immediately and define future-data key rotation for removal of a compromised installation.
-- [ ] Explain that revocation cannot erase already-downloaded data or invalidate knowledge of old keys.
+- [x] Explain that revocation cannot erase already-downloaded data or invalidate knowledge of old keys.
 - [ ] Request only required browser APIs and the configured server host; avoid broad browsing-site host access/content scripts.
 - [ ] Render titles/URLs as untrusted text and keep the extension CSP restrictive.
 - [ ] Avoid logging browsing contents, tokens, keys, pairing bundles, or sensitive query parameters.

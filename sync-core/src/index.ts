@@ -15,3 +15,5 @@ export * from './session-restore';
 export * from './history';
 export * from './history-native';
 export * from './history-capture';
+
+export * from './pairing';

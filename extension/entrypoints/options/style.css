@@ -819,3 +819,22 @@ footer p {
   font: inherit;
   font-size: 12px;
 }
+
+.pairing {
+  margin-bottom: 24px;
+}
+.pairing-review {
+  margin-top: 20px;
+  padding: 18px;
+  border-left: 3px solid var(--orange);
+  background: #efeee5;
+}
+.pairing-review code {
+  overflow-wrap: anywhere;
+}
+.pairing button:focus-visible,
+.pairing input:focus-visible,
+.pairing textarea:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 3px;
+}

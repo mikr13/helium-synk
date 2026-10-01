@@ -48,8 +48,8 @@ pnpm build
 In a **disposable Helium profile**, open `chrome://extensions`, enable developer mode, and load `extension/.output/chrome-mv3` as an unpacked extension. Click its toolbar action to open the dashboard. Use another disposable profile for the second client. Keep the unpacked extension path stable; changing identity/origin can strand local storage.
 
 1. Paste profile A's credential JSON into its dashboard. Leave the recovery-key field blank on the first profile.
-2. Save the generated recovery file somewhere private, outside the source repository.
-3. Paste profile B's separate credential JSON into its dashboard and enter **the same recovery key** from A's recovery file.
+2. Save the generated recovery file somewhere private, outside the source repository. On the trusted profile, use **Save pairing bundle** to create a private 15-minute invitation.
+3. In profile B, paste the pairing bundle and choose a profile name. A distinct credential is issued without sending encryption keys to the relay. Retry the saved claim if a reply is lost; resolve an ambiguous attempt before discarding it. Separate CLI credentials with A's shared recovery key remain an advanced setup option.
 4. Queue a test note on each profile. Stop the relay, queue another note, and restart it to check catch-up synchronization.
 5. In each disposable profile, preview the bookmark merge, save its backup, and enable bookmark sync. Keep a stable extension identity/path. Use the interrupted-addition review if an ambiguous create pauses application.
 6. Enable session capture in the dashboard. Inspect another profile's current/closed/previous snapshots and restore a tab, window or whole session. Use disposable URLs and check partial progress; cancelling keeps opened pages. Live Helium acceptance for these APIs is still pending.
@@ -66,7 +66,7 @@ If the Mini goes offline, locally committed data remains available and notes, en
 
 The relay stores encrypted content and token hashes. It sees author IDs, counters, delivery sequences, and traffic size/timing. Clients use AES-256-GCM with fresh nonces and HKDF-derived per-account/domain/author keys. This build auto-unlocks: the recovery key, API credential, and decrypted content caches are stored in the browser profile. **Local profile data is not encrypted at rest by this extension.** Keep the recovery key separately; a server backup cannot decrypt records.
 
-Revocation removes API access but cannot erase downloaded data or revoke knowledge of an existing encryption key. The options page exports the local replica separately from recovery keys. The relay enforces persisted account envelope budgets and exposes authenticated usage/progress. Clients ACK committed journal cursors and retry lost replies durably; native browser effects retain separate progress. Upgrade the relay before this client. Read the [relay protocol/budget contract](docs/relay-protocol.md). Key rotation, short-lived pairing, local budgets/retention and older-backup recovery remain open gates.
+Revocation removes API access but cannot erase downloaded data or revoke knowledge of an existing encryption key. The options page exports the local replica separately from recovery keys. The relay enforces persisted account envelope budgets and exposes authenticated usage/progress. Clients ACK committed journal cursors and retry lost replies durably; native browser effects retain separate progress. Upgrade the relay before this client. Read the [relay protocol/budget contract](docs/relay-protocol.md). Additional profiles can join using a private single-use pairing bundle with durable registration retries; read the [pairing contract](docs/pairing.md). Future-data key rotation, local budgets/retention and older-backup recovery remain open gates.
 
 ## Hosting and releases
 

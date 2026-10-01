@@ -13,3 +13,6 @@ data/
 web-ext.config.ts
 .DS_Store
 
+
+helium-synk-pairing.json
+helium-synk-recovery.json

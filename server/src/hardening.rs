@@ -158,7 +158,7 @@ pub(crate) async fn status(
     let row = sqlx::query("SELECT s.*, d.processed_cursor, d.processed_epoch, d.last_seen, (SELECT COUNT(*) FROM devices) AS devices, (SELECT COUNT(*) FROM devices WHERE revoked = 0) AS active_devices, COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'operations'),0) AS latest_sequence FROM settings s JOIN devices d ON d.id = ? WHERE s.id = 1")
         .bind(author).fetch_one(&app.pool).await?;
     Ok(Json(
-        serde_json::json!({"server_epoch":app.server_epoch,"protocol_version":1,"schema_version":2,
+        serde_json::json!({"server_epoch":app.server_epoch,"protocol_version":1,"schema_version":crate::SCHEMA_VERSION,
         "package_version":env!("CARGO_PKG_VERSION"),"sqlite_version":app.sqlite_version,
         "journal_bytes":row.get::<i64,_>("journal_bytes"),"journal_operations":row.get::<i64,_>("journal_operations"),
         "max_journal_bytes":row.get::<i64,_>("max_journal_bytes"),"max_operations":row.get::<i64,_>("max_operations"),

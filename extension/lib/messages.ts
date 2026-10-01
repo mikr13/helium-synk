@@ -9,10 +9,16 @@ import type {
   RestoreSelection,
   SynkDatabase,
   HistorySetup,
+  PairingBundle,
+  pairingSummary,
 } from '@helium-synk/core';
 
 export type Request =
   | { type: 'status' }
+  | { type: 'pairing-create' }
+  | { type: 'pairing-start'; bundle: PairingBundle; name: string }
+  | { type: 'pairing-retry' }
+  | { type: 'pairing-discard' }
   | { type: 'history-enable'; days: number; exclusions: string[] }
   | { type: 'history-pause' }
   | { type: 'history-query'; query?: Parameters<SynkDatabase['queryHistory']>[0] }
@@ -38,6 +44,7 @@ export type Request =
   | { type: 'bookmark-resolve'; id: string; native_id?: string };
 export interface Status {
   enrolled: boolean;
+  pairing_pending?: ReturnType<typeof pairingSummary>;
   name?: string;
   endpoint?: string;
   connection: 'not-connected' | 'syncing' | 'online' | 'waiting';
@@ -85,6 +92,7 @@ export type Reply =
       ok: true;
       status?: Status;
       recovery?: RecoveryBundle;
+      pairing?: PairingBundle;
       replica?: unknown;
       history_page?: Awaited<ReturnType<SynkDatabase['queryHistory']>>;
       history_sources?: { id: string; name: string }[];

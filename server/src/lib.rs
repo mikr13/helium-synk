@@ -1,5 +1,6 @@
 use std::{path::Path, sync::Arc, time::Duration};
 mod hardening;
+mod pairing;
 pub use hardening::Limits;
 
 use axum::{
@@ -24,6 +25,7 @@ use sqlx::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, broadcast, watch};
 use uuid::Uuid;
 
+const SCHEMA_VERSION: u8 = 3;
 const MAX_BATCH: usize = 100;
 const MAX_PAGE_BYTES: usize = 512 * 1024;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
@@ -283,6 +285,8 @@ pub fn router(app: App) -> Router {
         .route("/v1/events", get(events))
         .route("/v1/sync/ack", post(hardening::acknowledge))
         .route("/v1/status", get(hardening::status))
+        .route("/v1/pairing/invites", post(pairing::invite))
+        .route("/v1/pairing/register", post(pairing::register))
         .layer(DefaultBodyLimit::max(1_048_576))
         .layer(axum::middleware::from_fn_with_state(
             app.clone(),
@@ -294,7 +298,7 @@ pub fn router(app: App) -> Router {
 async fn ready(State(app): State<App>) -> Result<Json<serde_json::Value>, ApiError> {
     sqlx::query("SELECT 1").execute(&app.pool).await?;
     Ok(Json(
-        serde_json::json!({"status": "ready", "protocol_version": 1, "schema_version":2, "package_version":env!("CARGO_PKG_VERSION"), "server_epoch": app.server_epoch, "sqlite_version": app.sqlite_version}),
+        serde_json::json!({"status": "ready", "protocol_version": 1, "schema_version":SCHEMA_VERSION, "package_version":env!("CARGO_PKG_VERSION"), "server_epoch": app.server_epoch, "sqlite_version": app.sqlite_version}),
     ))
 }
 

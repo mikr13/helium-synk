@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import type { PairingCandidate } from './pairing';
 import type {
   HistorySetup,
   HistoryInbox,
@@ -102,6 +103,7 @@ export interface QuarantinedRecord {
 }
 export class SynkDatabase extends Dexie {
   state!: Table<LocalState, string>;
+  pairingPending!: Table<PairingCandidate, string>;
   outbox!: Table<Envelope, string>;
   records!: Table<LocalRecord, string>;
   operations!: Table<StoredOperation, string>;
@@ -169,6 +171,7 @@ export class SynkDatabase extends Dexie {
       historyVisits:
         'id, [visited_at+id], [source_id+visited_at+id], [source_id+url_tag], url_tag, source_id',
     });
+    this.version(6).stores({ pairingPending: 'id' });
   }
   async enroll(
     credentials: Credentials,
@@ -180,7 +183,9 @@ export class SynkDatabase extends Dexie {
     const indexKey =
       historyIndexKey ?? (await deriveHistoryIndexKey(recoveryKey, parsed.account_id));
     validateRecoveryKey(indexKey);
-    await this.transaction('rw', this.state, async () => {
+    await this.transaction('rw', [this.state, this.pairingPending], async () => {
+      if (await this.pairingPending.get('pairing'))
+        throw new Error('Retry the pending pairing claim first.');
       if (await this.state.get('local')) throw new Error('This profile is already enrolled.');
       await this.state.add({
         id: 'local',

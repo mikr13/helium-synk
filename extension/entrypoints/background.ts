@@ -2,6 +2,11 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { browser, type Browser } from 'wxt/browser';
 import {
   SynkDatabase,
+  createPairingBundle,
+  stagePairing,
+  completePairing,
+  discardPairing,
+  pairingSummary,
   SyncCoordinator,
   BookmarkAdapter,
   SessionCapture,
@@ -128,6 +133,7 @@ export default defineBackground(() => {
       .map(restoreSummary);
     return {
       enrolled: !!local,
+      pairing_pending: pairingSummary(await db.pairingPending.get('pairing')),
       history: {
         enabled: !!historySetup?.enabled,
         phase: historySetup?.phase ?? 'off',
@@ -171,6 +177,19 @@ export default defineBackground(() => {
   }
   async function handle(request: Request): Promise<Reply> {
     try {
+      if (request.type === 'pairing-create')
+        return { ok: true, pairing: await createPairingBundle(db) };
+      if (request.type === 'pairing-discard') {
+        await discardPairing(db);
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'pairing-start' || request.type === 'pairing-retry') {
+        if (request.type === 'pairing-start') await stagePairing(db, request.bundle, request.name);
+        await completePairing(db);
+        await connect();
+        await sync(true);
+        return { ok: true, status: await status() };
+      }
       if (request.type === 'history-query') {
         return {
           ok: true,

@@ -10,6 +10,9 @@ import {
   SynkDatabase,
   SyncCoordinator,
   HttpTransport,
+  createPairingBundle,
+  stagePairing,
+  completePairing,
   type Credentials,
   historyVisitId,
   historyGeneration,
@@ -543,4 +546,86 @@ it('bounds notification connections, releases slots and drains authenticated soc
   await start();
   const recovered = await connect();
   recovered.close();
+});
+
+it('pairs a new installation across a real lost enrollment reply and relay/client restart without relay key material', async () => {
+  const credentialFile = join(directory, 'pairing-issuer.credential.json');
+  execFileSync(
+    binary,
+    [
+      '--database',
+      database,
+      'issue-device',
+      '--name',
+      'Pairing issuer',
+      '--server-url',
+      `http://127.0.0.1:${port}`,
+      '--output',
+      credentialFile,
+    ],
+    { stdio: 'ignore' },
+  );
+  const trusted = await local(JSON.parse(readFileSync(credentialFile, 'utf8')), sharedKey);
+  await new SyncCoordinator(trusted).sync();
+  const bundle = await createPairingBundle(trusted);
+  let target = new SynkDatabase(`integration-pairing-${crypto.randomUUID()}`);
+  localDatabases.push(target);
+  await stagePairing(target, bundle, 'Disposable paired profile');
+  const pending = (await target.pairingPending.get('pairing'))!;
+  const nativeFetch = globalThis.fetch;
+  let dropped = false;
+  const sent: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith('/v1/pairing/register')) {
+      sent.push(String(init?.body));
+      const reply = await nativeFetch(input, init);
+      expect(reply.ok).toBe(true);
+      if (!dropped) {
+        dropped = true;
+        throw new Error('Committed enrollment reply dropped');
+      }
+      return reply;
+    }
+    return nativeFetch(input, init);
+  };
+  try {
+    await expect(completePairing(target)).rejects.toThrow('reply dropped');
+    expect(await target.state.get('local')).toBeUndefined();
+    const name = target.name;
+    target.close();
+    expect(await stop()).toEqual({ code: 0, signal: null });
+    await start();
+    target = new SynkDatabase(name);
+    localDatabases.push(target);
+    await completePairing(target);
+    expect(sent[1]).toBe(sent[0]);
+  } finally {
+    globalThis.fetch = nativeFetch;
+  }
+  const state = (await target.state.get('local'))!;
+  expect(state.credentials.device_id).toBe(pending.credentials.device_id);
+  expect(state.recovery_key).toBe(sharedKey);
+  expect(await target.pairingPending.count()).toBe(0);
+  await target.queueDiagnostic('Signal from invitation-enrolled profile');
+  await new SyncCoordinator(target).sync();
+  await new SyncCoordinator(trusted).sync();
+  expect((await trusted.records.toArray()).map((r) => r.payload.note)).toContain(
+    'Signal from invitation-enrolled profile',
+  );
+  const stored = execFileSync(
+    'sqlite3',
+    [
+      database,
+      'SELECT invitation_hash,claim_hash FROM pairing_invites; SELECT token_hash FROM devices; SELECT envelope FROM operations;',
+    ],
+    { encoding: 'utf8' },
+  );
+  expect(stored).not.toContain(bundle.recovery_key);
+  expect(stored).not.toContain(bundle.history_index_key);
+  expect(stored).not.toContain(bundle.invitation_token);
+  expect(stored).not.toContain(pending.credentials.token);
+  expect(stored).not.toContain('Signal from invitation-enrolled profile');
+  expect(JSON.stringify(sent)).not.toContain(bundle.recovery_key);
+  expect(JSON.stringify(sent)).not.toContain(bundle.history_index_key);
+  expect((await relayStatus(state.credentials)).schema_version).toBe(3);
 });
