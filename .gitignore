@@ -1,0 +1,15 @@
+node_modules/
+**/.wxt/
+**/.output/
+target/
+work/
+data/
+.env
+.env.*
+!.env.example
+*.sqlite*
+*.db*
+*.credential.json
+web-ext.config.ts
+.DS_Store
+

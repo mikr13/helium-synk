@@ -1,0 +1,30 @@
+{
+  "name": "helium-synk",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "pnpm@12.8.1",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "pnpm --filter @helium-synk/extension dev",
+    "prepare": "pnpm --filter @helium-synk/extension wxt:prepare",
+    "build": "pnpm --filter @helium-synk/extension build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "check:server": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
+    "changeset": "changeset",
+    "version-packages": "changeset version && node scripts/sync-rust-version.mjs && pnpm install --lockfile-only && cargo update --workspace",
+    "check:versions": "node scripts/sync-rust-version.mjs --check",
+    "hooks:install": "git config core.hooksPath .githooks"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3",
+    "@commitlint/cli": "^20.0.0",
+    "@commitlint/config-conventional": "^20.0.0",
+    "@types/node": "^24.0.0",
+    "fake-indexeddb": "^6.2.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  }
+}
