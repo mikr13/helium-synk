@@ -6,3 +6,5 @@ export * from './revision';
 export * from './position';
 export * from './bookmarks';
 export * from './payload';
+export * from './bookmark-native';
+export * from './bookmark-adapter';

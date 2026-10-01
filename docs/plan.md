@@ -1,6 +1,7 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Implementation started; encrypted diagnostic foundation complete. No milestone exit gate is complete.  
+**Status:** Implementation active through sections 1–9; bookmark adapter/transport implemented, native Helium acceptance and other domains pending.
+
 **Updated:** 2026-10-01  
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
 **Phase-one scope:** Bookmarks, history, current sessions, closed/previous sessions, encryption, offline operation, and self-hosting.  
@@ -14,15 +15,15 @@
 - Record evidence beside completed gates: test results, relevant commits, or manual verification notes.
 - If an item is blocked, add a short `Blocked: ...` note below it and continue independent work.
 
-| Milestone                                        | Status                 | Depends on | Exit evidence                                                    |
-| ------------------------------------------------ | ---------------------- | ---------- | ---------------------------------------------------------------- |
-| M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending    |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 12 core + 7 relay + 2 cross-stack tests; remaining gates pending |
-| M3 — Bidirectional bookmarks                     | Planned                | M2         | —                                                                |
-| M4 — Current, closed, and previous sessions      | Planned                | M2         | —                                                                |
-| M5 — Cross-device history and deletion           | Planned                | M2         | —                                                                |
-| M6 — Production hosting and recovery             | Planned                | M3–M5      | —                                                                |
-| M7 — Product polish and release                  | Planned                | M6         | —                                                                |
+| Milestone                                        | Status                 | Depends on | Exit evidence                                                 |
+| ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------- |
+| M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 65 TS + 10 relay + 3 cross-stack tests; native gates pending  |
+| M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                 |
+| M4 — Current, closed, and previous sessions      | Planned                | M2         | —                                                             |
+| M5 — Cross-device history and deletion           | Planned                | M2         | —                                                             |
+| M6 — Production hosting and recovery             | Planned                | M3–M5      | —                                                             |
+| M7 — Product polish and release                  | Planned                | M6         | —                                                             |
 
 ## Initial implementation checkpoint — 2026-10-01
 
@@ -46,7 +47,16 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [ ] Verify the production extension in two disposable Helium profiles with DevTools closed.
 - [ ] Verify worker termination/revival and an hours-long browser outage.
 - [ ] Configure and verify private HTTPS/WSS through Tailscale Serve on the Mac Mini.
-- [ ] Complete the remaining M1/M2 exit gates before enabling bookmark adapters.
+- [ ] Complete the remaining M1/M2 exit gates before daily use of bookmark sync.
+
+## Native bookmark implementation checkpoint — 2026-10-01
+
+- [x] Persist native-event clocks/inbox, mappings, import backups and browser-effect intents in IndexedDB v3.
+- [x] Verify 22 browser-port tests, including two-tree offline convergence, genuine edits during application, delayed capture, ambiguous creates and storage failures.
+- [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
+- [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
+
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 65 TypeScript, 10 Rust and 3 real-relay integration tests.
 
 ## 1. Product requirements and boundaries
 
@@ -226,13 +236,13 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 
 ### Identity and merge policy
 
-- [ ] Assign each logical bookmark/folder a sync UUID; map it to installation-local Chromium IDs.
+- [x] Assign each logical bookmark/folder a sync UUID; map it to installation-local Chromium IDs.
 - [x] Merge title and URL as independent fields.
 - [x] Treat parent and position as an atomic placement value.
 - [x] Track logical revisions plus causal context to distinguish sequential edits from concurrent edits.
 - [x] Use deterministic logical-counter/installation-ID ordering for same-field concurrent edits.
 - [x] Retain alternate concurrent values in a conflict/recovery journal.
-- [ ] Use sortable position tokens with deterministic collision tie-breaking; translate into browser indexes.
+- [x] Use sortable position tokens with deterministic collision tie-breaking; translate into browser indexes.
 - [x] Make ordering rebalance deterministic and test it against concurrent offline inserts/moves.
 - [x] Retain deletion tombstones throughout V1; never garbage-collect them merely by age.
 - [x] Make explicit restoration create a new entity linked to the deleted entity.
@@ -256,15 +266,15 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 
 - [ ] Capture creation, title/URL changes, moves, removal, and children-reordered events.
 - [ ] Map browser root folders by capabilities/role; handle unmodifiable nodes explicitly.
-- [ ] Persist an intended mutation before calling browser APIs, then persist its observed result.
-- [ ] Match expected resulting events to prevent echo uploads without ignoring genuine user edits.
-- [ ] Reconcile actual browser state before retrying interrupted create/move/delete work.
+- [x] Persist an intended mutation before calling browser APIs, then persist its observed result.
+- [x] Match expected resulting events to prevent echo uploads without ignoring genuine user edits.
+- [x] Reconcile actual browser state before retrying interrupted create/move/delete work.
 - [ ] Perform startup and periodic full-tree reconciliation.
-- [ ] Bootstrap the first installation from its existing bookmarks.
-- [ ] Preview the merge on later installations; preserve unmatched entries and intentional duplicates.
-- [ ] Match identical entries conservatively using folder context, URL, and title.
-- [ ] Export a recovery copy before the first substantial merge.
-- [ ] Treat lost local sync metadata as a re-enrollment/recovery situation rather than inferring mass deletion.
+- [x] Bootstrap the first installation from its existing bookmarks.
+- [x] Preview the merge on later installations; preserve unmatched entries and intentional duplicates.
+- [x] Match identical entries conservatively using folder context, URL, and title.
+- [x] Export a recovery copy before the first substantial merge.
+- [x] Treat lost local sync metadata as a re-enrollment/recovery situation rather than inferring mass deletion.
 
 Reference: [Chrome bookmarks API](https://developer.chrome.com/docs/extensions/reference/api/bookmarks).
 

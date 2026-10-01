@@ -14,7 +14,13 @@ import {
   type BookmarkProjection,
 } from './bookmarks';
 import { validatePayload, type EnvelopeHeader } from './payload';
-import type { VectorClock } from './revision';
+import type { VectorClock, Revision } from './revision';
+import type {
+  BookmarkBinding,
+  BookmarkEffect,
+  BookmarkInbox,
+  BookmarkSetup,
+} from './bookmark-native';
 
 export interface LocalState {
   id: 'local';
@@ -62,6 +68,10 @@ export class SynkDatabase extends Dexie {
   drafts!: Table<DraftOperation, string>;
   replicas!: Table<Replica, string>;
   quarantine!: Table<QuarantinedRecord, string>;
+  bookmarkSetup!: Table<BookmarkSetup, string>;
+  bookmarkBindings!: Table<BookmarkBinding, string>;
+  bookmarkInbox!: Table<BookmarkInbox, number>;
+  bookmarkEffects!: Table<BookmarkEffect, string>;
   private encrypting?: Promise<void>;
 
   constructor(name = 'helium-synk-v1') {
@@ -76,6 +86,12 @@ export class SynkDatabase extends Dexie {
       drafts: 'operation_id, header.counter',
       replicas: 'domain',
       quarantine: 'operation_id, sequence',
+    });
+    this.version(3).stores({
+      bookmarkSetup: 'id',
+      bookmarkBindings: 'logical_id, &native_id',
+      bookmarkInbox: '++id, native_id',
+      bookmarkEffects: 'id, status, native_id',
     });
   }
   async enroll(credentials: Credentials, recoveryKey: string): Promise<void> {
@@ -130,45 +146,111 @@ export class SynkDatabase extends Dexie {
     return envelope.operation_id;
   }
   /** Persist capture intent and logical state before async encryption; startup resumes any draft. */
-  async stageBookmark(action: BookmarkAction): Promise<string> {
+  async reserveBookmarkClocks(count: number): Promise<Revision[]> {
+    if (!Number.isSafeInteger(count) || count < 1 || count > 10000)
+      throw new Error('Invalid capture clock reservation.');
+    return this.transaction('rw', this.state, async () => {
+      const local = await this.state.get('local');
+      if (!local) throw new Error('Connect this device first.');
+      let counter = local.next_counter,
+        logical = local.logical ?? 0;
+      const revisions: Revision[] = [];
+      for (let i = 0; i < count; i++) {
+        logical = Math.max(logical + 1, counter);
+        if (!Number.isSafeInteger(logical) || counter >= Number.MAX_SAFE_INTEGER)
+          throw new Error('Logical clock exhausted.');
+        revisions.push({
+          author: local.credentials.device_id,
+          counter: counter++,
+          logical,
+          context: { ...local.context },
+        });
+      }
+      await this.state.update('local', { next_counter: counter, logical });
+      return revisions;
+    });
+  }
+  async stageBookmark(
+    action: BookmarkAction,
+    observedContext?: VectorClock,
+    reserved?: Revision[],
+  ): Promise<string> {
+    return (await this.stageBookmarks([action], observedContext, reserved))[0]!;
+  }
+  /** Batch capture/import commits once, without replaying the entire journal for every node. */
+  async stageBookmarks(
+    actions: readonly BookmarkAction[],
+    observedContext?: VectorClock,
+    reserved?: Revision[],
+  ): Promise<string[]> {
+    if (!actions.length) return [];
+    if (reserved && reserved.length < actions.length)
+      throw new Error('Captured revision reservation is too small.');
     return this.transaction(
       'rw',
       [this.state, this.operations, this.drafts, this.replicas],
       async () => {
         const local = await this.state.get('local');
         if (!local) throw new Error('Connect this device first.');
-        const counter = local.next_counter;
-        const logical = Math.max((local.logical ?? 0) + 1, counter);
-        if (!Number.isSafeInteger(logical) || counter >= Number.MAX_SAFE_INTEGER)
-          throw new Error('Logical clock exhausted.');
-        const operation_id = crypto.randomUUID();
-        const header: EnvelopeHeader = {
-          protocol_version: 1,
-          operation_id,
-          account_id: local.credentials.account_id,
-          device_id: local.credentials.device_id,
-          counter,
-          domain: 'bookmark',
-          key_epoch: 1,
-        };
-        const payload: BookmarkOperation = {
-          kind: 'bookmark',
-          schema_version: 1,
-          operation_id,
-          revision: { author: header.device_id, counter, logical, context: { ...local.context } },
-          action: structuredClone(action),
-        };
-        validatePayload(payload, header);
-        const previous = await this.bookmarkOperations();
-        const value = projectBookmarks([...previous, payload]);
-        await this.drafts.add({ operation_id, header, payload });
+        let counter = local.next_counter,
+          logical = local.logical ?? 0;
+        const context = { ...(observedContext ?? local.context) };
+        const drafts: DraftOperation[] = [];
+        for (let index = 0; index < actions.length; index++) {
+          const action = actions[index]!;
+          let revision: Revision;
+          if (reserved) {
+            revision = structuredClone(reserved[index]!);
+            if (
+              revision.author !== local.credentials.device_id ||
+              revision.counter >= local.next_counter
+            )
+              throw new Error('Invalid captured revision.');
+            if (index > 0) revision.context[revision.author] = reserved[index - 1]!.counter;
+          } else {
+            logical = Math.max(logical + 1, counter);
+            if (!Number.isSafeInteger(logical) || counter >= Number.MAX_SAFE_INTEGER)
+              throw new Error('Logical clock exhausted.');
+            revision = {
+              author: local.credentials.device_id,
+              counter: counter++,
+              logical,
+              context: { ...context },
+            };
+            context[revision.author] = revision.counter;
+          }
+          const operation_id = crypto.randomUUID();
+          const header: EnvelopeHeader = {
+            protocol_version: 1,
+            operation_id,
+            account_id: local.credentials.account_id,
+            device_id: revision.author,
+            counter: revision.counter,
+            domain: 'bookmark',
+            key_epoch: 1,
+          };
+          const payload: BookmarkOperation = {
+            kind: 'bookmark',
+            schema_version: 1,
+            operation_id,
+            revision,
+            action: structuredClone(action),
+          };
+          validatePayload(payload, header);
+          drafts.push({ operation_id, header, payload });
+        }
+        const value = projectBookmarks([
+          ...(await this.bookmarkOperations()),
+          ...drafts.map((d) => d.payload),
+        ]);
+        await this.drafts.bulkAdd(drafts);
         await this.replicas.put({ domain: 'bookmark', value });
         await this.state.update('local', {
-          next_counter: counter + 1,
-          logical,
+          next_counter: counter,
+          logical: Math.max(logical, value.logical),
           context: value.frontier,
         });
-        return operation_id;
+        return drafts.map((d) => d.operation_id);
       },
     );
   }
@@ -232,6 +314,10 @@ export class SynkDatabase extends Dexie {
         this.outbox,
         this.replicas,
         this.quarantine,
+        this.bookmarkSetup,
+        this.bookmarkBindings,
+        this.bookmarkInbox,
+        this.bookmarkEffects,
       ],
       async () => {
         const state = await this.state.get('local');
@@ -250,6 +336,10 @@ export class SynkDatabase extends Dexie {
           outbox: await this.outbox.toArray(),
           replicas: await this.replicas.toArray(),
           quarantine: await this.quarantine.toArray(),
+          bookmark_setup: await this.bookmarkSetup.toArray(),
+          bookmark_bindings: await this.bookmarkBindings.toArray(),
+          bookmark_inbox: await this.bookmarkInbox.toArray(),
+          bookmark_effects: await this.bookmarkEffects.toArray(),
         };
       },
     );

@@ -4,6 +4,7 @@ import { browser } from 'wxt/browser';
 import { generateRecoveryKey, parseCredentials } from '@helium-synk/core';
 import type { Reply, Request, Status } from '../../lib/messages';
 import './style.css';
+import { BookmarkPanel, downloadJson } from './bookmarks';
 
 async function request(message: Request): Promise<Reply & { ok: true }> {
   const response = (await browser.runtime.sendMessage(message)) as Reply;
@@ -71,14 +72,7 @@ function App() {
   }
   async function recovery() {
     const result = await request({ type: 'recovery' });
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(result.recovery, null, 2)], { type: 'application/json' }),
-    );
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'helium-synk-recovery.json';
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    downloadJson(result.recovery, 'helium-synk-recovery.json');
   }
   return (
     <div className="shell">
@@ -95,9 +89,9 @@ function App() {
         <div className="nav active">
           Overview <span>01</span>
         </div>
-        <div className="nav">
-          Bookmarks <small>Next</small>
-        </div>
+        <a className="nav" href="#bookmarks">
+          Bookmarks <small>Preview</small>
+        </a>
         <div className="nav">
           Sessions <small>Planned</small>
         </div>
@@ -113,7 +107,7 @@ function App() {
       <main>
         <header>
           <span className="eyebrow">HELIUM SYNK / OVERVIEW</span>
-          <span className="tag">FOUNDATION BUILD</span>
+          <span className="tag">DEVELOPMENT BUILD</span>
         </header>
         <div className="hero">
           <p className="eyebrow">A PLACE FOR EVERY DEVICE</p>
@@ -229,6 +223,18 @@ function App() {
                 <button className="secondary" disabled={busy} onClick={() => void run(recovery)}>
                   Save recovery key
                 </button>
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const result = await request({ type: 'export' });
+                      downloadJson(result.replica, 'helium-synk-local-replica.json');
+                    })
+                  }
+                >
+                  Export local replica
+                </button>
               </div>
             </section>
             <section className="panel">
@@ -265,6 +271,9 @@ function App() {
           </div>
         )}
         {status?.enrolled && (
+          <BookmarkPanel status={status} request={request} onStatus={setStatus} />
+        )}
+        {status?.enrolled && (
           <section className="records">
             <div className="records-heading">
               <h2>Signals from your devices</h2>
@@ -298,7 +307,7 @@ function App() {
         <footer>
           <span>PRIVATE BY DESIGN</span>
           <p>
-            This first build synchronizes test notes. Bookmarks, browsing history, and sessions are
+            Bookmark capture begins after you review and enable its merge. History and sessions are
             not collected yet.
           </p>
         </footer>

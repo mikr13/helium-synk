@@ -1,11 +1,22 @@
 import { defineBackground } from 'wxt/utils/define-background';
 import { browser } from 'wxt/browser';
-import { SynkDatabase, SyncCoordinator } from '@helium-synk/core';
+import {
+  SynkDatabase,
+  SyncCoordinator,
+  BookmarkAdapter,
+  flattenBookmarks,
+  type BookmarkEvent,
+} from '@helium-synk/core';
 import type { Reply, Request, Status } from '../lib/messages';
+import { bookmarkBrowser } from '../lib/bookmark-browser';
 
 export default defineBackground(() => {
   const db = new SynkDatabase();
   const coordinator = new SyncCoordinator(db);
+  const bookmarks = new BookmarkAdapter(db, bookmarkBrowser);
+  let bookmarkError: string | undefined;
+  let bookmarkTimer: ReturnType<typeof setTimeout> | undefined;
+  let firstBookmarkEvent = 0;
   let socket: WebSocket | undefined;
   let connection: Status['connection'] = 'not-connected';
   let error: string | undefined;
@@ -15,9 +26,11 @@ export default defineBackground(() => {
   async function sync(force = false): Promise<void> {
     if (!force && Date.now() < retryAt) return;
     if (!(await db.state.get('local'))) return;
+    await reconcileBookmarks();
     connection = 'syncing';
     try {
       await coordinator.sync();
+      await reconcileBookmarks();
       connection = 'online';
       error = undefined;
       failures = 0;
@@ -76,6 +89,9 @@ export default defineBackground(() => {
     };
   }
   async function status(): Promise<Status> {
+    const setup = await db.bookmarkSetup.get('bookmark'),
+      replica = await db.bookmarkProjection();
+    const interrupted = await db.bookmarkEffects.where('status').equals('blocked').toArray();
     const local = await db.state.get('local');
     return {
       enrolled: !!local,
@@ -88,11 +104,67 @@ export default defineBackground(() => {
       records: (await db.records.toArray())
         .sort((a, b) => b.payload.created_at.localeCompare(a.payload.created_at))
         .slice(0, 100),
+      bookmarks: {
+        phase: setup?.phase ?? 'off',
+        nodes: Object.values(replica.nodes).filter((n) => !n.system).length,
+        conflicts: replica.conflicts.length,
+        captured: await db.bookmarkInbox.count(),
+        error: bookmarkError,
+        interrupted: interrupted.map((e) => ({
+          id: e.id,
+          message: e.error ?? 'Interrupted bookmark application needs review.',
+        })),
+      },
       browser_version: navigator.userAgent.match(/(?:Chrome|Chromium)\/([\d.]+)/)?.[1] ?? 'Unknown',
     };
   }
   async function handle(request: Request): Promise<Reply> {
     try {
+      if (request.type === 'export') return { ok: true, replica: await db.exportReplica() };
+      if (request.type === 'bookmark-roots') {
+        const nodes = [...flattenBookmarks(await bookmarkBrowser.getTree()).values()];
+        return {
+          ok: true,
+          bookmark_roots: nodes
+            .filter(
+              (n) =>
+                !n.unmodifiable &&
+                ['bookmarks-bar', 'other', 'mobile'].includes(n.folderType ?? ''),
+            )
+            .map((n) => ({
+              id: n.id,
+              title: n.title,
+              role: n.folderType === 'bookmarks-bar' ? 'bar' : (n.folderType as 'other' | 'mobile'),
+              syncing: n.syncing === true,
+            })),
+        };
+      }
+      if (request.type === 'bookmark-preview')
+        return { ok: true, bookmark_preview: await bookmarks.preview(request.roots) };
+      if (request.type === 'bookmark-confirm') {
+        await bookmarks.confirm(request.id);
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'bookmark-resolve') {
+        await bookmarks.resolveCreate(request.id, request.native_id);
+        bookmarkError = undefined;
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'bookmark-review') {
+        const effect = await db.bookmarkEffects.get(request.id);
+        if (!effect || effect.status !== 'blocked')
+          throw new Error('No interrupted bookmark to review.');
+        const candidates = [...flattenBookmarks(await bookmarkBrowser.getTree()).values()].filter(
+          (n) =>
+            n.parentId === effect.desired.parentId &&
+            n.title === effect.desired.title &&
+            n.url === effect.desired.url &&
+            !effect.before_children?.includes(n.id),
+        );
+        return { ok: true, bookmark_candidates: candidates };
+      }
       if (request.type === 'enroll') {
         await db.enroll(request.credentials, request.recovery_key);
         await connect();
@@ -124,6 +196,57 @@ export default defineBackground(() => {
     }
   }
 
+  async function reconcileBookmarks(): Promise<void> {
+    try {
+      await bookmarks.reconcile();
+      bookmarkError = undefined;
+    } catch (cause) {
+      bookmarkError =
+        cause instanceof Error
+          ? cause.message
+          : 'Bookmark capture/application failed. Pending work was retained.';
+    }
+  }
+  function captured(event: BookmarkEvent): void {
+    void bookmarks
+      .capture(event)
+      .then((active) => {
+        if (!active) return;
+        const now = Date.now();
+        if (!firstBookmarkEvent) firstBookmarkEvent = now;
+        if (bookmarkTimer) clearTimeout(bookmarkTimer);
+        bookmarkTimer = setTimeout(
+          () => {
+            bookmarkTimer = undefined;
+            firstBookmarkEvent = 0;
+            void reconcileBookmarks().then(() => sync(true));
+          },
+          Math.min(300, Math.max(0, firstBookmarkEvent + 2_000 - now)),
+        );
+      })
+      .catch(() => {
+        bookmarkError =
+          'Unable to persist a bookmark event. Check local storage; tree reconciliation will retry.';
+      });
+  }
+  // Event intent persists before debounced merging/network work. No global ignore-events flag.
+  browser.bookmarks.onCreated.addListener((_id, node) => captured({ type: 'created', node }));
+  browser.bookmarks.onChanged.addListener((id, changes) =>
+    captured({ type: 'changed', id, title: changes.title, url: changes.url }),
+  );
+  browser.bookmarks.onMoved.addListener((id, move) =>
+    captured({ type: 'moved', id, parentId: move.parentId, index: move.index }),
+  );
+  browser.bookmarks.onRemoved.addListener((id, removed) =>
+    captured({ type: 'removed', id, node: removed.node }),
+  );
+  browser.bookmarks.onChildrenReordered.addListener((id, reordered) =>
+    captured({ type: 'reordered', id, childIds: reordered.childIds }),
+  );
+  browser.bookmarks.onImportEnded.addListener(() => {
+    void reconcileBookmarks().then(() => sync(true));
+  });
+
   // Register synchronously, before any database/network initialization.
   browser.runtime.onMessage.addListener((request: Request, sender) => {
     if (sender.id !== browser.runtime.id) return undefined;
@@ -144,6 +267,7 @@ export default defineBackground(() => {
 
   async function start(): Promise<void> {
     await browser.alarms.create('reconcile', { periodInMinutes: 0.5 });
+    await reconcileBookmarks();
     await connect();
     await sync();
   }

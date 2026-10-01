@@ -1,13 +1,13 @@
 # Verification record
 
-Updated 2026-10-01. The dashboard still handles diagnostic notes; the core and relay now also support durable encrypted bookmark operations. Native bookmark adapters are pending. The [main checklist](plan.md) keeps all milestone exit gates open.
+Updated 2026-10-01. The dashboard supports diagnostic notes and opt-in bookmark previews, backup/export and interrupted-create review. The native adapter is implemented and tested through a browser port; real Helium acceptance is pending. The [main checklist](plan.md) keeps all milestone exit gates open.
 
 ## Completed automated checks
 
 | Check                            | Evidence                                                                                                                                                                         | Boundary                                                                                    |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Move outside iCloud Documents    | Checkout, Git history, dependencies, and builds verified at `/Users/mihirpandey/Work/fun/helium-synk`; old checkout removed                                                      | The original planning document remains in Documents; it contains no credentials             |
-| TypeScript core                  | 43 tests across `core.test.ts`, `bookmarks.test.ts`, and `bookmark-sync.test.ts`                                                                                                 | Uses fake IndexedDB; not a browser lifecycle test                                           |
+| TypeScript core                  | 65 tests across diagnostic/core, bookmark merge, durable bookmark sync and native-adapter suites                                                                                 | Uses fake IndexedDB; not a browser lifecycle test                                           |
 | Rust/SQLite relay                | 10 tests in `server/tests/relay.rs`; rustfmt and clippy with warnings denied                                                                                                     | Real temporary SQLite files; no production deployment                                       |
 | Cross-stack transport            | 3 tests in `tests/relay.integration.test.ts`                                                                                                                                     | Real Rust process, HTTP and authenticated WebSocket; client IndexedDB simulated             |
 | WXT production extension         | `pnpm check` builds Chromium MV3 options page/background worker                                                                                                                  | Browser rendering, permissions, alarms and worker revival still require manual verification |
@@ -27,10 +27,10 @@ The cross-stack outage test stops the relay, queues independent notes on both cl
 - [ ] Run an hours-long outage including browser restarts, then verify convergence and measured latency.
 - [ ] Verify bookmark/history/window/tab/group APIs and restoration without touching the user's normal profile.
 - [ ] Verify Tailscale HTTPS/WSS, access rules, service restart, logout, reboot, and FileVault recovery.
-- [ ] Implement account quotas, pairing invitations, and older-backup/server-loss recovery; expose the existing core replica export in the UI.
-- [ ] Implement browser-content adapters and their conflict/deletion/restoration acceptance tests.
+- [ ] Implement account quotas, pairing invitations, and older-backup/server-loss recovery.
+- [ ] Implement sessions/history adapters and their restoration/deletion acceptance tests; verify the bookmark adapter in disposable Helium profiles.
 
-The installed Helium app is 0.18.1.1 with Chromium framework 154.0.8037.57. The manifest floor of 120 is provisional and has not been verified against an older Helium release. WXT development mode built successfully but requested manual unpacked loading. Native inspection selected an existing unrelated profile; it was left untouched, so no native compatibility result is claimed.
+The installed Helium app is 0.18.1.1 with Chromium framework 154.0.8037.57. The manifest floor is now 134 for root-role capabilities; an older Helium release has not been verified. WXT development mode built successfully but requested manual unpacked loading. Native inspection selected an existing unrelated profile; it was left untouched, so no native compatibility result is claimed.
 
 The current SQLite library selected by the macOS Cargo helper is Homebrew 3.53.3. A runtime guard rejects versions affected by the [SQLite WAL-reset issue](https://sqlite.org/wal.html#wal_reset_bug). Keep this guard when upgrading dependencies.
 
@@ -50,8 +50,12 @@ The IndexedDB v2 migration preserves earlier notes/outbox/counters. Capture draf
 
 The third real Rust-process test bootstraps a bookmark on two clients, stops the relay, persists an unencrypted capture draft for a rename, reopens that client's database, captures an offline move on the other client, restarts the relay, and proves equal replicas with empty queues. It inspects the actual SQLite envelopes for absence of bookmark title/URL/root key. This is transport/model evidence; it does not prove native browser application.
 
-Sections 1–9 remain the active goal. Browser bookmark adapters/onboarding/application journals, sessions/restoration, history/deletion, pairing/key lifecycle, server quotas/progress APIs, and remaining setup checks are still required before the joint Helium session. No whole milestone exit gate is complete.
+Sections 1–9 remain the active goal. Sessions/restoration, history/deletion, pairing/key lifecycle, server quotas/progress APIs, and remaining setup checks are still required before the joint Helium session; live bookmark acceptance is deferred to that session. No whole milestone exit gate is complete.
 
 ## Transfer-size and disk-full checkpoint
 
 Uploads and cursor pages are bounded by bytes as well as record count. A large-record client test verifies upload sizes and author order across multiple batches; the relay test verifies every sequence survives byte-bounded pagination. SQLite storage exhaustion returns HTTP 507 without acknowledging or committing a failed batch. Clients retain local state and outgoing work; the identical retry commits after storage becomes available. These checks simulate exhaustion with SQLite page limits, rather than filling the Mac Mini disk. Account quotas remain pending.
+
+## Native bookmark implementation checkpoint
+
+The [native adapter contract](bookmark-browser.md) records IndexedDB v3 mappings, event-time clock reservations, import/recovery and effect-journal behavior. 22 adapter tests cover the browser/database boundary with a simulated port, including two-tree offline convergence, genuine edits during application, delayed capture context, local-storage failure, and interrupted-addition review. The production WXT build includes synchronous bookmark listeners and opt-in controls. The actual options components passed a synthetic UI preview at desktop and 390 px width; no live Helium profile was touched. Milestone exit gates remain open.

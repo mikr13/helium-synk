@@ -430,3 +430,74 @@ footer p {
     margin-bottom: 10px;
   }
 }
+
+.nav {
+  text-decoration: none;
+}
+.bookmarks-panel {
+  margin-top: 28px;
+  scroll-margin-top: 24px;
+}
+.preview-counts {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  border-block: 1px solid var(--line);
+  padding: 12px 0 18px;
+}
+.preview-counts dt {
+  margin-top: 4px;
+}
+.preview-counts dd {
+  font:
+    25px Georgia,
+    serif;
+}
+.import-preview {
+  margin-top: 24px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.import-preview details {
+  margin-block: 16px;
+  font-size: 12px;
+}
+.import-preview summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.import-list {
+  padding: 0;
+  list-style: none;
+  max-height: 250px;
+  overflow: auto;
+}
+.import-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.import-list strong,
+.import-list span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.import-list span {
+  color: var(--muted);
+  margin-top: 4px;
+  font-size: 11px;
+}
+.review-effect {
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.root-choices select {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: #f5f5ed;
+  font: inherit;
+}

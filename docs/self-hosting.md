@@ -50,4 +50,4 @@ Use [SQLite's online backup facilities](https://sqlite.org/backup.html) or a tes
 - [ ] Recover missing acknowledged operations from surviving clients/exports, rather than relying on an empty upload queue.
 - [ ] Exercise disk-full, migration failure, stale backup, and server-disk-loss scenarios.
 
-The current checkpoint has no production backup automation, UI access to the core local replica export, restore-epoch CLI, or data-loss recovery workflow. iCloud fallback remains research for a later phase.
+The current checkpoint has no production backup automation, restore-epoch CLI, or data-loss recovery workflow. iCloud fallback remains research for a later phase.
