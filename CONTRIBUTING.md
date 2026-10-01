@@ -16,6 +16,8 @@ pnpm prepare
 pnpm check
 pnpm check:server
 pnpm check:versions
+pnpm test:integration
+pnpm format:check
 ```
 
 Do browser compatibility tests in disposable profiles. Never point test adapters at the user's normal bookmarks/history. Mark plan gates complete only with recorded evidence.
