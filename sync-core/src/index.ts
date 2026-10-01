@@ -12,3 +12,4 @@ export * from './sessions';
 export * from './session-native';
 export * from './session-capture';
 export * from './session-restore';
+export * from './history';

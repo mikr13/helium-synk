@@ -18,10 +18,10 @@
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                 |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 97 TS + 10 relay + 4 cross-stack tests; native gates pending  |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 106 TS + 10 relay + 4 cross-stack tests; native gates pending |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                 |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending      |
-| M5 — Cross-device history and deletion           | Planned                | M2         | —                                                             |
+| M5 — Cross-device history and deletion           | In progress            | M2         | Nine model tests; native/transport/purge gates pending        |
 | M6 — Production hosting and recovery             | Planned                | M3–M5      | —                                                             |
 | M7 — Product polish and release                  | Planned                | M6         | —                                                             |
 
@@ -56,7 +56,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 97 TypeScript, 10 Rust and 4 real-relay integration tests.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 106 TypeScript, 10 Rust and 4 real-relay integration tests.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -69,6 +69,15 @@ The checked implementation items use compiled code and simulated browser-port ev
 - [ ] Verify live Helium capture/restoration, DevTools-closed lifecycle and hours-long outages together in disposable profiles.
 
 The [session contract](sessions.md) records supported behavior and recovery limits. Implementation evidence is separate from the live acceptance items in section 6 and M4; no whole milestone exit gate is complete.
+
+## History model checkpoint — 2026-10-01
+
+- [x] Define individual visit identities, original timestamps, local queries and permanent selected-record deletion markers.
+- [x] Verify concurrent global/source/URL generation barriers, delayed uploads and prevention of retagged re-import across delivery permutations.
+- [ ] Implement native capture/reconciliation baselines, history storage/transport and the indexed dashboard.
+- [ ] Coordinate logical removal with local content removal, ciphertext purge and backup-retention behavior.
+
+These are reference-model checks only. The [history contract](history.md) records remaining work; browser history is not collected yet and section 7/M5 acceptance gates remain open.
 
 ## 1. Product requirements and boundaries
 
