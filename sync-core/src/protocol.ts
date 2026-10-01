@@ -124,6 +124,14 @@ export function sameEnvelope(a: Envelope, b: Envelope): boolean {
   return ENVELOPE_FIELDS.every((field) => a[field] === b[field]);
 }
 
+/** SHA-256 of a fixed field array, shared with the relay's immutable retry receipts. */
+export async function envelopeDigest(envelope: Envelope): Promise<string> {
+  validateEnvelope(envelope);
+  const canonical = JSON.stringify(ENVELOPE_FIELDS.map((field) => envelope[field]));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 /** Keep legitimate large records below the relay body limit without ever discarding a row. */
 export function envelopeBatch(pending: readonly Envelope[]): Envelope[] {
   const batch: Envelope[] = [];

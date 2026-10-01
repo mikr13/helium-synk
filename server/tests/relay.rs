@@ -1402,6 +1402,6 @@ async fn schema_three_claim_migration_preserves_exact_retries_and_bootstraps_epo
     );
     assert_eq!(
         request(&app, Some(&c), "GET", "/v1/status", None).await.1["schema_version"],
-        4
+        5
     );
 }

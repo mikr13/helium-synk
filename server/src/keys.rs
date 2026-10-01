@@ -401,14 +401,19 @@ pub(crate) async fn rekey_check(
     }
     let mut committed = Vec::new();
     let mut missing = Vec::new();
+    crate::history_erasure::require_capability(&mut tx, &headers).await?;
     for envelope in &request.envelopes {
         let row = sqlx::query("SELECT sequence, envelope FROM operations WHERE operation_id = ?")
             .bind(&envelope.operation_id)
             .fetch_optional(&mut *tx)
             .await?;
         if let Some(row) = row {
-            if row.get::<String, _>("envelope")
-                != serde_json::to_string(envelope).expect("envelope primitives")
+            if !crate::history_erasure::matches_stored(
+                &mut tx,
+                envelope,
+                &row.get::<String, _>("envelope"),
+            )
+            .await?
             {
                 return Err(ApiError(
                     StatusCode::CONFLICT,

@@ -17,6 +17,8 @@ import {
   historyVisitId,
   historyGeneration,
   historyUrlTag,
+  envelopeDigest,
+  base64,
 } from '../sync-core/src/index';
 import { sessionWindow } from './session-fixtures';
 
@@ -636,5 +638,136 @@ it('pairs a new installation across a real lost enrollment reply and relay/clien
   expect(stored).not.toContain('Signal from invitation-enrolled profile');
   expect(JSON.stringify(sent)).not.toContain(bundle.recovery_key);
   expect(JSON.stringify(sent)).not.toContain(bundle.history_index_key);
-  expect((await relayStatus(state.credentials)).schema_version).toBe(4);
+  expect((await relayStatus(state.credentials)).schema_version).toBe(5);
+});
+
+it('real relay purges history ciphertext with durable receipts across a discarded reply and restart', async () => {
+  const issue = (name: string): Credentials => {
+    const path = join(directory, `${name}.json`);
+    execFileSync(
+      binary,
+      [
+        '--database',
+        database,
+        'issue-device',
+        '--name',
+        name,
+        '--server-url',
+        `http://127.0.0.1:${port}`,
+        '--output',
+        path,
+      ],
+      { stdio: 'ignore' },
+    );
+    return JSON.parse(readFileSync(path, 'utf8'));
+  };
+  const author = issue('Purge source'),
+    remover = issue('Purge helper');
+  const db = await local(author, sharedKey);
+  const url = 'https://purge.example/private-record';
+  const incarnation = crypto.randomUUID();
+  const operation = await db.stageHistory({
+    type: 'visit',
+    visit: {
+      id: historyVisitId(author.device_id, incarnation, '1', 1234.5),
+      source_id: author.device_id,
+      source_name: author.name,
+      incarnation,
+      native_id: '1',
+      visited_at: 1234.5,
+      url,
+      url_tag: await historyUrlTag(await db.ensureHistoryIndexKey(), url),
+      title: 'Purged integration history',
+      generation: {},
+    },
+  });
+  await db.flushDrafts();
+  const original = (await db.outbox.get(operation))!;
+  const epoch = (await relayStatus(author)).server_epoch;
+  const api = (path: string, c: Credentials, body?: unknown, capable = true) =>
+    fetch(`http://127.0.0.1:${port}${path}`, {
+      method: body ? 'POST' : 'GET',
+      headers: {
+        Authorization: `Bearer ${c.token}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(capable ? { 'X-Synk-History-Erasure': '1' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  const pushed = await api('/v1/sync/push', author, {
+    expected_epoch: epoch,
+    envelopes: [original],
+  });
+  expect(pushed.status).toBe(200);
+  const ack = await pushed.json();
+  const { nonce: _nonce, ciphertext: _ciphertext, ...header } = original;
+  const digest = await envelopeDigest(original);
+  // The relay treats certificates as opaque. Client proof creation/validation and
+  // local erasure are the following checkpoint; this exercises only the relay contract.
+  const certificate = {
+    ...header,
+    operation_id: crypto.randomUUID(),
+    device_id: remover.device_id,
+    counter: 1,
+    domain: 'history-erasure',
+    nonce: base64(crypto.getRandomValues(new Uint8Array(12))),
+    ciphertext: base64(crypto.getRandomValues(new Uint8Array(32))),
+  };
+  const request = { expected_epoch: epoch, certificate, targets: [{ header, digest }] };
+  const discarded = await api('/v1/history/purge', remover, request);
+  expect(discarded.status).toBe(200);
+  await discarded.arrayBuffer(); // Discard the committed reply, then reopen the real relay.
+  expect(await stop()).toEqual({ code: 0, signal: null });
+  await start();
+  const retry = await api('/v1/history/purge', remover, request);
+  expect(retry.status).toBe(200);
+  const reply = await retry.json();
+  expect(reply.redactions[0]).toMatchObject({
+    operation_id: original.operation_id,
+    digest,
+    sequence: ack.acknowledgements[0].sequence,
+    certificate_operation_id: certificate.operation_id,
+  });
+  expect(
+    (await api('/v1/sync/push', author, { expected_epoch: epoch, envelopes: [original] })).status,
+  ).toBe(200);
+  expect(
+    (
+      await api('/v1/sync/push', author, {
+        expected_epoch: epoch,
+        envelopes: [{ ...original, ciphertext: base64(new Uint8Array(32).fill(7)) }],
+      })
+    ).status,
+  ).toBe(409);
+  expect((await api('/v1/sync/pull?cursor=0', author, undefined, false)).status).toBe(426);
+  const stored = execFileSync(
+    'sqlite3',
+    [database, 'SELECT envelope FROM operations; SELECT original_digest FROM history_redactions;'],
+    { encoding: 'utf8' },
+  );
+  expect(stored).toContain(digest);
+  expect(stored).not.toContain(original.ciphertext);
+  expect(stored).not.toContain(url);
+  const keyState = await (await api('/v1/keys/state', author)).json();
+  expect(keyState.author_counter).toBe(1);
+  expect(keyState.author_operation_id).toBe(original.operation_id);
+  // A new author still bootstraps from zero; an arbitrary late cursor is never delivery proof.
+  let cursor = 0;
+  let found = false;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const response = await api(`/v1/sync/pull?cursor=${cursor}`, author);
+    expect(response.status).toBe(200);
+    const page = await response.json();
+    const record = page.records.find(
+      (entry: { sequence: number }) => entry.sequence === ack.acknowledgements[0].sequence,
+    );
+    if (record) {
+      expect(record.redacted).toMatchObject({ header, digest, certificate });
+      found = true;
+      break;
+    }
+    cursor = page.next_cursor;
+    if (!page.has_more) break;
+  }
+  expect(found).toBe(true);
 });

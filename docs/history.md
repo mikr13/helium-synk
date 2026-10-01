@@ -65,3 +65,7 @@ Nine model tests cover stable IDs, source/global/URL and concurrent clears, sele
 The fifth real Rust-process integration test preserves fractional original timestamps across client/relay restarts, uploads a clear before an offline source returns, verifies stale uploads stay hidden, and checks logical selected deletion plus absence of URLs/titles/keys in SQLite envelopes. This is a short outage, not an hours-long endurance result.
 
 The actual dashboard components were exercised with synthetic localhost responses: opt-in, text search, selection/removal refresh, exact source-clear preview and narrow-window wrapping. The 390 px layout has no horizontal overflow and produced no warning/error logs. The preview was closed; no actual Helium profile was read or changed.
+
+## Relay purge implementation checkpoint
+
+The schema-5 relay now implements atomic ciphertext replacement with header/digest receipts, encrypted certificate references, exact retry/rekey identity and paged redacted slots. The [erasure protocol](history-erasure-protocol.md) records the trust, compatibility and remaining-copy boundary. Client certificate verification, durable scheduling and local erasure/consumption remain pending; the current extension does not invoke this API or advertise its capability. The relay tests use opaque certificate fixtures and prove server behavior only. Full history erasure remains open.

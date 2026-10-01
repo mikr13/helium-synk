@@ -80,6 +80,9 @@ pub(crate) async fn reserve_insert(
             "Relay account quota reached; retain pending work and increase the budget or reclaim storage",
         ));
     }
+    reserve_sequence(conn).await
+}
+pub(crate) async fn reserve_sequence(conn: &mut SqliteConnection) -> Result<(), ApiError> {
     let latest: i64 = sqlx::query_scalar(
         "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'operations'),0)",
     )
@@ -164,7 +167,9 @@ pub(crate) async fn status(
         "max_journal_bytes":row.get::<i64,_>("max_journal_bytes"),"max_operations":row.get::<i64,_>("max_operations"),
         "max_devices":row.get::<i64,_>("max_devices"),"devices":row.get::<i64,_>("devices"),"active_devices":row.get::<i64,_>("active_devices"),
         "processed_cursor":row.get::<i64,_>("processed_cursor"),"processed_epoch":row.get::<Option<String>,_>("processed_epoch"),
-        "last_seen":row.get::<Option<String>,_>("last_seen"),"latest_sequence":row.get::<i64,_>("latest_sequence")}),
+        "last_seen":row.get::<Option<String>,_>("last_seen"),"latest_sequence":row.get::<i64,_>("latest_sequence"),
+        "history_erasure_version":row.get::<i64,_>("history_erasure_version"),
+        "history_identity_receipts":sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM history_redactions").fetch_one(&app.pool).await?}),
     ))
 }
 

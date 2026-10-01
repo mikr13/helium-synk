@@ -1,5 +1,6 @@
 use std::{path::Path, sync::Arc, time::Duration};
 mod hardening;
+pub mod history_erasure;
 mod keys;
 mod pairing;
 pub use hardening::Limits;
@@ -26,7 +27,7 @@ use sqlx::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, broadcast, watch};
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u8 = 4;
+const SCHEMA_VERSION: u8 = 5;
 const MAX_BATCH: usize = 100;
 const MAX_PAGE_BYTES: usize = 512 * 1024;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
@@ -292,6 +293,7 @@ pub fn router(app: App) -> Router {
         .route("/v1/keys/state", get(keys::state))
         .route("/v1/keys/rotate", post(keys::rotate))
         .route("/v1/sync/rekey-check", post(keys::rekey_check))
+        .route("/v1/history/purge", post(history_erasure::purge))
         .layer(DefaultBodyLimit::max(1_048_576))
         .layer(axum::middleware::from_fn_with_state(
             app.clone(),
@@ -316,7 +318,7 @@ fn validate(e: &Envelope, app: &App, author: &str) -> Result<(), ApiError> {
     }
     if !matches!(
         e.domain.as_str(),
-        "diagnostic" | "bookmark" | "session" | "history"
+        "diagnostic" | "bookmark" | "session" | "history" | "history-erasure"
     ) || e.device_id != author
         || e.account_id != app.account_id
         || Uuid::parse_str(&e.operation_id).is_err()
@@ -364,8 +366,15 @@ async fn push(
     }
     for envelope in &request.envelopes {
         validate(envelope, &app, &author)?;
+        if envelope.domain == "history-erasure" {
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                "Erasure certificates require the atomic purge API",
+            ));
+        }
     }
     let mut tx = app.pool.begin().await?;
+    history_erasure::require_capability(&mut tx, &headers).await?;
     let allowed: bool = sqlx::query_scalar("SELECT revoked = 0 FROM devices WHERE id = ?")
         .bind(&author)
         .fetch_one(&mut *tx)
@@ -390,7 +399,13 @@ async fn push(
                 .fetch_optional(&mut *tx)
                 .await?;
         let sequence = if let Some(row) = existing {
-            if row.get::<String, _>("envelope") != encoded {
+            if !history_erasure::matches_stored(
+                &mut tx,
+                envelope,
+                &row.get::<String, _>("envelope"),
+            )
+            .await?
+            {
                 return Err(ApiError(
                     StatusCode::CONFLICT,
                     "Operation ID was reused with different contents",
@@ -471,18 +486,54 @@ async fn pull(
         ));
     }
     let rows = sqlx::query(
-        "SELECT sequence, envelope FROM operations WHERE sequence > ? ORDER BY sequence LIMIT 101",
+        "SELECT o.sequence, o.envelope, o.purged, r.original_digest, p.envelope AS certificate, p.sequence AS certificate_sequence FROM operations o LEFT JOIN history_redactions r ON r.operation_id = o.operation_id LEFT JOIN operations p ON p.operation_id = r.certificate_operation_id WHERE o.sequence > ? ORDER BY o.sequence LIMIT 101",
     )
     .bind(query.cursor)
     .fetch_all(&app.pool)
     .await?;
+    let mut connection = app.pool.acquire().await?;
+    history_erasure::require_capability(&mut connection, &headers).await?;
+    drop(connection);
     let mut has_more = rows.len() > MAX_BATCH;
     let mut records = Vec::new();
     let mut cursor = query.cursor;
     let mut page_bytes = 256usize;
     for row in rows.into_iter().take(MAX_BATCH) {
         let encoded: String = row.get("envelope");
-        let entry_bytes = encoded.len() + 128;
+        let envelope: Envelope = serde_json::from_str(&encoded).map_err(|_| {
+            ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Stored envelope is invalid",
+            )
+        })?;
+        let sequence: i64 = row.get("sequence");
+        let entry = if row.get::<i64, _>("purged") == 1 {
+            let digest = row
+                .get::<Option<String>, _>("original_digest")
+                .ok_or(ApiError(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "History receipt is incomplete",
+                ))?;
+            let certificate: serde_json::Value = serde_json::from_str(
+                &row.get::<Option<String>, _>("certificate").ok_or(ApiError(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "History certificate is missing",
+                ))?,
+            )
+            .map_err(|_| {
+                ApiError(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "History certificate is invalid",
+                )
+            })?;
+            serde_json::json!({"sequence":sequence,"redacted":{
+                "header":history_erasure::Header::of(&envelope),"digest":digest,
+                "certificate":certificate,"certificate_sequence":row.get::<i64,_>("certificate_sequence")
+            }})
+        } else {
+            serde_json::json!({"sequence":sequence,"envelope":envelope})
+        };
+        let entry_bytes = entry.to_string().len() + 1;
         if entry_bytes + 256 > MAX_PAGE_BYTES {
             return Err(ApiError(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -493,15 +544,9 @@ async fn pull(
             has_more = true;
             break;
         }
-        let envelope: serde_json::Value = serde_json::from_str(&encoded).map_err(|_| {
-            ApiError(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Stored envelope is invalid",
-            )
-        })?;
-        cursor = row.get("sequence");
+        cursor = sequence;
         page_bytes += entry_bytes;
-        records.push(serde_json::json!({"sequence": cursor, "envelope": envelope}));
+        records.push(entry);
     }
     let delivered = sqlx::query("UPDATE devices SET sent_cursor = MAX(sent_cursor, ?), last_seen = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND revoked = 0").bind(cursor).bind(author).execute(&app.pool).await?;
     if delivered.rows_affected() != 1 {
