@@ -2,5 +2,7 @@
   "name": "@helium-synk/server",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "dev": "../scripts/cargo.sh run -p synk-server -- serve" }
+  "scripts": {
+    "dev": "../scripts/cargo.sh run -p synk-server -- serve"
+  }
 }

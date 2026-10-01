@@ -15,7 +15,10 @@ export interface Envelope {
   ciphertext: string;
 }
 
-export interface RecordEntry { sequence: number; envelope: Envelope }
+export interface RecordEntry {
+  sequence: number;
+  envelope: Envelope;
+}
 export interface PullPage {
   server_epoch: string;
   records: RecordEntry[];
@@ -47,10 +50,19 @@ export function validCounter(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 export function validateEnvelope(e: Envelope): void {
-  if (!e || e.protocol_version !== 1 || e.domain !== 'diagnostic' || e.key_epoch !== 1 ||
-      !isUuid(e.operation_id) || !isUuid(e.account_id) || !isUuid(e.device_id) ||
-      !validCounter(e.counter) || typeof e.nonce !== 'string' ||
-      typeof e.ciphertext !== 'string' || e.ciphertext.length > 90_000) {
+  if (
+    !e ||
+    e.protocol_version !== 1 ||
+    e.domain !== 'diagnostic' ||
+    e.key_epoch !== 1 ||
+    !isUuid(e.operation_id) ||
+    !isUuid(e.account_id) ||
+    !isUuid(e.device_id) ||
+    !validCounter(e.counter) ||
+    typeof e.nonce !== 'string' ||
+    typeof e.ciphertext !== 'string' ||
+    e.ciphertext.length > 90_000
+  ) {
     throw new Error('Unsupported or invalid encrypted record.');
   }
 }
@@ -58,18 +70,31 @@ export function validateEnvelope(e: Envelope): void {
 export function serverUrl(value: string): string {
   const url = new URL(value);
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) ||
-      url.username || url.password || url.search || url.hash || url.pathname !== '/') {
+  if (
+    (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.pathname !== '/'
+  ) {
     throw new Error('Use an HTTPS server origin, or HTTP localhost for development.');
   }
   return url.origin;
 }
 export function parseCredentials(value: unknown): Credentials {
   const c = value as Credentials;
-  if (!c || !isUuid(c.account_id) || !isUuid(c.device_id) ||
-      typeof c.token !== 'string' || !/^[0-9a-f]{64}$/.test(c.token) ||
-      typeof c.name !== 'string' || c.name.length < 1 || c.name.length > 100 ||
-      typeof c.server_url !== 'string') {
+  if (
+    !c ||
+    !isUuid(c.account_id) ||
+    !isUuid(c.device_id) ||
+    typeof c.token !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(c.token) ||
+    typeof c.name !== 'string' ||
+    c.name.length < 1 ||
+    c.name.length > 100 ||
+    typeof c.server_url !== 'string'
+  ) {
     throw new Error('Invalid device credential file.');
   }
   return { ...c, server_url: serverUrl(c.server_url) };

@@ -1,0 +1,12 @@
+node_modules/
+**/.wxt/
+**/.output/
+target/
+work/
+data/
+pnpm-lock.yaml
+Cargo.lock
+*.rs
+*.sql
+*.toml
+web-ext.config.ts
