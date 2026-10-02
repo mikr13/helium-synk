@@ -347,3 +347,13 @@ Native use exposed that View placed restore controls below the entire snapshot l
 Desktop and 390 px synthetic checks pass for filters, Back/reload, missing snapshots and blocked-job resume, with no horizontal overflow, rounded controls or fresh warning/error logs. Native Test 2 opens the real 24-tab snapshot on the new packaged route, displays its existing complete journal, survives reload and returns to Closed with capture paused. No repeated native restoration was submitted. UI-only asset update retains origin, named manifest, permissions and background hash; rollback is `extension-before-session-detail-route`.
 
 Both typechecks, 237 TS tests and production WXT build pass; extension patch Changeset recorded without a release bump. The preceding 44 Rust/16 integration results remain recorded; this UI-only change does not rerun them. Scoped ignored proof: `large-restore-source-24-tabs.png`, `large-restore-destination-24-tabs.png`, `large-restore-journal-complete.png`, `session-detail-preview-desktop.png`, `session-detail-preview-mobile.png` and `session-detail-native-24.png`. Both plan copies mark these specific passes and leave full native acceptance, session/retained-copy policy, scale/recovery and section 10 open.
+
+## Native cross-root cut/paste and Undo checkpoint — 2026-10-02
+
+- [x] Create the separate empty disposable `Synk root move fixture · Test 2` on Bookmarks Bar, leaving the earlier folder/link intact.
+- [x] Cut that fixture, explicitly activate Other Bookmarks with Return, then paste with the normal shortcut. Test 2 shows one folder in Other Bookmarks; Test 1 shows one there and no extra copy on Bookmarks Bar.
+- [x] Undo Paste, then Undo Cut in Test 2. Both profiles show one restored folder on Bookmarks Bar and no destination copy. Test 1's placement/count survive bookmark-manager reload.
+- [ ] Verify drag/onMoved behavior, child preservation and the remaining conflict/interruption matrix. This empty-folder cut/paste test establishes visible placement and propagated native Undo, not preservation of a replicated node identity through Cut.
+
+UI/background checkpoint: `f688edd` / `1d00114`; the approved relay, profile identities and capture settings remain unchanged. Native tree AX clicks require activation with Return for this flow; the earlier incomplete attempts did not establish a destination. No browser code fix follows. Retain the disposable folder for follow-up checks. Scoped ignored proof: `root-move-test2-other.png`, `root-move-test1-other.png`, `root-undo-test2-bar.png`, `root-undo-test1-bar-after-reload.png` and `root-undo-test1-other-empty.png`.
+

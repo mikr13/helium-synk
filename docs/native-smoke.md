@@ -113,3 +113,13 @@ The list's old View action placed detail controls below all snapshots. The UI no
 - [x] Reload the direct detail page; use native browser Back to return to Closed. The saved snapshot/journal persist and capture remains paused. No second restore was submitted.
 
 Proof: `session-detail-native-24.png` in ignored `work/native-user-profiles`. Desktop/390 px synthetic preview checks cover filters, deep reload/Back, missing-snapshot recovery and blocked-job resume; no overflow, rounded controls or fresh console warning/error logs. Typechecks, all 237 TS tests and the production build pass. Full browser restart, fresh native onboarding, native permutations, endurance and implementation/scale/recovery gates remain open.
+
+## Native cross-root cut/paste and Undo checkpoint — 2026-10-02
+
+- [x] Create the separate empty disposable `Synk root move fixture · Test 2` on Bookmarks Bar, leaving the earlier folder/link intact.
+- [x] Cut that fixture, explicitly activate Other Bookmarks with Return, then paste with the normal shortcut. Test 2 shows one folder in Other Bookmarks; Test 1 shows one there and no extra copy on Bookmarks Bar.
+- [x] Undo Paste, then Undo Cut in Test 2. Both profiles show one restored folder on Bookmarks Bar and no destination copy. Test 1's placement/count survive bookmark-manager reload.
+- [ ] Verify drag/onMoved behavior, child preservation and the remaining conflict/interruption matrix. This empty-folder cut/paste test establishes visible placement and propagated native Undo, not preservation of a replicated node identity through Cut.
+
+UI/background checkpoint: `f688edd` / `1d00114`; the approved relay, profile identities and capture settings remain unchanged. Native tree AX clicks require activation with Return for this flow; the earlier incomplete attempts did not establish a destination. No browser code fix follows. Retain the disposable folder for follow-up checks. Scoped ignored proof: `root-move-test2-other.png`, `root-move-test1-other.png`, `root-undo-test2-bar.png`, `root-undo-test1-bar-after-reload.png` and `root-undo-test1-other-empty.png`.
+

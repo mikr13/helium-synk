@@ -36,7 +36,8 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 - [ ] Verify full browser restart, alarm behavior and an hours-long offline run with concurrent domain edits.
 - [x] Open saved sessions on a focused route with visible restoration controls/progress; verify native reload/Back and preserve paused capture.
 - [x] Restore one native 24-tab fixture window across the bounded restoration passes; verify exact order/count, active tab and the complete journal.
-- [ ] Complete the native bookmark conflict/root/interruption matrix and interrupted/multi-window restores; measure representative latency.
+- [x] Verify one empty native folder cut/paste across roots and two-step Undo propagated to the peer after reload.
+- [ ] Complete the native bookmark drag/child/conflict/root/interruption matrix and interrupted/multi-window restores; measure representative latency.
 - [ ] Implement session expiry/count/size policy and finish unresolved/shared capture, general quarantine and historical backup-copy policy.
 - [ ] Measure and complete full-scale history/journal/restore responsiveness.
 - [ ] Recover missing acknowledged operations after older-backup/server loss and verify safe reconciliation/resume.
@@ -443,6 +444,15 @@ The 24-tab native test exposed offscreen restore controls beneath the old snapsh
 - [x] Run typechecks, all 237 TS tests and the production build; record an extension patch Changeset without a release bump.
 
 Only packaged UI assets were updated after saving `extension-before-session-detail-route`; the named manifest, origin, permissions and approved background SHA-256 remain unchanged. Scoped proof: ignored `session-detail-native-24.png` and preview screenshots. Full native onboarding/restart/endurance, remaining permutations, session/retained-copy policy, scale/recovery and section 10 remain open.
+
+## Native cross-root cut/paste and Undo checkpoint — 2026-10-02
+
+- [x] Create the separate empty disposable `Synk root move fixture · Test 2` on Bookmarks Bar, leaving the earlier folder/link intact.
+- [x] Cut that fixture, explicitly activate Other Bookmarks with Return, then paste with the normal shortcut. Test 2 shows one folder in Other Bookmarks; Test 1 shows one there and no extra copy on Bookmarks Bar.
+- [x] Undo Paste, then Undo Cut in Test 2. Both profiles show one restored folder on Bookmarks Bar and no destination copy. Test 1's placement/count survive bookmark-manager reload.
+- [ ] Verify drag/onMoved behavior, child preservation and the remaining conflict/interruption matrix. This empty-folder cut/paste test establishes visible placement and propagated native Undo, not preservation of a replicated node identity through Cut.
+
+UI/background checkpoint: `f688edd` / `1d00114`; the approved relay, profile identities and capture settings remain unchanged. Native tree AX clicks require activation with Return for this flow; the earlier incomplete attempts did not establish a destination. No browser code fix follows. Retain the disposable folder for follow-up checks. Scoped ignored proof: `root-move-test2-other.png`, `root-move-test1-other.png`, `root-undo-test2-bar.png`, `root-undo-test1-bar-after-reload.png` and `root-undo-test1-other-empty.png`.
 
 ## 1. Product requirements and boundaries
 
