@@ -1,0 +1,22 @@
+# First disposable-profile smoke test
+
+Allow approximately 10–15 minutes to load/pair two fresh profiles and 20–30 minutes for this first pass. Full acceptance also includes an hours-long outage and the remaining implementation/scale/recovery checks. Section 10 is production deployment after acceptance.
+
+Use separate disposable Helium profile directories, the same stable unpacked-extension path, and an isolated localhost relay. Do not load the extension into a normal profile. Each installation gets a distinct credential through CLI enrollment or private pairing. The current prepared kit and private credential stay in ignored `work/`; `START-HERE.md` in that kit gives exact launch/load/pair steps.
+
+Keep DevTools closed for the hands-on pass. Use harmless fixture pages, such as `http://127.0.0.1:4320/health/live?profile=A` and the equivalent `profile=B` URL. Enable only the collection feature being tested.
+
+| Check                   | Action                                                                                         | Expected result                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Connect                 | Enroll A, pair B, send one diagnostic note from each                                           | Both show both notes; pending work reaches zero                                 |
+| Bookmarks               | Create a test folder/link in A; preview/enable sync in both; rename in B                       | A receives B's rename; both show the same test collection                       |
+| Current/closed sessions | Enable capture, open two fixture tabs in a separate A window, then close it                    | B shows A's current session and the closed window independently                 |
+| Restore                 | In B, open one tab and then a window from A's saved/closed session                             | Real tabs/windows open with expected order/pins/groups; progress finishes       |
+| History                 | Enable new-visit capture, visit the A/B fixture URLs, then search by source                    | Original visit times and the correct source appear in both dashboards           |
+| Removal                 | Select a disposable visit in the extension and remove it; sync both                            | The synced visit disappears and stays absent after reconciliation               |
+| Short outage            | Stop only the test relay, make a note/bookmark change and close a test window, then restart it | Local work remains visible/queued and both profiles catch up without duplicates |
+| Worker/browser restart  | Close/reopen the disposable profiles with DevTools closed                                      | Saved work and source identity survive; synchronization resumes                 |
+
+Record actual results below or in `docs/progress.md`: date, Helium/Chromium version, tested build commit, profile labels, pass/fail and the concrete observed result. Leave a row unverified until the real browser result is observed. This first pass does not establish every conflict, interrupted restore, physical disk-full, key rotation, hours-long outage or milestone exit gate.
+
+No native results are recorded yet.

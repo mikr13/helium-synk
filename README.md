@@ -4,13 +4,13 @@
 
 Private browser sync for Helium, built with WXT/TypeScript and a self-hosted Rust/Axum/SQLite relay on a Mac Mini behind Tailscale.
 
-The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. It also supports **opt-in session capture and restoration**: source-owned current/closed/previous snapshots, encrypted multipart transport and a durable restoration journal. It also supports **opt-in history capture and local search**, with original timestamps, profile filters and logical removal. The dashboard also supports private pairing, installation removal with future-content key rotation, durable rotation retries and private recovery bundles. Permanent history erasure remains pending. Production hosting and real Helium lifecycle/API acceptance remain pending.
+The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. It also supports **opt-in session capture and restoration**: source-owned current/closed/previous snapshots, encrypted multipart transport and a durable restoration journal. It also supports **opt-in history capture and local search**, with original timestamps, profile filters and logical removal. The dashboard also supports private pairing, installation removal with future-content key rotation, durable rotation retries and private recovery bundles. Authenticated history ciphertext purge and opt-in source-owned expiry are implemented; general retained-copy/backup policy remains pending. Production hosting and real Helium lifecycle/API acceptance remain pending.
 
 Read the [bookmark merge contract](docs/bookmark-merge.md) and [native adapter/recovery contract](docs/bookmark-browser.md). Read the [session capture/restoration contract](docs/sessions.md). Automated native-adapter tests use a simulated browser port; they do not establish live Helium compatibility.
 
 Follow the [implementation checklist](docs/plan.md) and [verification record](docs/progress.md). Development source lives at `/Users/mihirpandey/Work/fun/helium-synk`, outside Documents/iCloud.
 
-The dashboard and restoration page share a dark navy/blue/mint [design system](docs/design-system.md), with square Tailwind/shadcn controls and bundled local fonts. Extension TypeScript source uses the `@/` alias. History removal clears suppressed journal plaintext, cancels unencrypted erased visits and removes obsolete saved capture jobs for observed clears. Selected cached records lose optional native metadata; late native queries cannot restore canceled jobs. The relay purge protocol is implemented; client certificate verification, durable purge scheduling/local cleanup, unresolved/shared capture copies and backup expiration remain pending; see the [history policy](docs/history.md).
+The dashboard and restoration page share a dark navy/blue/mint [design system](docs/design-system.md), with square Tailwind/shadcn controls and bundled local fonts. Extension TypeScript source uses the `@/` alias. History removal clears suppressed journal plaintext, cancels unencrypted erased visits and removes obsolete saved capture jobs for observed clears. Selected cached records lose optional native metadata; late native queries cannot restore canceled jobs. Authenticated client/relay purge removes certified live ciphertext; unresolved/shared capture copies, general quarantine and backup expiration remain pending; see the [history policy](docs/history.md).
 
 ## Development
 
@@ -48,6 +48,8 @@ The relay binds only to `127.0.0.1:4318`. Health endpoints are `/health/live` an
 ```sh
 pnpm build
 ```
+
+The [first native smoke checklist](docs/native-smoke.md) covers the initial hands-on pass.
 
 In a **disposable Helium profile**, open `chrome://extensions`, enable developer mode, and load `extension/.output/chrome-mv3` as an unpacked extension. Click its toolbar action to open the dashboard. Use another disposable profile for the second client. Keep the unpacked extension path stable; changing identity/origin can strand local storage.
 

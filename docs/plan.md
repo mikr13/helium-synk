@@ -18,7 +18,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
 | History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
 | Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                 |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                              | Disposable profiles only                                            |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Initial smoke kit ready; joint testing pending                     | Disposable profiles only; native-smoke.md                           |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
@@ -269,6 +269,16 @@ Checkpoint commit: `abc7bea feat(history): expire acknowledged source-owned visi
 - [ ] Finish session expiry, full-scale journal performance, general retained-copy/backup recovery and joint native acceptance.
 
 Expiry is off until selected. Offline source/peer reconciliation can delay removal; V1 proof receipts and historical backups remain. [retention.md](retention.md) defines these semantics and the remaining gates.
+
+## Disposable native smoke setup checkpoint — 2026-10-02
+
+- [x] Freeze the tested production extension/server build in an ignored private test kit.
+- [x] Prepare separate empty profile directories and launchers, plus one mode-0600 initial credential; pair the second author through the dashboard.
+- [x] Start a separate loopback relay on port 4320 and verify ready/schema-5/authenticated status with zero journal operations.
+- [x] Prepare exact load/enroll/pair instructions and the [first native smoke checklist](native-smoke.md).
+- [ ] Launch/load/pair the disposable profiles with the user and record actual native API, restoration and lifecycle results.
+
+Installed Helium is 0.18.1.1. Empty directories and service readiness do not establish native acceptance. Session/retained-copy policy, scale/recovery and the hours-long outage remain before full acceptance and section 10 deployment.
 
 ## 1. Product requirements and boundaries
 
