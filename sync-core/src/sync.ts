@@ -4,6 +4,7 @@ import type { KeyTransport } from './key-state';
 import { projectHistory } from './history';
 import { projectSessions } from './sessions';
 import { projectBookmarks } from './bookmarks';
+import { LocalCapacityError } from './local-storage';
 import { historyErasureTargetHeader } from './history-erasure';
 import {
   HistoryPurger,
@@ -255,8 +256,41 @@ export class SyncCoordinator {
       try {
         await this.db.transaction(
           'rw',
-          [...historyPurgeTables(this.db), this.db.replicas, this.db.sessionReplicas],
+          [
+            ...historyPurgeTables(this.db),
+            ...this.db.captureBudgetTables(),
+            this.db.replicas,
+            this.db.sessionReplicas,
+          ],
           async () => {
+            let newContent = 0,
+              newBytes = 0;
+            const erasedIds = new Set(
+              operations.flatMap((r) =>
+                r.payload.kind === 'history-erasure'
+                  ? r.payload.targets.map((t) => t.receipt.operation_id)
+                  : [],
+              ),
+            );
+            for (const record of [...records, ...operations]) {
+              const payload = record.payload;
+              if (
+                ('redacted' in record && record.redacted) ||
+                erasedIds.has(record.operation_id) ||
+                payload.kind === 'history-erasure' ||
+                (payload.kind === 'history' && payload.action.type !== 'visit') ||
+                (payload.kind === 'bookmark' && payload.action.type === 'remove')
+              )
+                continue;
+              if (
+                !(await this.db.records.get(record.operation_id)) &&
+                !(await this.db.operations.get(record.operation_id))
+              ) {
+                newContent++;
+                newBytes += JSON.stringify(record).length * 4;
+              }
+            }
+            await this.db.assertDownloadCapacity(newContent, newBytes);
             for (const record of records) {
               const existing =
                 (await this.db.records.get(record.operation_id)) ??
@@ -317,6 +351,14 @@ export class SyncCoordinator {
           },
         );
       } catch (cause) {
+        if (cause instanceof LocalCapacityError)
+          await this.db.transaction('rw', this.db.state, async () => {
+            const current = (await this.db.state.get('local'))!;
+            checkEpoch(current, page.server_epoch);
+            // Epoch was authenticated/checked; no required record or cursor is skipped.
+            if (!current.server_epoch)
+              await this.db.state.update('local', { server_epoch: page.server_epoch });
+          });
         if (validationFailure)
           await this.db.quarantine.bulkPut(
             [...records, ...operations].map((record) => ({
@@ -358,7 +400,13 @@ export class SyncCoordinator {
     } else if ((state.key_epoch ?? 1) > 1)
       throw new Error('Transport lacks required content-key APIs. Pending work was retained.');
     // Establish/check epoch before acknowledging any queued work.
-    await this.pull(transport);
+    try {
+      await this.pull(transport);
+    } catch (cause) {
+      // A full replica may still release queued duplicate copies through committed uploads.
+      // Bad records, network failures and epoch changes continue to stop the pass.
+      if (!(cause instanceof LocalCapacityError)) throw cause;
+    }
     const purger = transport.purge ? new HistoryPurger(this.db, transport.keys) : undefined;
     if (purger) {
       const purge = (request: HistoryPurgeRequest) => transport.purge!(request);

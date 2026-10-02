@@ -12,10 +12,13 @@ import type {
   PairingBundle,
   pairingSummary,
   RecoveryBundle,
+  LocalStoragePolicy,
+  LocalStorageStatus,
 } from '@helium-synk/core';
 
 export type Request =
   | { type: 'status' }
+  | { type: 'storage-set'; policy: LocalStoragePolicy }
   | { type: 'pairing-create' }
   | { type: 'pairing-start'; bundle: PairingBundle; name: string }
   | { type: 'pairing-retry' }
@@ -64,6 +67,7 @@ export interface Status {
   pending: number;
   records: LocalRecord[];
   browser_version: string;
+  storage: LocalStorageStatus;
   history: {
     enabled: boolean;
     phase: HistorySetup['phase'] | 'off';

@@ -25,6 +25,7 @@ import { SessionPanel } from '@/entrypoints/options/sessions';
 import { HistoryPanel } from '@/entrypoints/options/history';
 import { PairingPanel } from '@/entrypoints/options/pairing';
 import { KeyPanel } from '@/entrypoints/options/keys';
+import { StoragePanel } from '@/entrypoints/options/storage';
 import { grantEndpoint } from '@/lib/endpoint-permission';
 
 async function request(message: Request): Promise<Reply & { ok: true }> {
@@ -199,6 +200,9 @@ function App() {
         {!status && !error && <p>Opening your local database…</p>}
         {status && <PairingPanel status={status} request={request} onStatus={setStatus} />}
         {status?.enrolled && <KeyPanel status={status} request={request} onStatus={setStatus} />}
+        {status?.enrolled && (
+          <StoragePanel status={status} request={request} onStatus={setStatus} />
+        )}
         {status && !status.enrolled && !status.pairing_pending && (
           <Card className="panel">
             <div className="panel-heading">

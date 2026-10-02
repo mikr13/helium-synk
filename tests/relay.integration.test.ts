@@ -709,6 +709,69 @@ it('pairs a new installation across a real lost enrollment reply and relay/clien
   expect((await relayStatus(state.credentials)).schema_version).toBe(5);
 });
 
+it('local capacity retains the download cursor while draining real queued uploads, then resumes after a limit increase', async () => {
+  async function issued(name: string) {
+    const output = join(directory, `${name}.credential.json`);
+    execFileSync(
+      binary,
+      [
+        '--database',
+        database,
+        'issue-device',
+        '--name',
+        name,
+        '--server-url',
+        `http://127.0.0.1:${port}`,
+        '--output',
+        output,
+      ],
+      { stdio: 'ignore' },
+    );
+    return JSON.parse(readFileSync(output, 'utf8')) as Credentials;
+  }
+  const source = await local(await issued('Capacity source'), sharedKey);
+  let measured = 0;
+  const target = new SynkDatabase(`capacity-real-${crypto.randomUUID()}`, async () => ({
+    usage: measured,
+  }));
+  localDatabases.push(target);
+  await target.enroll(await issued('Capacity target'), sharedKey);
+  await new SyncCoordinator(source).sync();
+  await new SyncCoordinator(target).sync();
+  const cursor = (await target.state.get('local'))!.cursor;
+  const id = await target.queueDiagnostic('Queued before local capacity was reached');
+  await source.queueDiagnostic('Unseen remote capacity record');
+  await new SyncCoordinator(source).sync();
+  const policy = {
+    max_bytes: 16 * 1024 * 1024,
+    max_pending: 100000,
+    max_journal: 500000,
+    max_capture_tasks: 30000,
+  };
+  await target.setStoragePolicy(policy);
+  measured = policy.max_bytes;
+  await target.storageStatus(true);
+  await expect(new SyncCoordinator(target).sync()).rejects.toThrow('storage estimate');
+  expect(await target.outbox.count()).toBe(0);
+  expect((await target.records.get(id))!.sequence).toBeGreaterThan(cursor);
+  expect((await target.state.get('local'))!.cursor).toBe(cursor);
+  expect(await target.quarantine.count()).toBe(0);
+  await target.setStoragePolicy({ ...policy, max_bytes: policy.max_bytes * 2 });
+  await new SyncCoordinator(target).sync();
+  expect((await target.state.get('local'))!.cursor).toBeGreaterThan(cursor);
+  expect(
+    (await target.records.toArray()).some(
+      (r) => r.payload.note === 'Unseen remote capacity record',
+    ),
+  ).toBe(true);
+  const count = execFileSync(
+    'sqlite3',
+    [database, `SELECT COUNT(*) FROM operations WHERE operation_id = '${id}';`],
+    { encoding: 'utf8' },
+  );
+  expect(Number(count.trim())).toBe(1);
+});
+
 it('real relay purges history ciphertext with durable receipts across a discarded reply and restart', async () => {
   const issue = (name: string): Credentials => {
     const path = join(directory, `${name}.json`);

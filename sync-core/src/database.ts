@@ -1,6 +1,16 @@
 import Dexie, { type Table } from 'dexie';
 import { cleanHistoryCapture } from './history-capture-cleanup';
 import {
+  StorageMeter,
+  localStorageStatus,
+  localStorageTables,
+  storagePolicy,
+  capacityReason,
+  LocalCapacityError,
+  type LocalStoragePolicy,
+  type LocalStorageEstimate,
+} from './local-storage';
+import {
   historyErasureOperations,
   historyErasureTargetHeader,
   mergeHistoryOperations,
@@ -91,6 +101,7 @@ export interface LocalState {
   context?: VectorClock;
   history_index_key?: string;
   history_logical?: number;
+  storage_policy?: LocalStoragePolicy;
 }
 export interface LocalRecord {
   operation_id: string;
@@ -161,9 +172,11 @@ export class SynkDatabase extends Dexie {
   historyUrlEpochs!: Table<HistoryUrlEpoch, string>;
   historyScanUrls!: Table<HistoryScanUrl, string>;
   private encrypting?: Promise<void>;
+  private storageMeter: StorageMeter;
 
-  constructor(name = 'helium-synk-v1') {
+  constructor(name = 'helium-synk-v1', storageProbe?: () => Promise<LocalStorageEstimate>) {
     super(name);
+    this.storageMeter = new StorageMeter(storageProbe);
     this.version(1).stores({
       state: 'id',
       outbox: 'operation_id, counter',
@@ -301,7 +314,8 @@ export class SynkDatabase extends Dexie {
   async queueDiagnostic(note: string): Promise<string> {
     if (!note.trim() || note.length > 2_000)
       throw new Error('Enter a test note of up to 2,000 characters.');
-    const state = await this.transaction('rw', this.state, async () => {
+    const state = await this.transaction('rw', this.captureBudgetTables(), async () => {
+      await this.assertCaptureCapacity(1, note.length * 4);
       const current = await this.state.get('local');
       if (!current) throw new Error('Connect this device first.');
       if (current.next_counter >= Number.MAX_SAFE_INTEGER)
@@ -327,7 +341,8 @@ export class SynkDatabase extends Dexie {
       },
       payload,
     );
-    await this.transaction('rw', this.records, this.outbox, async () => {
+    await this.transaction('rw', this.captureBudgetTables(), async () => {
+      await this.assertCaptureCapacity(1, JSON.stringify({ payload, envelope }).length * 4);
       await this.records.add({ operation_id: envelope.operation_id, envelope, payload });
       await this.outbox.add(envelope);
     });
@@ -374,73 +389,71 @@ export class SynkDatabase extends Dexie {
     if (!actions.length) return [];
     if (reserved && reserved.length < actions.length)
       throw new Error('Captured revision reservation is too small.');
-    return this.transaction(
-      'rw',
-      [this.state, this.operations, this.drafts, this.replicas],
-      async () => {
-        const local = await this.state.get('local');
-        if (!local) throw new Error('Connect this device first.');
-        let counter = local.next_counter,
-          logical = local.logical ?? 0;
-        const context = { ...(observedContext ?? local.context) };
-        const drafts: (DraftOperation & { payload: BookmarkOperation })[] = [];
-        for (let index = 0; index < actions.length; index++) {
-          const action = actions[index]!;
-          let revision: Revision;
-          if (reserved) {
-            revision = structuredClone(reserved[index]!);
-            if (
-              revision.author !== local.credentials.device_id ||
-              revision.counter >= local.next_counter
-            )
-              throw new Error('Invalid captured revision.');
-            if (index > 0) revision.context[revision.author] = reserved[index - 1]!.counter;
-          } else {
-            logical = Math.max(logical + 1, counter);
-            if (!Number.isSafeInteger(logical) || counter >= Number.MAX_SAFE_INTEGER)
-              throw new Error('Logical clock exhausted.');
-            revision = {
-              author: local.credentials.device_id,
-              counter: counter++,
-              logical,
-              context: { ...context },
-            };
-            context[revision.author] = revision.counter;
-          }
-          const operation_id = crypto.randomUUID();
-          const header: EnvelopeHeader = {
-            protocol_version: 1,
-            operation_id,
-            account_id: local.credentials.account_id,
-            device_id: revision.author,
-            counter: revision.counter,
-            domain: 'bookmark',
-            key_epoch: local.key_epoch ?? 1,
+    return this.transaction('rw', [...this.captureBudgetTables(), this.replicas], async () => {
+      const local = await this.state.get('local');
+      if (!local) throw new Error('Connect this device first.');
+      if (actions.some((a) => a.type !== 'remove'))
+        await this.assertCaptureCapacity(actions.length, JSON.stringify(actions).length * 4);
+      let counter = local.next_counter,
+        logical = local.logical ?? 0;
+      const context = { ...(observedContext ?? local.context) };
+      const drafts: (DraftOperation & { payload: BookmarkOperation })[] = [];
+      for (let index = 0; index < actions.length; index++) {
+        const action = actions[index]!;
+        let revision: Revision;
+        if (reserved) {
+          revision = structuredClone(reserved[index]!);
+          if (
+            revision.author !== local.credentials.device_id ||
+            revision.counter >= local.next_counter
+          )
+            throw new Error('Invalid captured revision.');
+          if (index > 0) revision.context[revision.author] = reserved[index - 1]!.counter;
+        } else {
+          logical = Math.max(logical + 1, counter);
+          if (!Number.isSafeInteger(logical) || counter >= Number.MAX_SAFE_INTEGER)
+            throw new Error('Logical clock exhausted.');
+          revision = {
+            author: local.credentials.device_id,
+            counter: counter++,
+            logical,
+            context: { ...context },
           };
-          const payload: BookmarkOperation = {
-            kind: 'bookmark',
-            schema_version: 1,
-            operation_id,
-            revision,
-            action: structuredClone(action),
-          };
-          validatePayload(payload, header);
-          drafts.push({ operation_id, header, payload });
+          context[revision.author] = revision.counter;
         }
-        const value = projectBookmarks([
-          ...(await this.bookmarkOperations()),
-          ...drafts.map((d) => d.payload),
-        ]);
-        await this.drafts.bulkAdd(drafts);
-        await this.replicas.put({ domain: 'bookmark', value });
-        await this.state.update('local', {
-          next_counter: counter,
-          logical: Math.max(logical, value.logical),
-          context: value.frontier,
-        });
-        return drafts.map((d) => d.operation_id);
-      },
-    );
+        const operation_id = crypto.randomUUID();
+        const header: EnvelopeHeader = {
+          protocol_version: 1,
+          operation_id,
+          account_id: local.credentials.account_id,
+          device_id: revision.author,
+          counter: revision.counter,
+          domain: 'bookmark',
+          key_epoch: local.key_epoch ?? 1,
+        };
+        const payload: BookmarkOperation = {
+          kind: 'bookmark',
+          schema_version: 1,
+          operation_id,
+          revision,
+          action: structuredClone(action),
+        };
+        validatePayload(payload, header);
+        drafts.push({ operation_id, header, payload });
+      }
+      const value = projectBookmarks([
+        ...(await this.bookmarkOperations()),
+        ...drafts.map((d) => d.payload),
+      ]);
+      await this.drafts.bulkAdd(drafts);
+      await this.replicas.put({ domain: 'bookmark', value });
+      await this.state.update('local', {
+        next_counter: counter,
+        logical: Math.max(logical, value.logical),
+        context: value.frontier,
+      });
+      return drafts.map((d) => d.operation_id);
+    });
   }
   async queueBookmark(action: BookmarkAction): Promise<string> {
     const id = await this.stageBookmark(action);
@@ -544,7 +557,7 @@ export class SynkDatabase extends Dexie {
   async stageSession(content: SessionContent): Promise<string> {
     return this.transaction(
       'rw',
-      [this.state, this.operations, this.drafts, this.sessionReplicas],
+      [...this.captureBudgetTables(), this.sessionReplicas],
       async () => {
         const local = await this.state.get('local');
         if (!local) throw new Error('Connect this device first.');
@@ -574,6 +587,7 @@ export class SynkDatabase extends Dexie {
               .map((d) => d.operation_id),
           );
         }
+        await this.assertCaptureCapacity(parts.length, JSON.stringify(parts).length * 4);
         const drafts = parts.map((payload) => ({
           operation_id: payload.operation_id,
           payload,
@@ -695,15 +709,15 @@ export class SynkDatabase extends Dexie {
     return this.transaction(
       'rw',
       [
-        this.state,
-        this.operations,
-        this.drafts,
+        ...this.captureBudgetTables(),
         this.historyReplicas,
         this.historyVisits,
         this.historyErasedDrafts,
         ...this.historyCaptureTables(),
       ],
       async () => {
+        if (actions.some((a) => a.type === 'visit'))
+          await this.assertCaptureCapacity(actions.length, JSON.stringify(actions).length * 4);
         const local = await this.state.get('local');
         if (!local) throw new Error('Connect this device first.');
         const old = await this.historyMetadata();
@@ -755,6 +769,28 @@ export class SynkDatabase extends Dexie {
   }
   historyCaptureTables() {
     return [this.historyInbox, this.historyLookups, this.historyScans, this.historyScanUrls];
+  }
+  captureBudgetTables() {
+    return localStorageTables(this);
+  }
+  async storageStatus(force = false) {
+    return localStorageStatus(this, await this.storageMeter.read(force));
+  }
+  async setStoragePolicy(value: LocalStoragePolicy): Promise<void> {
+    const policy = storagePolicy(value);
+    if (!(await this.state.update('local', { storage_policy: policy })))
+      throw new Error('Connect this device first.');
+  }
+  /** Caller includes budget tables; only new collection is admitted here, never retries/erasure. */
+  async assertCaptureCapacity(additional = 1, bytes = 0): Promise<void> {
+    const reason = capacityReason(await this.storageStatus(), additional, bytes);
+    if (reason) throw new LocalCapacityError(reason);
+  }
+  async assertDownloadCapacity(additional: number, bytes: number): Promise<void> {
+    if (!additional) return;
+    const status = await this.storageStatus();
+    const reason = capacityReason({ ...status, pending: 0, capture_tasks: 0 }, additional, bytes);
+    if (reason) throw new LocalCapacityError(reason);
   }
   async localHistoryUrls(source: string, after?: string) {
     const keys = await this.historyVisits

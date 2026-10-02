@@ -1,6 +1,6 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Implementation active through sections 1–9; bookmark/session/history capture and transport implemented; client key lifecycle, local history cleanup and authenticated client/relay ciphertext purge implemented; retained-copy/backup policy still pending; native Helium acceptance, complete history erasure/scale and local storage/older-backup recovery pending.
+**Status:** Core capture, encrypted transport, key lifecycle, history ciphertext purge, local storage limits and requested UI are implemented. Retention, retained-copy policy, scale/recovery checks and joint Helium acceptance remain before section 10.
 
 **Updated:** 2026-10-02
 
@@ -17,13 +17,13 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Logo and favicon                                                   | Complete branding implementation checkpoint                     | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
 | Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open            | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
 | History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
-| Local budgets, retention, full-scale journal performance, recovery | Pending                                                         | Sections 2–4, 7–9                                                   |
+| Local budgets, retention, full-scale journal performance, recovery | Local admission implemented; retention/scale/recovery pending   | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                           | Disposable profiles only                                            |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                 | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
 
-**Testing readiness:** Basic two-profile smoke testing can begin with disposable Helium profiles. Full acceptance still requires complete history erasure, local budgets/retention/scale and older-backup/server-loss recovery, followed by live API/lifecycle and hours-long outage checks. The numbered section 10 is Mac Mini deployment, availability and backups; it follows joint acceptance. No reliable completion-time estimate is established yet.
+**Testing readiness:** Basic smoke testing can begin now in two disposable Helium profiles. Before full acceptance, finish retention/retained-copy policy and scale/recovery checks, then verify native APIs, worker lifecycle and an hours-long outage together. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
 
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
 **Phase-one scope:** Bookmarks, history, current sessions, closed/previous sessions, encryption, offline operation, and self-hosting.  
@@ -40,7 +40,7 @@ This table and both checklist copies are updated at implementation checkpoints a
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 215 TS + 40 relay + 12 cross-stack tests; native gates pending      |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 226 TS + 40 relay + 13 cross-stack tests; native gates pending      |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
 | M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
@@ -78,7 +78,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 215 TypeScript, 40 Rust and 12 real-relay integration tests, with rustfmt/clippy, typechecks and production build.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 226 TypeScript, 40 Rust and 13 real-relay integration tests, with rustfmt/clippy, typechecks and production build.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -242,6 +242,18 @@ Checkpoint commit: `3a6bedd feat(history): authenticate and persist client ciphe
 - [ ] Finish storage limits, retention, full-scale performance and recovery checks, then joint disposable-profile acceptance before section 10.
 
 The live client/relay ciphertext path is implemented. Browser-owned history, physical SQLite/WAL pages, old exports/backups and remaining retained-copy policy are separate boundaries. See [history-erasure-protocol.md](history-erasure-protocol.md) and [progress.md](progress.md) for verification and commit evidence. No native or whole milestone gate is complete.
+
+## Local storage admission checkpoint — 2026-10-02
+
+- [x] Persist validated profile limits and expose estimated origin bytes, queued work, journal counts and 80-percent warnings in the dark square shadcn dashboard.
+- [x] Check new capture/journal admission transactionally and reject competing work past the pending boundary without committing new queued content.
+- [x] Preserve retries, deletion and current-draft coalescing; gate new incoming content without advancing its cursor or quarantining capacity failures.
+- [x] Drain saved uploads while a capacity-blocked page remains unprocessed; resume that page after a limit increase.
+- [x] Verify 11 new unit/database cases and a real-relay capacity/recovery case; all 226 TS/13 integrations, typechecks and production build pass.
+- [x] Verify storage form saving/warnings with synthetic browser replies and square dark layout at desktop/390 px, without overflow or browser errors.
+- [ ] Complete actual Helium storage behavior, history/session retention, full-scale performance, retained-copy policy and older-backup/server-loss recovery.
+
+Defaults are 512 MiB estimated origin bytes, 100,000 pending work items, 500,000 journal records and 30,000 capture tasks. The byte estimate is sampled admission guidance, not a physical disk reservation. [local-storage.md](local-storage.md) records scope and failure behavior; no native or milestone gate is complete.
 
 ## 1. Product requirements and boundaries
 
@@ -445,7 +457,7 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 - [x] Specify deterministic handling of missing/deleted parents and invalid placement.
 - [x] Prove convergence from the same operation set regardless of arrival order.
 
-**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 195 TypeScript, 40 Rust and 12 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
+**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 226 TypeScript, 40 Rust and 13 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
 
 ### Browser integration and onboarding
 

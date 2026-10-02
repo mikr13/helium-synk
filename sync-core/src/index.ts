@@ -3,6 +3,7 @@ export * from './history-erasure';
 export * from './history-purge';
 export * from './crypto';
 export * from './database';
+export * from './local-storage';
 export * from './sync';
 export * from './revision';
 export * from './position';

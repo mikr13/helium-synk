@@ -49,6 +49,7 @@ export class BookmarkAdapter {
   }
   private tables() {
     return [
+      ...this.db.captureBudgetTables(),
       this.db.state,
       this.db.operations,
       this.db.drafts,
@@ -62,9 +63,11 @@ export class BookmarkAdapter {
   async capture(event: BookmarkEvent): Promise<boolean> {
     return this.db.transaction(
       'rw',
-      [this.db.state, this.db.bookmarkSetup, this.db.bookmarkInbox, this.db.bookmarkBindings],
+      [...this.db.captureBudgetTables(), this.db.bookmarkSetup, this.db.bookmarkBindings],
       async () => {
         if ((await this.db.bookmarkSetup.get('bookmark'))?.phase !== 'active') return false;
+        if (event.type !== 'removed')
+          await this.db.assertCaptureCapacity(1, JSON.stringify(event).length * 4);
         const native_id = event.type === 'created' ? event.node.id : event.id;
         const binding = await this.db.bookmarkBindings.where('native_id').equals(native_id).first();
         const previous = await this.db.bookmarkInbox.where('native_id').equals(native_id).last();

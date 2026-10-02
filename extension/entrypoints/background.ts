@@ -179,6 +179,7 @@ export default defineBackground(() => {
         })),
       },
       browser_version: navigator.userAgent.match(/(?:Chrome|Chromium)\/([\d.]+)/)?.[1] ?? 'Unknown',
+      storage: await db.storageStatus(),
     };
   }
   async function rotationSummary(): Promise<Status['rotation_pending']> {
@@ -199,6 +200,11 @@ export default defineBackground(() => {
   }
   async function handle(request: Request): Promise<Reply> {
     try {
+      if (request.type === 'storage-set') {
+        await db.setStoragePolicy(request.policy);
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
       if (request.type === 'pairing-create')
         return { ok: true, pairing: await createPairingBundle(db) };
       if (request.type === 'pairing-discard') {

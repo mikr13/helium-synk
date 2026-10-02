@@ -24,6 +24,7 @@ export class SessionCapture {
   }
   private tables() {
     return [
+      ...this.db.captureBudgetTables(),
       this.db.state,
       this.db.operations,
       this.db.drafts,
@@ -35,7 +36,9 @@ export class SessionCapture {
     ];
   }
   private async enabled(): Promise<boolean> {
-    return !!(await this.db.sessionSetup.get('session'))?.enabled;
+    const enabled = !!(await this.db.sessionSetup.get('session'))?.enabled;
+    if (enabled) await this.db.assertCaptureCapacity();
+    return enabled;
   }
   enable(): Promise<void> {
     return this.serial(async () => {

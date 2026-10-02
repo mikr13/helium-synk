@@ -29,6 +29,7 @@ export class HistoryCapture {
   }
   private tables() {
     return [
+      ...this.db.captureBudgetTables(),
       this.db.state,
       this.db.operations,
       this.db.drafts,
@@ -134,6 +135,8 @@ export class HistoryCapture {
           setup.phase === 'baseline')
       )
         return false;
+      if (event.type === 'visited')
+        await this.db.assertCaptureCapacity(1, JSON.stringify(event).length * 4);
       if ((await this.db.historyInbox.count()) >= 10_000) {
         await this.db.historySetup.put({
           ...setup,
@@ -312,6 +315,7 @@ export class HistoryCapture {
       created_at: this.now(),
       discovery_done: !!url_tag,
     };
+    if (kind !== 'baseline') await this.db.assertCaptureCapacity();
     await this.db.historyScans.add(scan);
     return scan;
   }
@@ -569,6 +573,8 @@ export class HistoryCapture {
       throw new Error(
         'History lookup queue reached 20,000 URLs. Discovery retained its range and will retry as saved work drains.',
       );
+    if (scan.kind !== 'baseline')
+      await this.db.assertCaptureCapacity(1, JSON.stringify(item).length * 4);
     await this.db.historyLookups.add({
       id,
       job_id: scan.id,
