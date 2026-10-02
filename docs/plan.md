@@ -4,27 +4,41 @@
 
 **Updated:** 2026-10-02
 
+**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, including the session closure fix and relay recovery guards.
+
 ## Current goal status
 
-Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress; every whole milestone and native acceptance gate remains open.
+Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress. The native first pass has verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
 
-| Checkpoint                                                         | Status                                                             | Commit / evidence                                                                 |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                              | `a0429bd` and earlier checkpoints; native gates open                              |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                 | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint               |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                 | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint               |
-| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open               | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                                 |
-| Logo and favicon                                                   | Complete branding implementation checkpoint                        | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass                 |
-| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI                     |
-| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                                 |
-| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                               |
-| Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open    | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md) |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/outage/worker pass; removal/restart gates open     | `b753fce`, `483b08b`, `1d00114`, `448dd49`; [native smoke](native-smoke.md)       |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                                 |
+| Checkpoint                                                         | Status                                                             | Commit / evidence                                                                      |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                              | `a0429bd` and earlier checkpoints; native gates open                                   |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                 | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint                    |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                 | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint                    |
+| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open               | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                                      |
+| Logo and favicon                                                   | Complete branding implementation checkpoint                        | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass                      |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI                          |
+| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                                      |
+| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                                    |
+| Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open    | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md)      |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/outage/worker pass; removal/restart gates open     | `b753fce`, `483b08b`, `1d00114`, `448dd49`, `47567e4`; [native smoke](native-smoke.md) |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                                      |
 
-This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
+Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrations**, typechecks, production WXT build, rustfmt/clippy, formatting, version consistency and Changeset status. Latest native checkpoint: `47567e4`; closure fix: `1d00114`; backup/restore guards: `09bf1bd`. No release/version bump or production deployment has been performed. This checklist audit changes documentation only; it does not rerun or broaden those results.
 
-**Testing readiness:** Basic smoke testing can begin now in two disposable Helium profiles. Before full acceptance, finish session/retained-copy policy and scale/recovery checks, then verify native APIs, worker lifecycle and an hours-long outage together. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
+### Remaining before full acceptance
+
+- [ ] Finish the selected native test-visit removal after confirmation, then native clear/reconnect checks.
+- [ ] Verify full browser restart, alarm behavior and an hours-long offline run with concurrent domain edits.
+- [ ] Complete the native bookmark conflict/root/interruption matrix and large/multi-window interrupted restores; measure latency.
+- [ ] Implement session expiry/count/size policy and finish unresolved/shared capture, general quarantine and historical backup-copy policy.
+- [ ] Measure and complete full-scale history/journal/restore responsiveness.
+- [ ] Recover missing acknowledged operations after older-backup/server loss and verify safe reconciliation/resume.
+- [ ] Complete native key rotation/fresh-author recovery and minimum-version/release compatibility checks.
+
+Both checklist copies are updated at checkpoints and commits. [progress.md](progress.md) identifies the evidence for each implementation step; [native-smoke.md](native-smoke.md) records observed browser results. Section 10 production deployment stays deferred until implementation and joint acceptance pass.
+
+**Testing readiness:** The basic native smoke pass is underway in Helium Sync Test 1 and Test 2, on Helium 0.18.1.1 / Chromium 154.0.0.0. Selected history removal awaits confirmation. Full browser restart, hours-long outage, remaining native permutations, session/retained-copy policy, scale and complete recovery are still open. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
 
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
 **Phase-one scope:** Bookmarks, history, current sessions, closed/previous sessions, encryption, offline operation, and self-hosting.  
@@ -32,21 +46,22 @@ This table and both checklist copies are updated at implementation checkpoints a
 
 ## How to track progress
 
-- Change an implementation task from `- [ ]` to `- [x]` only after its acceptance criteria pass.
+- `[x]` marks implemented work with the recorded automated evidence, or a specifically observed native check. `[ ]` marks unfinished or unverified work. Native, endurance, scale and production exit gates stay separate; an implementation checkbox does not complete those gates.
+- Split mixed tasks into completed and remaining parts so completed work is visible without hiding its outstanding acceptance criteria.
 - Mark a milestone complete only when its exit gate passes; scaffolding alone does not count.
 - Record significant decisions and deviations in the decision log at the end.
 - Record evidence beside completed gates: test results, relevant commits, or manual verification notes.
 - If an item is blocked, add a short `Blocked: ...` note below it and continue independent work.
 
-| Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
-| ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
-| M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 237 TS + 44 relay + 16 cross-stack tests; native gates pending      |
-| M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
-| M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
-| M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
-| M6 — Production hosting and recovery             | Planned                | M3–M5      | —                                                                   |
-| M7 — Product polish and release                  | Planned                | M6         | —                                                                   |
+| Milestone                                        | Status                                                 | Depends on | Evidence and remaining exit work                                                                                                 |
+| ------------------------------------------------ | ------------------------------------------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| M1 — Compatibility and hosting probes            | Native basic APIs/worker pass; gate open               | None       | `b753fce`, `1d00114`, `47567e4`; remaining API/alarm/browser-version matrix and Tailscale/reboot probes                          |
+| M2 — Durable local state and encrypted transport | Implementation and short native pass; gate open        | M1         | 237 TS / 44 Rust / 16 integrations; full browser restart and hours-long outage pending                                           |
+| M3 — Bidirectional bookmarks                     | Implementation/basic native pass; gate open            | M2         | Model/adapter conflict tests; native creation/reverse rename/outage/revival pass; full native matrix pending                     |
+| M4 — Current, closed, and previous sessions      | Implementation/basic native pass; gate open            | M2         | Current/closed + single-tab/two-tab grouped window restore pass; interrupted large/multi-window and lifecycle acceptance pending |
+| M5 — Cross-device history and deletion           | Implementation/native capture/search pass; gate open   | M2         | Purge/expiry automated checks; native removal/clears, retained-copy policy and scale pending                                     |
+| M6 — Production hosting and recovery             | Backup/restore guards implemented; deployment deferred | M3–M5      | `09bf1bd`; full replay/resume, launchd/Tailscale/availability/scheduled backup gates pending                                     |
+| M7 — Product polish and release                  | Requested branding/UI/aliases implemented; gate open   | M6         | `9b2e6da`, `93bea2c`; remaining retention/compatibility/distribution/daily-use acceptance pending                                |
 
 ## Initial implementation checkpoint — 2026-10-01
 
@@ -67,8 +82,10 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Add authenticated WebSocket hints and an alarm/reconnect reconciliation path.
 - [x] Build an enrollment/status/recovery-key/test-note options dashboard.
 - [x] Verify short synthetic outages, client database reopening, and relay restart across the real HTTP boundary.
-- [ ] Verify the production extension in two disposable Helium profiles with DevTools closed.
-- [ ] Verify worker termination/revival and an hours-long browser outage.
+- [x] Load the production extension build and verify the basic domain smoke flows in two disposable Helium profiles with DevTools closed; see the native first-pass checklist.
+- [ ] Complete the remaining native API/conflict/removal/restart/scale acceptance permutations.
+- [x] Verify native worker termination/revival with DevTools closed (`47567e4`).
+- [ ] Verify an hours-long browser outage and full browser restart.
 - [ ] Configure and verify private HTTPS/WSS through Tailscale Serve on the Mac Mini.
 - [ ] Complete the remaining M1/M2 exit gates before daily use of bookmark sync.
 
@@ -77,9 +94,10 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Persist native-event clocks/inbox, mappings, import backups and browser-effect intents in IndexedDB v3.
 - [x] Verify 22 browser-port tests, including two-tree offline convergence, genuine edits during application, delayed capture, ambiguous creates and storage failures.
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
-- [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
+- [x] Verify native folder/link capture/application, reverse rename, short outage and worker revival in both disposable profiles.
+- [ ] Verify remaining managed/ambiguous root capabilities and the full native bookmark conflict/interruption matrix.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 236 TypeScript, 40 Rust and 14 real-relay integration tests, with rustfmt/clippy, typechecks and production build.
+The checked implementation items use compiled code and simulated browser-port evidence. The original adapter checkpoint used simulated browser ports. Subsequent native results are recorded in [native-smoke.md](native-smoke.md). Latest recorded verification: 237 TypeScript, 44 Rust and 16 real-relay integration tests, with rustfmt/clippy, typechecks and production build. Hours-long outage and whole milestone exit gates remain open.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -89,7 +107,8 @@ The checked implementation items use compiled code and simulated browser-port ev
 - [x] Journal bounded tab/window restoration with marker recovery, pins/order/groups/active selection and visible partial progress.
 - [x] Build source-profile/type filters, capture-age display, explicit saving and open-tab/window/all controls; exercise synthetic desktop and 390 px UI.
 - [x] Verify session convergence and encrypted SQLite storage across real relay/client restarts.
-- [ ] Verify live Helium capture/restoration, DevTools-closed lifecycle and hours-long outages together in disposable profiles.
+- [x] Verify live current/closed capture and single-tab/full-window restoration with pins, order, group metadata and active selection (`1d00114`).
+- [ ] Verify full browser restart, abrupt shutdown, interrupted large restores and hours-long outages in native Helium.
 
 The [session contract](sessions.md) records supported behavior and recovery limits. Implementation evidence is separate from the live acceptance items in section 6 and M4; no whole milestone exit gate is complete.
 
@@ -100,8 +119,10 @@ The [session contract](sessions.md) records supported behavior and recovery limi
 - [x] Verify eight history pipeline/index/migration tests and 21 native capture/audit tests, including pause boundaries and captured-batch preservation.
 - [x] Verify original visit timestamps and stale-upload suppression across real relay/client restart; exercise synthetic history UI at desktop and 390 px.
 - [x] Implement native capture/reconciliation baselines, history storage/transport and the indexed dashboard; verify through simulated ports and the real relay.
-- [ ] Verify full-scale journal behavior and real Helium history/event/lifecycle/clock behavior.
-- [ ] Coordinate logical removal with local content removal, ciphertext purge and backup-retention behavior.
+- [x] Verify real Helium new-visit capture, source labels, original timestamps and filtered cross-profile timeline.
+- [ ] Verify full-scale journal behavior and remaining native removal, lifecycle, exclusion and clock behavior.
+- [x] Coordinate logical removal with local journal plaintext cleanup and authenticated local/relay ciphertext purge (`3a6bedd`).
+- [ ] Finish unresolved/shared capture copies, general quarantine and backup retention/old-restore behavior.
 
 These checks use simulated native ports, synthetic UI responses and the real relay. History collection is opt-in in the development build. The [history contract](history.md) records the remaining erasure/scale/live acceptance work; section 7/M5 exit gates remain open.
 
@@ -112,7 +133,8 @@ These checks use simulated native ports, synthetic UI responses and the real rel
 - [x] Send client cursor ACKs only after durable local journal commits; retry lost replies, restart and failed local ACK writes.
 - [x] Bound HTTP handlers and notification sockets/buffering/sends; verify graceful SIGTERM and SQLite reopening.
 - [x] Verify schema-1 usage/delivery backfill and refusal of changed checksums/unknown migrations.
-- [ ] Complete pairing/key rotation, history content/ciphertext erasure, local storage/retention, scale and recovery work.
+- [x] Implement pairing/key rotation, live history content/ciphertext purge, local storage budgets and source-owned history expiry; see subsequent checkpoints.
+- [ ] Finish session/retained-copy policy, measured scale and complete recovery/replay work.
 - [ ] Complete the real Helium and hours-long outage gates together in disposable profiles.
 
 Evidence: 142 TypeScript, 18 Rust and 8 real-process integration tests, WXT production build/typechecks and format/version checks. See `docs/relay-protocol.md` and `docs/progress.md`. Processed ACKs attest to durable journal processing; native browser effects have separate progress. No whole milestone exit gate is complete.
@@ -125,7 +147,8 @@ Evidence: 142 TypeScript, 18 Rust and 8 real-process integration tests, WXT prod
 - [x] Commit invitation/device and local enrollment state atomically; retain claims on quota/storage failures.
 - [x] Bound invitation growth and reject expired, mismatched, revoked or competing claims.
 - [x] Add saved-claim retry and explicit discard controls; verify synthetic 390 px UI.
-- [ ] Complete future-data content-key rotation and the native pairing/permissions gates.
+- [x] Implement future-data content-key rotation (`3d1e9f3`) and verify approved native enrollment/pairing in both profiles (`b753fce`).
+- [ ] Complete the remaining native permissions/security/recovery acceptance checks.
 
 Checkpoint commit: `4d34eed feat(security): add single-use durable profile pairing`. Evidence: 151 TypeScript, 23 Rust and 9 real-process integration tests, WXT production build/typechecks and format/version checks. See `docs/pairing.md` and `docs/progress.md`. Profile-local auto-unlock and decrypted caches remain the local protection policy; no milestone exit gate is complete.
 
@@ -154,8 +177,10 @@ Checkpoint commit: `3d1e9f3 feat(security): persist client key lifecycle and rec
 - [x] Export/import private version-2 pairing/recovery bundles; recover into a fresh credential/wrapping identity/counter without cloning an author.
 - [x] Reject copied credentials with missing author state; document reset/restore nonce and author-frontier requirements.
 - [x] Add installation removal and saved-proposal retry/review controls; verify the actual options UI using synthetic responses at 390 px.
-- [ ] Verify pairing, removal/rotation, worker revival and recovery jointly in disposable Helium profiles.
-- [ ] Complete older-backup/server-loss recovery, history erasure, local budgets/retention and scale gates.
+- [x] Verify native pairing and worker revival in the named disposable profiles.
+- [ ] Verify native installation removal/key rotation and fresh-author recovery.
+- [x] Implement live history purge, local budgets/history expiry and relay snapshot/restore guards; verify surviving client-state preservation against an older/lost relay.
+- [ ] Complete acknowledged-operation replay/safe recovery resume, session/retained-copy policy and scale/native gates.
 
 Evidence: 176 TypeScript, 31 Rust and 11 real-process tests, production WXT/typechecks, rustfmt/clippy and format/version/Changeset checks. The new real-process flow drops a committed rotation reply, reopens both sides, preserves immutable historical ciphertext, re-encrypts missing offline work in all four domains, retries pairing across another rotation and recovers roots 1–4 into a fresh author. The synthetic mobile UI had no overflow or console warnings/errors. See [key-rotation.md](key-rotation.md) and [progress.md](progress.md); native acceptance and every whole milestone exit gate remain open.
 
@@ -181,7 +206,8 @@ Checkpoint commit: `93bea2c feat(extension): adopt dark Tailwind and shadcn UI`.
 - [x] Verify 176 TypeScript and 11 real-process tests, typechecks and the production WXT package.
 - [x] Exercise actual components with synthetic responses: saved rotation retry, bookmark preview/backup gate, session filtering/restoration progress, history search/selection/scoped confirmation and keyboard cancellation/tabs.
 - [x] Verify desktop/390 px layouts, zero-radius controls/cards/dialogs, local font loading and no page overflow or console warnings/errors.
-- [ ] Verify the packaged UI and interactions in disposable native Helium profiles together.
+- [x] Exercise packaged enrollment/pairing, recovery exports, bookmark preview/enable, session capture/restoration and history search/selection/review in native Helium.
+- [ ] Complete native removal/rotation, exclusions, retention/storage controls and all remaining UI acceptance checks.
 
 See [design-system.md](design-system.md) for shared theme/component/import conventions and [progress.md](progress.md) for evidence. Existing history erasure, storage/scale/recovery and native milestone gates remain open. No production or release gate is completed by this UI checkpoint.
 
@@ -194,10 +220,11 @@ Checkpoint commit: `884a2a3 feat(history): erase suppressed journal plaintext`.
 - [x] Keep erased receipt metadata in replay/cross-domain counter validation and ordinary recovery exports; reject it as a wire payload.
 - [x] Verify v7 migration, storage-failure rollback, replay after reopening, retagged duplicates, encryption/deletion races and key rotation without restoring persisted plaintext.
 - [x] Verify 185 TypeScript tests and 11 real-process integration tests, typechecks and production WXT build.
-- [ ] Complete capture/inbox/lookup cleanup, authenticated relay ciphertext purge and backup expiration/restore behavior.
+- [x] Implement observed-clear capture/inbox/lookup cleanup and authenticated client/relay ciphertext purge; see subsequent checkpoints.
+- [ ] Finish general retained-copy policy and backup expiration/restore behavior.
 - [ ] Complete full-scale journal, local storage/recovery and native Helium gates.
 
-This is a journal-content checkpoint, not complete erasure or M5 acceptance. Encrypted local/relay copies remain decryptable until their purge path is implemented. [history.md](history.md) documents retained suppression metadata, canceled private drafts and the remaining privacy boundary.
+This is a journal-content checkpoint, not complete erasure or M5 acceptance. At that historical checkpoint encrypted copies remained; the later client/relay purge checkpoint removes certified live copies. Remaining copy boundaries are still open. [history.md](history.md) documents retained suppression metadata, canceled private drafts and the remaining privacy boundary.
 
 ## History capture-copy cleanup checkpoint — 2026-10-01
 
@@ -209,10 +236,11 @@ Checkpoint commit: `abe48a9 feat(history): clean obsolete capture jobs atomicall
 - [x] Apply existing clear/deletion proofs to v8 capture jobs through schema 9 without changing pending ciphertext or author counters.
 - [x] Verify rollback with incoming cursor/deletion proof, scope isolation, new-generation preservation, late native lookup/search, selected batches and migration.
 - [x] Verify 194 TypeScript tests, 11 real-process integration tests, typechecks and production WXT build.
-- [ ] Complete unfetched selected-event/shared-job policy, local ciphertext/quarantine and authenticated relay purge, backup expiration/restore semantics.
+- [x] Implement certified local ciphertext/outbox/quarantine cleanup and authenticated relay purge (`3a6bedd`).
+- [ ] Complete unfetched selected-event/shared-job policy, general quarantine and backup expiration/restore semantics.
 - [ ] Complete full-scale storage/retention/recovery and joint native Helium acceptance.
 
-This checkpoint removes obsolete saved copies and closes late-query races. Shared/unresolved jobs and new native inventories can still retain browser-owned content; encrypted local/relay copies remain. [history.md](history.md) describes the exact boundary. Full erasure and every whole milestone exit gate remain open.
+This checkpoint removes obsolete saved copies and closes late-query races. Shared/unresolved jobs and new native inventories can still retain browser-owned content; later authenticated purge removes certified live encrypted copies. [history.md](history.md) describes the exact boundary. Full erasure and every whole milestone exit gate remain open.
 
 ## History relay purge protocol checkpoint — 2026-10-01
 
@@ -225,7 +253,8 @@ Checkpoint commit: `a4c17a0 feat(server): add atomic history ciphertext purge pr
 - [x] Verify rollback, net quota cleanup, concurrent proofs, schema-4 preservation, SHA-256 interoperability and real lost-reply/restart behavior.
 - [x] Verify 195 TypeScript, 40 Rust and 12 real-process tests, rustfmt/clippy, typechecks and production WXT build.
 - [x] Implement authenticated client certificate validation, durable purge intent/retry/rekey and redacted-record/certificate consumption; see the 2026-10-02 client checkpoint.
-- [ ] Finish local outbox/quarantine/capture-copy cleanup, backup expiration/restore policy, scale/storage/recovery and native acceptance.
+- [x] Finish certified local outbox/quarantine cleanup and observed-clear capture cleanup; implement local admission budgets and history expiry.
+- [ ] Finish general capture/quarantine/backup policy, session expiry, scale, complete recovery and native acceptance.
 
 The following client checkpoint activates the API and capability with authenticated semantic proofs. The initial opaque relay fixtures prove server behavior only; complete erasure and all milestone exit gates remain open. See [history-erasure-protocol.md](history-erasure-protocol.md) for the exact compatibility and retained-copy boundary.
 
@@ -240,9 +269,10 @@ Checkpoint commit: `3a6bedd feat(history): authenticate and persist client ciphe
 - [x] Preserve intent through lost replies/storage failures/reopening and rekey only certificates proven missing; retain original target digests across rotation.
 - [x] Verify 20 new model/database tests and the real client/relay lost-reply/restart/fresh-bootstrap erasure flow; all 215 TS and 12 real-process tests pass, with typechecks/build.
 - [ ] Finish unresolved/shared native capture copies, general quarantine and backup expiration/old-restore policy.
-- [ ] Finish storage limits, retention, full-scale performance and recovery checks, then joint disposable-profile acceptance before section 10.
+- [x] Implement storage limits/history expiry and verify isolated snapshot/restore guards; see later checkpoints.
+- [ ] Finish session expiry, full-scale performance, complete recovery and remaining joint acceptance before section 10.
 
-The live client/relay ciphertext path is implemented. Browser-owned history, physical SQLite/WAL pages, old exports/backups and remaining retained-copy policy are separate boundaries. See [history-erasure-protocol.md](history-erasure-protocol.md) and [progress.md](progress.md) for verification and commit evidence. No native or whole milestone gate is complete.
+The live client/relay ciphertext path is implemented. Browser-owned history, physical SQLite/WAL pages, old exports/backups and remaining retained-copy policy are separate boundaries. See [history-erasure-protocol.md](history-erasure-protocol.md) and [progress.md](progress.md) for verification and commit evidence. Full native acceptance and whole milestone exit gates remain open.
 
 ## Local storage admission checkpoint — 2026-10-02
 
@@ -254,9 +284,10 @@ Checkpoint commit: `a28c1b1 feat(storage): preserve local work with bounded admi
 - [x] Drain saved uploads while a capacity-blocked page remains unprocessed; resume that page after a limit increase.
 - [x] Verify 11 new unit/database cases and a real-relay capacity/recovery case; all 226 TS/13 integrations, typechecks and production build pass.
 - [x] Verify storage form saving/warnings with synthetic browser replies and square dark layout at desktop/390 px, without overflow or browser errors.
-- [ ] Complete actual Helium storage behavior, history/session retention, full-scale performance, retained-copy policy and older-backup/server-loss recovery.
+- [x] Implement opt-in history retention and isolated older-backup/server-loss preservation checks.
+- [ ] Complete native storage quota/physical-write acceptance, session retention, measured scale, retained-copy policy and complete recovery.
 
-Defaults are 512 MiB estimated origin bytes, 100,000 pending work items, 500,000 journal records and 30,000 capture tasks. The byte estimate is sampled admission guidance, not a physical disk reservation. [local-storage.md](local-storage.md) records scope and failure behavior; no native or milestone gate is complete.
+Defaults are 512 MiB estimated origin bytes, 100,000 pending work items, 500,000 journal records and 30,000 capture tasks. The byte estimate is sampled admission guidance, not a physical disk reservation. [local-storage.md](local-storage.md) records scope and failure behavior; full native acceptance and milestone exit gates remain open.
 
 ## History retention checkpoint — 2026-10-02
 
@@ -277,9 +308,10 @@ Expiry is off until selected. Offline source/peer reconciliation can delay remov
 - [x] Prepare separate empty profile directories and launchers, plus one mode-0600 initial credential; pair the second author through the dashboard.
 - [x] Start a separate loopback relay on port 4320 and verify ready/schema-5/authenticated status with zero journal operations.
 - [x] Prepare exact load/enroll/pair instructions and the [first native smoke checklist](native-smoke.md).
-- [ ] Launch/load/pair the disposable profiles with the user and record actual native API, restoration and lifecycle results.
+- [x] With user approval, load/enroll/pair the fresh test build in the user-created named profiles on the isolated port-4321 relay; record basic native API/restoration, short outage and worker-revival results.
+- [ ] Complete the remaining native/endurance acceptance checks.
 
-Installed Helium is 0.18.1.1. Empty directories and service readiness do not establish native acceptance. Session/retained-copy policy, scale/recovery and the hours-long outage remain before full acceptance and section 10 deployment.
+The earlier empty kit directories were not used for the native pass. The approved named test profiles run Helium 0.18.1.1. Preparation/service readiness alone does not establish acceptance; actual results follow below. Session/retained-copy policy, scale/recovery and the hours-long outage remain before full acceptance and section 10 deployment.
 
 ## Native Helium first pass — 2026-10-02
 
@@ -310,15 +342,17 @@ Read [relay-recovery.md](relay-recovery.md) for exact commands and current bound
 
 ### Required behavior
 
-- [ ] Synchronize bookmark creation, title/URL edits, folder structure, moves, ordering, and deletion in both directions.
-- [ ] Collect history visits with their original timestamps and source-device identity.
-- [ ] Search and filter history across devices in the extension UI.
-- [ ] Publish each device's current windows, tabs, pinned state, active tab, and tab groups.
-- [ ] Keep closed windows and previous snapshots recoverable, grouped by source device.
-- [ ] Open one remote tab, one remote window, or all windows from a remote session as real Helium windows/tabs.
-- [ ] Continue local use and capture changes while the Mac Mini or Tailscale connection is unavailable.
-- [ ] Automatically reconcile changes when connectivity returns.
-- [ ] Show connection state, pending uploads, last successful sync, and remote snapshot age.
+These feature implementations have automated evidence. The native first pass covers the representative flows above; the full conflict, lifecycle, removal, endurance and scale gates are tracked separately in sections 11–12.
+
+- [x] Synchronize bookmark creation, title/URL edits, folder structure, moves, ordering, and deletion in both directions.
+- [x] Collect history visits with their original timestamps and source-device identity.
+- [x] Search and filter history across devices in the extension UI.
+- [x] Publish each device's current windows, tabs, pinned state, active tab, and tab groups.
+- [x] Keep closed windows and previous snapshots recoverable, grouped by source device.
+- [x] Open one remote tab, one remote window, or all windows from a remote session as real Helium windows/tabs.
+- [x] Continue local use and capture changes while the Mac Mini or Tailscale connection is unavailable.
+- [x] Automatically reconcile changes when connectivity returns.
+- [x] Show connection state, pending uploads, last successful sync, and remote snapshot age.
 
 ### Scope rules
 
@@ -349,26 +383,33 @@ Local availability covers records already downloaded and records captured on tha
 
 ### Durability tasks
 
-- [ ] Use IndexedDB transactions for logical state plus corresponding outbox records.
-- [ ] Persist received records, logical merge results, and cursor progress consistently.
-- [ ] Keep a persistent browser-application journal for work that crosses the IndexedDB/browser API boundary.
-- [ ] Request `unlimitedStorage` for the replicated dataset and verify Helium's behavior; monitor actual disk usage and write failures.
-- [ ] Keep essential state out of worker globals, popup state, and session-only storage.
-- [ ] Preserve the extension identity across development/release upgrades so the storage origin does not unexpectedly change.
-- [ ] Never age out unacknowledged bookmark/history/deletion operations just because their normal retention period elapsed.
-- [ ] Allow unsent current-session snapshots to coalesce into a newer snapshot, while preserving closed/history snapshots according to policy.
-- [ ] Make queue limits explicit; warn or pause affected collection before silently discarding required work.
-- [ ] Provide an export that includes logical state, tombstones, and pending operations for recovery.
-- [ ] Reconcile missed events on startup and after interruption; document that abrupt termination before capture can lose transient session details.
+Evidence: [local storage](local-storage.md), [relay progress](relay-protocol.md), domain capture/application tests, and the recorded native short-outage/worker/reload checks. Physical disk, production update identity and hours-long browser restart acceptance remain open.
+
+- [x] Use IndexedDB transactions for logical state plus corresponding outbox records.
+- [x] Persist received records, logical merge results, and cursor progress consistently.
+- [x] Keep a persistent browser-application journal for work that crosses the IndexedDB/browser API boundary.
+- [x] Request `unlimitedStorage`; display origin storage estimates/budgets and preserve failed writes with visible errors.
+- [ ] Verify actual Helium quota/eviction and physical disk-exhaustion behavior; estimates do not measure free disk space.
+- [x] Keep essential state out of worker globals, popup state, and session-only storage.
+- [x] Retain the approved unpacked path/extension ID across the native test update/reload, preserving enrollment/data/settings.
+- [ ] Define and verify the stable production distribution/update identity procedure.
+- [x] Never age out unacknowledged bookmark/history/deletion operations just because their normal retention period elapsed.
+- [x] Coalesce wholly unencrypted current-session drafts; preserve closed/saved snapshots and already encrypted fragments.
+- [ ] Implement the final closed/previous-session age/count/size retention policy.
+- [x] Make queue limits explicit; warn or pause affected collection before silently discarding required work.
+- [x] Provide an export that includes logical state, tombstones, and pending operations for recovery.
+- [x] Reconcile missed events on startup and after interruption; document that abrupt termination before capture can lose transient session details.
 
 Chrome documents IndexedDB access from workers and extension-storage persistence. `unlimitedStorage` exempts extension storage from quota restrictions and eviction, but does not create physical disk space or protect against profile deletion. [Storage and cookies](https://developer.chrome.com/docs/extensions/develop/concepts/storage-and-cookies)
 
 ### Example outage acceptance test
 
-- [ ] Start with two synchronized installations, A and B.
+The synchronized setup and local closed-window preservation were observed in the short native pass. The several-hours run and its concurrent edits/restarts are still unfinished.
+
+- [x] Start with two synchronized installations, A and B.
 - [ ] Stop the server for at least several hours while continuing to use both browsers.
 - [ ] Rename a bookmark on A and move the same bookmark on B; add independent bookmarks and history visits on both.
-- [ ] Close a window on A and verify its cached closed-session record remains available locally.
+- [x] Close a window on A and verify its cached closed-session record remains available locally.
 - [ ] Restart both browsers while the server is still unavailable.
 - [ ] Verify persisted remote caches and pending changes survive the restart.
 - [ ] Restart the server and verify both bookmark edits survive, records deduplicate, sessions refresh, and queues drain.
@@ -417,10 +458,10 @@ deploy/macos/       launchd template and deployment documentation
 docs/               Decisions, recovery procedures, contributor guide
 ```
 
-- [ ] Keep transport/storage interfaces small and independent of domain merging.
-- [ ] Ship only the Rust-server transport in phase one; do not implement a plugin framework for speculative backends.
-- [ ] Maintain shared protocol fixtures and compatibility tests across TypeScript and Rust.
-- [ ] Distinguish physical device names from installation IDs: two browser profiles on one Mac are separate sync authors.
+- [x] Keep transport/storage interfaces small and independent of domain merging.
+- [x] Ship only the Rust-server transport in phase one; do not implement a plugin framework for speculative backends.
+- [x] Test TypeScript protocol vectors and cross-stack compatibility against the actual Rust relay; fixtures currently live with their tests.
+- [x] Distinguish physical device names from installation IDs: two browser profiles on one Mac are separate sync authors.
 
 ## 4. Sync protocol and near-realtime behavior
 
@@ -445,20 +486,22 @@ docs/               Decisions, recovery procedures, contributor guide
 
 ### Protocol checklist
 
+Evidence: `sync-core/src/protocol.ts`, `sync-core/src/sync.ts`, `extension/entrypoints/background.ts`, [relay protocol](relay-protocol.md), and the real-process integrations. Current versions: wire protocol 1, relay schema 5, IndexedDB schema 10; erasure capability 1. Older-version/native minimum-baseline release acceptance remains open.
+
 - [x] Give every operation a unique ID, author installation ID/counter, schema version, and encrypted payload.
 - [x] Use a non-reused monotonically increasing server sequence for retrieval within a server epoch.
 - [x] Keep merge revisions separate from server delivery sequences and wall-clock timestamps.
 - [x] Reject reuse of an operation ID with a different envelope; retrying the same operation returns its original result.
 - [x] Use at-least-once delivery and idempotent effects; do not claim exactly-once network delivery.
 - [x] Preserve unacknowledged work across timeouts and ambiguous upload responses.
-- [ ] Authenticate WebSockets without putting long-lived credentials in URLs; use a short-lived ticket or authenticated initial message.
-- [ ] Treat notifications as hints; pull immediately after reconnect even if no notification arrived.
-- [ ] Prevent the initial pull/subscription race with a catch-up pull after subscription is established.
-- [ ] Use one coordinator per installation, bounded batches, timeouts, exponential backoff, and jitter.
-- [ ] Handle invalid authentication separately from temporary network failure.
+- [x] Authenticate WebSockets without putting long-lived credentials in URLs; use a short-lived ticket or authenticated initial message.
+- [x] Treat notifications as hints; pull immediately after reconnect even if no notification arrived.
+- [x] Prevent the initial pull/subscription race with a catch-up pull after subscription is established.
+- [x] Use one coordinator per installation, bounded batches, timeouts, exponential backoff, and jitter.
+- [x] Handle invalid authentication separately from temporary network failure.
 - [x] Quarantine invalid/incompatible records and surface the error; do not silently advance over required unprocessed changes.
 - [x] Store processing/application progress so a crash can safely resume.
-- [ ] Define supported protocol/schema versions and explicit upgrade-required responses.
+- [x] Define supported protocol/schema versions and explicit upgrade-required responses.
 
 ### Starting latency targets
 
@@ -471,10 +514,10 @@ These are targets to measure, not guarantees while a browser/device/network is u
 | History publication          | 5–15 seconds                                                      |
 | Missed-notification recovery | Next reconnect or approximately 30–60-second reconciliation alarm |
 
-- [ ] Debounce bookmarks briefly and sessions around two seconds, with a maximum publication delay.
-- [ ] Exchange WebSocket application messages approximately every 20 seconds in responsive mode.
-- [ ] Persist all essential state despite the heartbeat; workers can still terminate unexpectedly.
-- [ ] Recreate missing alarms and reconcile on startup, UI-open/manual-sync, and connection recovery.
+- [x] Debounce bookmarks briefly and sessions around two seconds, with a maximum publication delay.
+- [x] Exchange WebSocket application messages approximately every 20 seconds in responsive mode.
+- [x] Persist all essential state despite the heartbeat; workers can still terminate unexpectedly.
+- [x] Recreate missing alarms and reconcile on startup, UI-open/manual-sync, and connection recovery.
 - [ ] Validate minimum Chromium behavior in Helium before choosing the manifest baseline.
 - [ ] Measure latency with DevTools closed and under representative offline/reconnect conditions.
 
@@ -508,16 +551,16 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 - [x] Specify deterministic handling of missing/deleted parents and invalid placement.
 - [x] Prove convergence from the same operation set regardless of arrival order.
 
-**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 236 TypeScript, 40 Rust and 14 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
+**Bookmark evidence (updated 2026-10-02):** Causal merge, encrypted journal and native adapter are implemented. Model tests cover all listed conflicts; 22 port tests cover native capture/application/recovery. The native first pass verifies folder/link creation, reverse rename, offline delivery and worker revival. Full native conflict/interruption/root-capability acceptance remains open. Latest recorded suite: 237 TS, 44 Rust and 16 real-process tests. See [merge contract](bookmark-merge.md), [adapter contract](bookmark-browser.md), [native results](native-smoke.md) and [progress](progress.md).
 
 ### Browser integration and onboarding
 
-- [ ] Capture creation, title/URL changes, moves, removal, and children-reordered events.
-- [ ] Map browser root folders by capabilities/role; handle unmodifiable nodes explicitly.
+- [x] Capture creation, title/URL changes, moves, removal, and children-reordered events.
+- [x] Map browser root folders by capabilities/role; handle unmodifiable nodes explicitly.
 - [x] Persist an intended mutation before calling browser APIs, then persist its observed result.
 - [x] Match expected resulting events to prevent echo uploads without ignoring genuine user edits.
 - [x] Reconcile actual browser state before retrying interrupted create/move/delete work.
-- [ ] Perform startup and periodic full-tree reconciliation.
+- [x] Perform startup and periodic full-tree reconciliation.
 - [x] Bootstrap the first installation from its existing bookmarks.
 - [x] Preview the merge on later installations; preserve unmatched entries and intentional duplicates.
 - [x] Match identical entries conservatively using folder context, URL, and title.
@@ -528,39 +571,45 @@ Reference: [Chrome bookmarks API](https://developer.chrome.com/docs/extensions/r
 
 ## 6. Current, closed, and previous sessions
 
-- [ ] Capture installation/device name, capture time, source revision, ordered windows/tabs, URLs/titles, pinned state, active tab, and group metadata.
-- [ ] Allocate internal snapshot/window/tab/group identities; do not use runtime browser IDs as cross-device identities.
-- [ ] Restrict publication to the source installation and reject stale source revisions.
-- [ ] Publish debounced current-session snapshots and retain selected previous snapshots.
-- [ ] Cache window contents before closure; capture closed records from the cache and supplement with local recently-closed APIs.
-- [ ] Retain the last good snapshot after abrupt shutdown; do not depend on a final shutdown callback.
-- [ ] Show snapshot age separately from device connectivity/heartbeat.
-- [ ] Provide open-tab, open-window, and open-all actions.
-- [ ] Restore real windows/tabs, then pinning, ordering, groups, group metadata, and active tabs.
-- [ ] Journal restoration progress to avoid blindly duplicating windows/tabs after interruption.
-- [ ] Validate schemes; default automatic restoration to HTTP/HTTPS and explain skipped local/internal/unsupported URLs.
-- [ ] Bound restoration concurrency and show progress/partial failures for large sessions.
-- [ ] Use destination-appropriate window placement instead of forcing coordinates from another monitor arrangement.
-- [ ] Keep source sessions intact when they are restored elsewhere.
-- [ ] Preserve useful closed-session records during an outage instead of replacing them with only the latest current state.
+Implementation evidence: [session contract](sessions.md), model/capture/restore tests and real-relay integrations. The native two-tab restore passes pin/order/group/active checks. Measured large/interrupted restore and full browser restart remain acceptance gates.
+
+- [x] Capture installation/device name, capture time, source revision, ordered windows/tabs, URLs/titles, pinned state, active tab, and group metadata.
+- [x] Allocate internal snapshot/window/tab/group identities; do not use runtime browser IDs as cross-device identities.
+- [x] Restrict publication to the source installation and reject stale source revisions.
+- [x] Publish debounced current-session snapshots and retain selected previous snapshots.
+- [x] Cache window contents before closure; capture closed records from the cache and supplement with local recently-closed APIs.
+- [x] Retain the last good snapshot after abrupt shutdown; do not depend on a final shutdown callback.
+- [x] Show snapshot age separately from device connectivity/heartbeat.
+- [x] Provide open-tab, open-window, and open-all actions.
+- [x] Restore real windows/tabs, then pinning, ordering, groups, group metadata, and active tabs.
+- [x] Journal restoration progress to avoid blindly duplicating windows/tabs after interruption.
+- [x] Validate schemes; default automatic restoration to HTTP/HTTPS and explain skipped local/internal/unsupported URLs.
+- [x] Bound restoration concurrency and show progress/partial failures for large sessions.
+- [x] Use destination-appropriate window placement instead of forcing coordinates from another monitor arrangement.
+- [x] Keep source sessions intact when they are restored elsewhere.
+- [x] Preserve useful closed-session records during an outage instead of replacing them with only the latest current state.
 
 Public APIs support window/tab/group restoration, but do not let the extension insert its own foreign devices into Chromium's built-in session machinery. The extension provides that device grouping. Local recently-closed retrieval is limited to 25 entries, so it cannot be the only archive. [Windows](https://developer.chrome.com/docs/extensions/reference/api/windows), [tabs](https://developer.chrome.com/docs/extensions/reference/api/tabs), [tab groups](https://developer.chrome.com/docs/extensions/reference/api/tabGroups), [sessions](https://developer.chrome.com/docs/extensions/reference/api/sessions)
 
 ## 7. Cross-device history and deletion
 
-- [ ] Store individual visit records with original timestamp, source installation, URL/title, and available transition/referrer metadata.
-- [ ] Namespace native visit IDs by installation/profile incarnation; deduplicate the same visit while preserving separate visits.
-- [ ] Combine events with overlapping reconciliation scans and paginated, bounded initial import.
-- [ ] Keep decrypted search/index state local; the server cannot search encrypted URLs or titles.
-- [ ] Show unified timeline and per-device filters.
-- [ ] Keep native browser history local; do not inject remote visits at fabricated current timestamps.
-- [ ] Exclude incognito capture and support domain exclusions/pause controls.
-- [ ] Process native URL/all-history removal events for that installation's corresponding synchronized records.
-- [ ] Provide explicit extension deletion scopes: selected records, one installation, or all installations.
-- [ ] Define per-source clear barriers/generations and deletion markers that prevent re-import/resurrection, including delayed offline uploads.
-- [ ] Keep deletion metadata long enough to cover all active clients; stale clients require rebootstrap before contributing old state.
-- [ ] Coordinate logical erasure with ciphertext purge/retention; distinguish live deletion from expiration of historical backups.
-- [ ] Document any event/reconciliation capture limits; do not promise complete archival of visits never captured locally.
+Implementation evidence: [history](history.md), [erasure protocol](history-erasure-protocol.md), [retention](retention.md), and model/capture/real-relay tests. Native source/time capture and search pass; permanent-removal confirmation and native clear/reconnect checks remain open.
+
+- [x] Store individual visit records with original timestamp, source installation, URL/title, and available transition/referrer metadata.
+- [x] Namespace native visit IDs by installation/profile incarnation; deduplicate the same visit while preserving separate visits.
+- [x] Combine events with overlapping reconciliation scans and paginated, bounded initial import.
+- [x] Keep decrypted search/index state local; the server cannot search encrypted URLs or titles.
+- [x] Show unified timeline and per-device filters.
+- [x] Keep native browser history local; do not inject remote visits at fabricated current timestamps.
+- [x] Exclude incognito capture and support domain exclusions/pause controls.
+- [x] Process native URL/all-history removal events for that installation's corresponding synchronized records.
+- [x] Provide explicit extension deletion scopes: selected records, one installation, or all installations.
+- [x] Define per-source clear barriers/generations and deletion markers that prevent re-import/resurrection, including delayed offline uploads.
+- [x] Retain V1 history tombstones, clear barriers and certified receipts indefinitely, preventing delayed stale uploads/re-import.
+- [ ] Before future compaction, define stale-client retirement/rebootstrap; V1 performs no compaction.
+- [x] Coordinate logical erasure and source-owned history expiry with certified live local/relay ciphertext purge; document retained physical/native/backup copies.
+- [ ] Finish unresolved/shared capture-copy and general quarantine policy, backup expiration and safe old-backup recovery.
+- [x] Document any event/reconciliation capture limits; do not promise complete archival of visits never captured locally.
 
 `history.addUrl()` adds a visit at the current time rather than an arbitrary original timestamp. The extension's database is the canonical cross-device timeline. [Chrome history API](https://developer.chrome.com/docs/extensions/reference/api/history)
 
@@ -579,9 +628,9 @@ Public APIs support window/tab/group restoration, but do not let the extension i
 - [x] Export a separate recovery bundle and document that server backups alone cannot decrypt data.
 - [x] Revoke API access immediately and define future-data key rotation for removal of a compromised installation. Automated client/relay evidence passes under the documented relay/membership trust boundary; native acceptance remains open.
 - [x] Explain that revocation cannot erase already-downloaded data or invalidate knowledge of old keys.
-- [ ] Request only required browser APIs and the configured server host; avoid broad browsing-site host access/content scripts.
-- [ ] Render titles/URLs as untrusted text and keep the extension CSP restrictive.
-- [ ] Avoid logging browsing contents, tokens, keys, pairing bundles, or sensitive query parameters.
+- [x] Request only required browser APIs and the configured server host; avoid broad browsing-site host access/content scripts.
+- [x] Render titles/URLs as untrusted text and keep the extension CSP restrictive.
+- [x] Avoid logging browsing contents, tokens, keys, pairing bundles, or sensitive query parameters.
 
 E2EE protects contents stored on the relay and in its backups. The relay still sees delivery metadata such as account/installation IDs, timing, sizes, and sequence. Local decrypted caches and native browser data have their own device-security requirements.
 
@@ -589,14 +638,17 @@ References: [AES-GCM parameters](https://developer.mozilla.org/en-US/docs/Web/AP
 
 ## 9. Rust server and SQLite
 
-| Table               | Responsibility                                                                 |
-| ------------------- | ------------------------------------------------------------------------------ |
-| `accounts`          | Account identity, protocol settings, and server/restore epoch                  |
-| `devices`           | Installation identity, credential hash, revocation, activity, durable progress |
-| `change_log`        | Non-reused server sequence, unique operation ID, author, encrypted envelope    |
-| `snapshots`         | Encrypted sessions and later client-generated checkpoints                      |
-| `pairing_invites`   | Hashed invitations, expiry, single-use state                                   |
-| `schema_migrations` | Database migration history                                                     |
+Actual schema-5 tables (one personal-relay account):
+
+| Table                                    | Responsibility                                                                                                      |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `settings`                               | Account identity, server/restore epoch, protocol capability and account budgets/usage                               |
+| `devices`                                | Installation identity, credential hash, revocation, wrapping identity and durable progress                          |
+| `operations`                             | Non-reused server sequence, unique operation/author counter, encrypted domain envelopes including session fragments |
+| `pairing_invites`                        | Hashed invitations, expiry and single-use claims                                                                    |
+| `key_rotations`, `key_packets`           | Monotonic content-key generations and recipient-specific encrypted packets                                          |
+| `history_redactions`, `history_erasures` | Immutable erased-target receipts and authenticated encrypted purge certificates                                     |
+| `_sqlx_migrations`                       | Applied migration history and checksums                                                                             |
 
 - [x] Use WAL mode on a local disk, `synchronous=FULL`, foreign keys, and configured busy timeout.
 - [x] Keep transactions short; control write concurrency and use a small connection pool.
@@ -628,8 +680,10 @@ SQLite WAL supports concurrent readers and a writer but only one active writer. 
 - [ ] Back up before upgrades/migrations and document binary/database rollback compatibility.
 - [ ] Generate consistent daily backups using SQLite backup facilities or a coordinated snapshot procedure.
 - [ ] Keep at least one encrypted backup off the Mac Mini; back up encryption recovery material separately.
-- [ ] Test restoration into an isolated instance before calling backup recovery complete.
-- [ ] Announce a new restore epoch after restoring an older database; clients halt destructive application, preserve pending work, and reconcile surviving replicas.
+- [x] Verify consistent WAL snapshot integrity and isolated older-backup restore marking/client-state preservation (`09bf1bd`).
+- [ ] Complete the operational restore procedure, missing acknowledged-operation replay and safe client resume before accepting backup recovery.
+- [x] Implement expected-epoch restore marking and verify ordinary synchronization rejects changed/older state while preserving surviving replicas/queues/keys.
+- [ ] Reconcile surviving replicas, deletion proofs, membership and key generations after restore; verify safe resumed browser application.
 - [ ] Define a recovery procedure for server disk loss, including missing acknowledged operations and surviving client exports.
 
 Do not copy only the live database file and assume it contains WAL changes. [SQLite backup API](https://www.sqlite.org/backup.html)
@@ -649,61 +703,78 @@ Apple documents desktop sleep/power-recovery settings and FileVault startup requ
 | Pending essential operations | Retained until acknowledged or explicitly resolved/exported                      |
 | Backups                      | Daily, with weekly/monthly rotation; exact counts decided before deployment      |
 
-- [ ] Define retention against record semantics; encrypted historical visit timestamps are not visible to the server.
-- [ ] Specify client-driven expiry or deliberately disclosed expiry metadata rather than assuming server receipt time equals visit time.
-- [ ] Document which data is replicated locally, retention settings, and backup-deletion lag.
+- [x] Define and implement history expiry against original visit timestamps and source ownership; protect unacknowledged work.
+- [ ] Finalize session age/count/size retention and historical backup rotation/deletion semantics.
+- [x] Specify client-driven expiry or deliberately disclosed expiry metadata rather than assuming server receipt time equals visit time.
+- [x] Document local replicas, opt-in history settings and the retained native/physical/export/backup copy boundaries in [retention.md](retention.md).
+- [ ] Finalize the remaining session/capture/quarantine/backup policy and a tested backup-deletion lag.
 
 ## 11. Milestone exit gates
 
+Implementation tasks below use the recorded model, database, port and real-relay evidence. Native tasks identify the observed browser scope. All seven whole milestone exit gates remain unchecked until their complete criteria pass.
+
 ### M1 — Compatibility and hosting probes
 
-- [ ] Create a disposable two-profile Helium environment and verify required APIs/permissions.
-- [ ] Verify WXT background startup, worker termination/revival, alarms, and persistent storage.
-- [ ] Demonstrate representative window/tab/group capture and restoration.
+- [x] Create/use the approved two-profile environment; verify localhost enrollment, bookmark/history/window/tab/group/session APIs in representative native flows.
+- [ ] Complete the native API/permission matrix, including managed/private/root/exclusion/removal edge cases.
+- [x] Verify native WXT startup, worker stop/automatic revival and retained enrollment/data/settings through same-origin extension reload.
+- [x] Implement/test persisted state and 30-second alarm recreation/startup/manual-sync/reconnect paths.
+- [ ] Directly verify alarm recreation/timing, full browser restart and native quota/physical-storage behavior.
+- [x] Demonstrate representative window/tab/group capture and restoration.
 - [ ] Demonstrate authenticated HTTPS/WSS through Tailscale Serve.
-- [ ] Record Chromium version constraints and Mac Mini reboot/login limitations.
+- [x] Record tested Helium 0.18.1.1 / Chromium 154.0.0.0 and the provisional manifest floor 134.
+- [ ] Verify the minimum supported older Helium build and actual Mac Mini reboot/login limitations.
 - [ ] **Exit gate:** Compatibility evidence is recorded; no test modifies the user's real bookmark collection.
 
 ### M2 — Durable local state and encrypted transport
 
-- [ ] Implement protocol fixtures, IndexedDB schema/migrations, pairing, encryption, outbox/inbox, and server journal.
-- [ ] Implement push/pull, notifications, retries, cursor handling, and visible offline status.
-- [ ] Exercise dropped acknowledgements, duplicate requests, server restart, and worker termination.
+- [x] Implement protocol fixtures, IndexedDB schema/migrations, pairing, encryption, outbox/inbox, and server journal.
+- [x] Implement push/pull, notifications, retries, cursor handling, and visible offline status.
+- [x] Exercise dropped acknowledgements, duplicate requests, server restart, and worker termination.
 - [ ] Exercise the hours-long outage test with synthetic domain records.
 - [ ] **Exit gate:** Captured committed records survive restarts and outages, deduplicate, and converge after reconnect.
 
 ### M3 — Bidirectional bookmarks
 
-- [ ] Implement the merge policies, deterministic valid-tree projection, mappings, event capture, and browser application journal.
-- [ ] Implement first/second-device import, preview, recovery export, and reconciliation.
-- [ ] Exercise every bookmark conflict listed in section 5.
+- [x] Implement the merge policies, deterministic valid-tree projection, mappings, event capture, and browser application journal.
+- [x] Implement first/second-device import, preview, recovery export, and reconciliation.
+- [x] Exercise every section-5 bookmark conflict in the model/port tests, including arrival permutations and offline reopen convergence.
+- [ ] Exercise the complete native bookmark conflict/move/order/deletion/interrupted-application matrix in the disposable profiles.
 - [ ] **Exit gate:** Two profiles converge after concurrent/offline edits without losing independent changes or intentional duplicates.
 
 ### M4 — Sessions
 
-- [ ] Implement device-owned current snapshots, previous snapshots, closed-window archive, and session UI.
-- [ ] Implement recoverable real-browser restoration and partial-failure reporting.
-- [ ] Exercise closure during outage, abrupt shutdown, stale revisions, and interrupted large restores.
+- [x] Implement device-owned current snapshots, previous snapshots, closed-window archive, and session UI.
+- [x] Implement recoverable real-browser restoration and partial-failure reporting.
+- [x] Verify native closure during the short relay outage and automated abrupt/incarnation/stale-revision/interrupted-effect recovery.
+- [ ] Verify native abrupt browser shutdown and interrupted large/multi-window restores with measured responsiveness.
 - [ ] **Exit gate:** Multi-window restoration preserves supported ordering/pins/groups and avoids unintended cross-device closing.
 
 ### M5 — History
 
-- [ ] Implement individual visits, bounded import/reconciliation, local search, device filters, and deletion/clear barriers.
-- [ ] Exercise duplicate visits, original timestamps, native clearing, and delayed uploads after deletion.
+- [x] Implement individual visits, bounded import/reconciliation, local search, device filters, and deletion/clear barriers.
+- [x] Exercise duplicate visits, original timestamps, native-clear ports and delayed uploads after deletion in model/capture/real-relay tests; verify native source/timestamp capture and search.
+- [ ] Confirm selected native test-visit removal, then verify native URL/source/global clears and delayed reconnect/reconciliation without resurrection.
+- [ ] Finish retained-copy erasure policy and measured history/journal scale.
 - [ ] **Exit gate:** Search shows correct source/timestamps and erased visits do not reappear after reconnect/reconciliation.
 
 ### M6 — Production hosting and recovery
 
-- [ ] Implement launchd deployment, permissions, Tailscale access rules, monitoring, backups, and upgrade/recovery documentation.
-- [ ] Run outage, disk-full, reboot, service restart, older-backup restoration, and server-disk-loss exercises.
+- [x] Implement consistent backup and expected-epoch restore-guard commands; document hosting/upgrade constraints and current recovery boundaries.
+- [ ] Install/verify launchd deployment, filesystem permissions, Tailscale access, monitoring, scheduled/rotated/off-host backups and complete upgrade/recovery procedures.
+- [x] Run automated relay/client outage, SQLite-full rollback/retry, graceful process restart, isolated older-backup and server-disk-loss preservation exercises; verify the native short outage.
+- [ ] Run hours-long native outage, physical client/backup disk failure, reboot/login/deployment restart and full recovery/replay/resume exercises.
 - [ ] **Exit gate:** Operational evidence identifies recovery steps and proves backup restoration with surviving client state.
 
 ### M7 — Product polish and release
 
-- [ ] Complete setup/import guidance, clear status/error messages, conflict recovery, exclusions, and retention controls.
-- [ ] Keep the popup compact; provide the full Sessions/History dashboard as an extension page.
+- [x] Implement setup/import guidance, status/error reporting, explicit bookmark-effect recovery, exclusions, local storage controls and opt-in history retention; exercise synthetic/native UI as recorded.
+- [ ] Finish session/general retained-copy policy and remaining native UI acceptance.
+- [x] Provide the full Sessions/History options dashboard, opened by the toolbar action in the current build.
+- [ ] Settle whether to add the originally proposed compact popup before release.
 - [ ] Evaluate a packaged `chrome://history` override after the dashboard is stable; explain the choice before enabling it.
-- [ ] Complete protocol compatibility, dependency checks, and stable extension distribution/identity procedure.
+- [x] Verify current protocol/schema migration/upgrade refusal, package-version consistency and Changeset release generation in a disposable copy.
+- [ ] Complete release dependency/compatibility review, minimum Helium verification and stable extension distribution/update identity procedure.
 - [ ] Run daily-use verification across the user's actual intended devices after disposable-profile gates pass.
 - [ ] **Exit gate:** Daily use, offline recovery, and documented self-hosting are reliable; unresolved limitations are recorded.
 
@@ -711,21 +782,29 @@ Chrome supports a packaged History-page override. Treat whether to ship that bui
 
 ## 12. Verification matrix
 
-- [ ] Different arrival orders produce identical logical bookmark state.
-- [ ] Repeated upload/apply attempts do not create duplicate operations or bookmarks.
-- [ ] Browser mutation followed by worker termination recovers its mapping/effect correctly.
-- [ ] Genuine local edits during remote application remain captured.
-- [ ] Missed notifications and reconnect races recover through pull.
-- [ ] Clock skew does not decide merge winners.
-- [ ] Concurrent folder cycles/deletion/ordering resolve consistently.
-- [ ] An old offline client cannot resurrect deleted bookmarks or erased history.
-- [ ] Browser updates preserve extension storage and identity.
-- [ ] Full local/server disk errors remain visible and preserve retryable work.
-- [ ] Corrupted/incompatible ciphertext does not silently disappear behind an advanced cursor.
-- [ ] Revoked credentials fail; key rotation excludes the revoked installation from future data.
+Checked model/port/relay results below describe their recorded automated scope, with native evidence named explicitly. They do not substitute for the remaining full native/endurance/production gates.
+
+- [x] Different arrival orders produce identical logical bookmark state.
+- [x] Repeated upload/apply attempts do not create duplicate operations or bookmarks.
+- [x] Simulated browser mutation followed by interrupted API result/worker/database reopen recovers its mapping/effect or pauses ambiguity safely.
+- [x] Native worker stop/revival resumes bookmark delivery with the existing mapping.
+- [ ] Verify termination exactly between native browser mutation and its effect/mapping commit.
+- [x] Genuine local edits during remote application remain captured.
+- [x] Missed notifications and reconnect races recover through pull.
+- [x] Clock skew does not decide merge winners.
+- [x] Concurrent folder cycles/deletion/ordering resolve consistently.
+- [x] An old offline client cannot resurrect deleted bookmarks or erased history.
+- [x] Same-path native extension build update/reload preserves the storage origin, enrollment, saved data and collection settings.
+- [ ] Verify actual Helium browser upgrades and production extension distribution updates preserve storage/identity.
+- [x] Injected local transaction/admission failures and real SQLite storage exhaustion preserve retryable work and surface errors.
+- [ ] Verify physically full native client/backup disks and the actual deployment failure path.
+- [x] Corrupted/incompatible ciphertext does not silently disappear behind an advanced cursor.
+- [x] Revoked credentials fail; key rotation excludes the revoked installation from future data.
 - [ ] Large datasets and large restores remain bounded and responsive.
-- [ ] Backups restore consistently; epoch changes trigger safe client reconciliation.
-- [ ] Lifecycle tests run with DevTools closed.
+- [x] Consistent WAL backup/isolated restore integrity and epoch/frontier/credential rejection preserve exact surviving client exports/keys/queues.
+- [ ] Verify complete post-restore reconciliation, missing acknowledged-operation replay and safe client resume.
+- [x] Native pairing/domain/short-outage/worker-stop checks ran with DevTools closed.
+- [ ] Run full browser restart, hours-long outage and remaining interruption/lifecycle checks with DevTools closed.
 
 ## 13. Future scope: optional iCloud
 
@@ -756,25 +835,27 @@ Phase one only needs a clean separation between domain logic and transport; it d
 
 ## 14. Decision log and open choices
 
-| Decision                  | Current position                                                              | Revisit when                                |
-| ------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
-| Extension/server stack    | WXT + TypeScript; Rust/Axum + SQLite                                          | Only if measured requirements invalidate it |
-| Hosting/network           | Native Mac Mini service; private Tailscale Serve                              | Deployment verification                     |
-| Server outage behavior    | Durable local capture/cache; delayed cross-device propagation                 | M2 outage tests                             |
-| Session behavior          | Source-owned snapshots; explicit remote restoration                           | M4 user verification                        |
-| Content protection        | Client-side E2EE; separate API authentication                                 | M2 key lifecycle design                     |
-| Conflict resolution       | Per-field causal merges and deterministic conflict resolution                 | M3 executable spec                          |
-| Local unlock behavior     | Auto-unlock for diagnostic checkpoint; profile stores key and decrypted cache | Before sensitive browser-content adapters   |
-| History/session retention | Opt-in 90-day history expiry implemented; 30-day session policy pending       | Before M5/M6 deployment                     |
-| History-page replacement  | Optional packaged release choice                                              | M7                                          |
-| iCloud                    | Future research only                                                          | After phase-one exit gates                  |
+| Decision                  | Current position                                                                               | Revisit when                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Extension/server stack    | WXT + TypeScript; Rust/Axum + SQLite                                                           | Only if measured requirements invalidate it |
+| Hosting/network           | Native Mac Mini service; private Tailscale Serve                                               | Deployment verification                     |
+| Server outage behavior    | Durable local capture/cache; delayed cross-device propagation                                  | M2 outage tests                             |
+| Session behavior          | Source-owned snapshots; explicit remote restoration                                            | M4 user verification                        |
+| Content protection        | Client-side E2EE; separate API authentication                                                  | M2 key lifecycle design                     |
+| Conflict resolution       | Per-field causal merges and deterministic conflict resolution                                  | M3 executable spec                          |
+| Local unlock behavior     | Development auto-unlock; profile-local keys/decrypted cache, separate private recovery bundles | Before daily-use/release acceptance         |
+| History/session retention | Opt-in 90-day history expiry implemented; 30-day session policy pending                        | Before M5/M6 deployment                     |
+| History-page replacement  | Optional packaged release choice                                                               | M7                                          |
+| iCloud                    | Future research only                                                                           | After phase-one exit gates                  |
 
 ### Decisions to settle during implementation planning
 
-- [ ] Select initial devices/browser profiles and supported minimum Helium version.
-- [ ] Select local key-unlock policy and recovery-bundle handling.
-- [ ] Finalize executable bookmark merge and history-clear specifications.
-- [ ] Set storage budgets, supported offline window for future compaction, and backup rotation counts.
+- [x] Select the user-created Helium Sync Test 1 and Test 2 profiles for joint acceptance and record the tested browser version.
+- [ ] Select actual daily-use devices and verify the supported minimum Helium version.
+- [x] Select local key-unlock policy and recovery-bundle handling.
+- [x] Finalize executable bookmark merge and history-clear specifications.
+- [x] Set/enforce account and per-profile storage budgets; retain uncompacted V1 tombstones and pending essential work.
+- [ ] Decide/test the future-compaction supported offline window and production backup rotation counts.
 - [ ] Verify Tailscale variant, FileVault startup recovery, and exact launchd service arrangement on the Mac Mini.
 - [ ] Select stable extension distribution/update method and whether to ship the history override.
 
@@ -791,6 +872,8 @@ Phase one only needs a clean separation between domain logic and transport; it d
 ```
 
 ### 2026-10-01 — First development checkpoint
+
+This historical entry records the initial decisions. Later checkpoints and the current checklist above supersede its pending-work statements.
 
 - Decision: Start with encrypted synthetic notes before enabling browser-content permissions/adapters. Implement transport durability in parallel with the unfinished M1 native compatibility probes.
 - Reason: Exercise restart, offline queue, authentication, encryption, and retry semantics without touching personal browsing data.
