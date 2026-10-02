@@ -8,6 +8,9 @@ import {
   Navigate,
   Outlet,
   useRouterState,
+  useSearch,
+  useNavigate,
+  useParams,
 } from '@tanstack/react-router';
 import { Bookmark, History, LayoutDashboard, Laptop, PanelsTopLeft, Settings } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -15,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SynkProvider, request, useSynk } from '@/entrypoints/options/state';
 import { BookmarkPanel } from '@/entrypoints/options/bookmarks';
-import { SessionPanel } from '@/entrypoints/options/sessions';
+import { SessionPanel, SessionDetailPanel, sessionFilters } from '@/entrypoints/options/sessions';
 import { HistoryPanel } from '@/entrypoints/options/history';
 import { HomePage } from '@/entrypoints/options/home';
 import { DevicesPage, AddDevicePage } from '@/entrypoints/options/devices';
@@ -166,7 +169,37 @@ function BookmarksPage() {
 }
 function SessionsPage() {
   const { status, onStatus } = useSynk();
-  return status && <SessionPanel status={status} request={request} onStatus={onStatus} />;
+  const filters = useSearch({ from: '/sessions' });
+  const navigate = useNavigate({ from: '/sessions' });
+  return (
+    status && (
+      <SessionPanel
+        status={status}
+        request={request}
+        onStatus={onStatus}
+        filters={filters}
+        onFiltersChange={(search) => {
+          void navigate({ to: '.', search, replace: true });
+        }}
+      />
+    )
+  );
+}
+function SessionDetailPage() {
+  const { status, onStatus } = useSynk();
+  const { snapshotId } = useParams({ from: '/sessions/$snapshotId' });
+  const filters = useSearch({ from: '/sessions/$snapshotId' });
+  return (
+    status && (
+      <SessionDetailPanel
+        status={status}
+        request={request}
+        onStatus={onStatus}
+        snapshotId={snapshotId}
+        filters={filters}
+      />
+    )
+  );
 }
 function HistoryPage() {
   const { status, onStatus } = useSynk();
@@ -202,7 +235,18 @@ const routes = [
     component: SetupCollections,
   }),
   createRoute({ getParentRoute: () => root, path: '/bookmarks', component: BookmarksPage }),
-  createRoute({ getParentRoute: () => root, path: '/sessions', component: SessionsPage }),
+  createRoute({
+    getParentRoute: () => root,
+    path: '/sessions',
+    validateSearch: sessionFilters,
+    component: SessionsPage,
+  }),
+  createRoute({
+    getParentRoute: () => root,
+    path: '/sessions/$snapshotId',
+    validateSearch: sessionFilters,
+    component: SessionDetailPage,
+  }),
   createRoute({ getParentRoute: () => root, path: '/history', component: HistoryPage }),
   createRoute({ getParentRoute: () => root, path: '/devices', component: DevicesPage }),
   createRoute({ getParentRoute: () => root, path: '/devices/add', component: AddDevicePage }),

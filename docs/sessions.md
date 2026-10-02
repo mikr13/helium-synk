@@ -28,7 +28,7 @@ Abrupt termination before an event is durably captured can lose transient detail
 
 ## Restoration journal
 
-The dashboard offers open-tab, open-window and open-all. Only HTTP/HTTPS URLs without embedded credentials restore automatically. Internal/file/data/javascript/unsupported URLs remain in the source snapshot and are skipped with an explanation/count. Destination windows use browser-default geometry and state rather than source monitor coordinates.
+The session list links to a focused `/sessions/$snapshotId` page with open-tab, open-window and open-all controls. Its progress belongs to the selected snapshot and appears above the tab list. Type/source filters survive Back and reload. Only HTTP/HTTPS URLs without embedded credentials restore automatically. Internal/file/data/javascript/unsupported URLs remain in the source snapshot and are skipped with an explanation/count. Destination windows use browser-default geometry and state rather than source monitor coordinates.
 
 Each request has an immutable UUID and a saved job. Repeating the same request ID/selection returns that job. Opening a single tab uses a regular local window when available; window/all actions create destination windows. Work is serial and bounded to 40 steps per pass, with a 100-step hard ceiling. Jobs resume through the next pass or an alarm after worker interruption.
 

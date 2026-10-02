@@ -95,3 +95,19 @@ Scoped proof: ignored `open-saved-sessions-home.png` and `open-saved-sessions-pa
 - [ ] Establish a completed root move and propagated undo. Direct drags from the tree/main list changed focus/selection but did not establish a move.
 
 Ignored scoped evidence: `bookmark-cut-undo-duplicate.png` (intermediate view) and `bookmark-cut-undo-peer-single.png` (peer preservation). This does not pass the cross-profile move/undo gate, and no code changes are justified by these observations alone.
+
+## Native 24-tab restoration and focused detail page — 2026-10-02
+
+- [x] Create and close one owned Test 1 window containing ordered localhost `large-restore-a-01` through `large-restore-a-24` fixture URLs. Test 2 receives one closed window with 24 tabs, original 20:38:23 capture time and the last tab active.
+- [x] Submit Open window once; the destination has exactly 24 ordered tabs and tab 24 active. The journal reaches 24/24 pages, 1/1 windows, complete, zero skipped without a repeated request or manual resume. This fixture requires more than one bounded 40-step pass.
+- [x] Close only the owned destination window after saving proof; retain the source snapshot/journal. Test 2 capture stays paused and DevTools remain closed.
+- [ ] Verify forced interruption and multiple destination windows. The fixture does not establish the full scale matrix or internet-page loading latency.
+
+All destination tabs were visible in the first UI observation, returned about 2.3 seconds after the click; journal completion was checked separately later. Exact peer delivery and full page loading were not timed. Saved ignored proof: `large-restore-source-24-tabs.png`, `large-restore-destination-24-tabs.png` and `large-restore-journal-complete.png`. Tested UI/background: `5df642d` / `1d00114`.
+
+The list's old View action placed detail controls below all snapshots. The UI now opens one saved session on `/sessions/$snapshotId`, with restoration controls/progress above its tabs and filtered Back navigation. Packaged UI assets were updated at the approved path after saving `extension-before-session-detail-route`; the named manifest, origin, permissions and background SHA-256 remain unchanged.
+
+- [x] Open the real 24-tab snapshot in Test 2 on the new route: restore controls and the existing 24/24 complete journal are visible at the top.
+- [x] Reload the direct detail page; use native browser Back to return to Closed. The saved snapshot/journal persist and capture remains paused. No second restore was submitted.
+
+Proof: `session-detail-native-24.png` in ignored `work/native-user-profiles`. Desktop/390 px synthetic preview checks cover filters, deep reload/Back, missing-snapshot recovery and blocked-job resume; no overflow, rounded controls or fresh console warning/error logs. Typechecks, all 237 TS tests and the production build pass. Full browser restart, fresh native onboarding, native permutations, endurance and implementation/scale/recovery gates remain open.

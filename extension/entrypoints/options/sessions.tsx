@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router';
+import { ArrowLeft } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import React, { useEffect, useState } from 'react';
 import {
   restoreUrl,
+  canonicalUuid,
   type SessionSnapshot,
   type RestoreSelection,
   type SessionWindow,
@@ -19,6 +22,13 @@ type Props = {
   request: (r: Request) => Promise<Reply & { ok: true }>;
   onStatus: (s: Status | undefined) => void;
 };
+export type SessionFilters = { kind: 'current' | 'closed' | 'previous'; source: string };
+export function sessionFilters(search: Record<string, unknown>): SessionFilters {
+  return {
+    kind: search.kind === 'closed' || search.kind === 'previous' ? search.kind : 'current',
+    source: canonicalUuid(search.source) ? (search.source as string) : 'all',
+  };
+}
 function age(value: string): string {
   const seconds = Math.floor((Date.now() - Date.parse(value)) / 1000);
   if (seconds < -60) return 'Source clock is ahead';
@@ -113,14 +123,21 @@ function WindowView({
     </div>
   );
 }
-export function SessionPanel({ status, request, onStatus }: Props) {
+export function SessionPanel({
+  status,
+  request,
+  onStatus,
+  filters,
+  onFiltersChange,
+}: Props & {
+  filters: SessionFilters;
+  onFiltersChange: (filters: SessionFilters) => void;
+}) {
   const [items, setItems] = useState<SessionListItem[]>([]),
     [more, setMore] = useState(false),
     [offset, setOffset] = useState(0);
-  const [kind, setKind] = useState('current'),
-    [source, setSource] = useState('all');
-  const [selected, setSelected] = useState<SessionSnapshot>(),
-    [busy, setBusy] = useState(false),
+  const { kind, source } = filters;
+  const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   useEffect(() => {
     let active = true;
@@ -168,21 +185,6 @@ export function SessionPanel({ status, request, onStatus }: Props) {
   async function action(message: Request) {
     const r = await request(message);
     if (r.status) onStatus(r.status);
-  }
-  async function inspect(id: string) {
-    const r = await request({ type: 'session-detail', id });
-    setSelected(r.session_snapshot);
-  }
-  function restore(selection: RestoreSelection) {
-    if (selected)
-      void run(() =>
-        action({
-          type: 'session-restore',
-          id: crypto.randomUUID(),
-          snapshot_id: selected.id,
-          selection,
-        }),
-      );
   }
   const filtered = items.filter(
     (s) =>
@@ -246,7 +248,12 @@ export function SessionPanel({ status, request, onStatus }: Props) {
             stays visible.
           </p>
         )}
-        <Tabs value={kind} onValueChange={setKind}>
+        <Tabs
+          value={kind}
+          onValueChange={(kind) =>
+            onFiltersChange({ ...filters, kind: sessionFilters({ kind }).kind })
+          }
+        >
           <div className="session-toolbar">
             <TabsList aria-label="Session type" className="border bg-background">
               {['current', 'closed', 'previous'].map((k) => (
@@ -261,7 +268,7 @@ export function SessionPanel({ status, request, onStatus }: Props) {
               <NativeSelect
                 id="session-source"
                 value={source}
-                onChange={(e) => setSource(e.target.value)}
+                onChange={(e) => onFiltersChange({ ...filters, source: e.target.value })}
               >
                 <NativeSelectOption value="all">All profiles</NativeSelectOption>
                 {sources.map(([id, name]) => (
@@ -298,20 +305,25 @@ export function SessionPanel({ status, request, onStatus }: Props) {
                       <Button
                         variant="ghost"
                         size="row"
-                        className={`session-card ${selected?.id === s.id ? 'selected' : ''}`}
+                        className="session-card"
                         key={s.id}
-                        disabled={busy}
-                        onClick={() => void run(() => inspect(s.id))}
+                        asChild
                       >
-                        <div>
-                          <strong>
-                            {s.windows} window{s.windows !== 1 ? 's' : ''} · {s.tabs} tabs
-                          </strong>
-                          <span>
-                            {age(s.captured_at)} · {new Date(s.captured_at).toLocaleString()}
-                          </span>
-                        </div>
-                        <span>View ↗</span>
+                        <Link
+                          to="/sessions/$snapshotId"
+                          params={{ snapshotId: s.id }}
+                          search={filters}
+                        >
+                          <div>
+                            <strong>
+                              {s.windows} window{s.windows !== 1 ? 's' : ''} · {s.tabs} tabs
+                            </strong>
+                            <span>
+                              {age(s.captured_at)} · {new Date(s.captured_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <span>View ↗</span>
+                        </Link>
                       </Button>
                     ))}
                 </div>
@@ -323,25 +335,185 @@ export function SessionPanel({ status, request, onStatus }: Props) {
             )}
           </TabsContent>
         </Tabs>
-        {selected && (
-          <div className="session-detail">
-            <div className="session-detail-heading">
+        <SessionJobs
+          jobs={status.sessions.restores}
+          busy={busy}
+          action={(message) => void run(() => action(message))}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function SessionJobs({
+  jobs,
+  busy,
+  action,
+}: {
+  jobs: Status['sessions']['restores'];
+  busy: boolean;
+  action: (message: Request) => void;
+}) {
+  return (
+    <>
+      {jobs.length > 0 && (
+        <div className="session-jobs">
+          <h3>Restoration progress</h3>
+          {jobs.map((j) => (
+            <div className="session-job" key={j.id}>
               <div>
-                <p className="eyebrow">
-                  {selected.source_name} / {selected.kind.toUpperCase()}
+                <strong>
+                  {j.opened}/{j.total} pages opened · {j.windows_done}/{j.windows_total} windows
+                  ready
+                </strong>
+                <p>
+                  {j.status} · {j.skipped} unsupported URL(s) skipped
                 </p>
-                <h3>{age(selected.captured_at)}</h3>
-                <p className="fine">
-                  Restores HTTP/HTTPS pages. Local, internal and unsupported URLs are skipped.
-                </p>
+                {j.error && (
+                  <Alert variant="destructive" className="error">
+                    <AlertDescription>{j.error}</AlertDescription>
+                  </Alert>
+                )}
               </div>
-              <Button disabled={busy} onClick={() => restore({ mode: 'all' })}>
+              <div className="actions">
+                {j.status === 'blocked' && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => action({ type: 'session-resume', id: j.id })}
+                  >
+                    Resume safely
+                  </Button>
+                )}
+                {(j.status === 'running' || j.status === 'blocked') && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => action({ type: 'session-cancel', id: j.id })}
+                  >
+                    Cancel; keep opened tabs
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function SessionDetailPanel({
+  status,
+  request,
+  onStatus,
+  snapshotId,
+  filters,
+}: Props & {
+  snapshotId: string;
+  filters: SessionFilters;
+}) {
+  const [snapshot, setSnapshot] = useState<SessionSnapshot>();
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setSnapshot(undefined);
+    setLoading(true);
+    setError('');
+    async function load() {
+      try {
+        if (!canonicalUuid(snapshotId)) throw new Error('This saved session is unavailable.');
+        const reply = await request({ type: 'session-detail', id: snapshotId });
+        if (!reply.session_snapshot) throw new Error('This saved session is unavailable.');
+        if (active) setSnapshot(reply.session_snapshot);
+      } catch (cause) {
+        if (active)
+          setError(cause instanceof Error ? cause.message : 'Unable to open this saved session.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [snapshotId, request, retry]);
+  async function action(message: Request) {
+    setBusy(true);
+    setError('');
+    try {
+      const reply = await request(message);
+      if (reply.status) onStatus(reply.status);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Session action failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  function restore(selection: RestoreSelection) {
+    if (snapshot)
+      void action({
+        type: 'session-restore',
+        id: crypto.randomUUID(),
+        snapshot_id: snapshot.id,
+        selection,
+      });
+  }
+  return (
+    <Card className="panel session-panel">
+      <CardHeader className="space-y-4 px-0 pt-0">
+        <Button asChild variant="ghost" className="w-fit max-w-full justify-start px-0">
+          <Link to="/sessions" search={filters}>
+            <ArrowLeft aria-hidden="true" />
+            Back to sessions
+          </Link>
+        </Button>
+        <CardTitle>
+          <h1>Saved session</h1>
+        </CardTitle>
+        {snapshot && (
+          <CardDescription>
+            {snapshot.source_name} · {snapshot.kind} · {age(snapshot.captured_at)} ·{' '}
+            {new Date(snapshot.captured_at).toLocaleString()}
+          </CardDescription>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-6 px-0">
+        {loading && <p role="status">Opening saved session…</p>}
+        {error && (
+          <Alert variant="destructive" role="alert">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {!loading && !snapshot && (
+          <Button variant="outline" onClick={() => setRetry(retry + 1)}>
+            Try again
+          </Button>
+        )}
+        {snapshot && (
+          <>
+            <div className="session-detail-heading">
+              <p className="fine">
+                Restoring opens supported pages here and keeps the source session intact.
+              </p>
+              <Button
+                disabled={busy || !snapshot.windows.length}
+                onClick={() => restore({ mode: 'all' })}
+              >
                 Open all windows ↗
               </Button>
             </div>
-            {selected.windows.length ? (
-              selected.windows.map((w) => (
-                <WindowView key={w.id} window={w} busy={busy} restore={restore} />
+            <SessionJobs
+              jobs={status.sessions.restores.filter((job) => job.snapshot_id === snapshotId)}
+              busy={busy}
+              action={(message) => void action(message)}
+            />
+            {snapshot.windows.length ? (
+              snapshot.windows.map((window) => (
+                <WindowView key={window.id} window={window} busy={busy} restore={restore} />
               ))
             ) : (
               <Empty className="border">
@@ -350,50 +522,7 @@ export function SessionPanel({ status, request, onStatus }: Props) {
                 </EmptyHeader>
               </Empty>
             )}
-          </div>
-        )}
-        {status.sessions.restores.length > 0 && (
-          <div className="session-jobs">
-            <h3>Restoration progress</h3>
-            {status.sessions.restores.map((j) => (
-              <div className="session-job" key={j.id}>
-                <div>
-                  <strong>
-                    {j.opened}/{j.total} pages opened · {j.windows_done}/{j.windows_total} windows
-                    ready
-                  </strong>
-                  <p>
-                    {j.status} · {j.skipped} unsupported URL(s) skipped
-                  </p>
-                  {j.error && (
-                    <Alert variant="destructive" className="error">
-                      <AlertDescription>{j.error}</AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-                <div className="actions">
-                  {j.status === 'blocked' && (
-                    <Button
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void run(() => action({ type: 'session-resume', id: j.id }))}
-                    >
-                      Resume safely
-                    </Button>
-                  )}
-                  {(j.status === 'running' || j.status === 'blocked') && (
-                    <Button
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void run(() => action({ type: 'session-cancel', id: j.id }))}
-                    >
-                      Cancel; keep opened tabs
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          </>
         )}
       </CardContent>
     </Card>

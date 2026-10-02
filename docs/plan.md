@@ -4,11 +4,11 @@
 
 **Updated:** 2026-10-02
 
-**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` the native UI/startup follow-up at `ae87613`, and selected history removal at `a97063c`. The saved-collection action follow-up is committed at `5df642d`; native root-move interaction remains unverified below.
+**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` the native UI/startup follow-up at `ae87613`, and selected history removal at `a97063c`. The saved-collection action follow-up is committed at `5df642d`; native root-move interaction is recorded at `027f7d7` and remains unverified below. The native 24-tab restore and focused session-detail route checkpoint follow below.
 
 ## Current goal status
 
-Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. Native navigation, saved identity/settings, two-way diagnostic messages and the approved single-visit removal pass. A fresh options tab recovered rendering without quitting Helium; the removed visit stays absent after manual sync/reload in both profiles, while native history and the neighboring fixture remain. Saved collections now offer Open even when capture is off; Test 2’s 98 saved snapshots remain browsable with capture paused. Fresh file-based native onboarding and user feedback remain open. The native first pass has also verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
+Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. Native navigation, saved identity/settings, two-way diagnostic messages and the approved single-visit removal pass. A fresh options tab recovered rendering without quitting Helium; the removed visit stays absent after manual sync/reload in both profiles, while native history and the neighboring fixture remain. Saved collections now offer Open even when capture is off; Test 2’s 98 saved snapshots remain browsable with capture paused. A native 24-tab window restore now passes exact order/count, active selection and automatic completion. Saved-session details have their own route, verified in Test 2 with reload and filtered Back. Fresh file-based native onboarding and user feedback remain open. The native first pass has also verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
 
 | Checkpoint                                                         | Status                                                              | Commit / evidence                                                                      |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -34,7 +34,9 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 - [x] Verify the approved single native test-visit removal after manual sync and reload in both profiles; preserve the neighboring fixture and native browser history.
 - [ ] Verify native URL/source/global clears and delayed reconnect/reconciliation.
 - [ ] Verify full browser restart, alarm behavior and an hours-long offline run with concurrent domain edits.
-- [ ] Complete the native bookmark conflict/root/interruption matrix and large/multi-window interrupted restores; measure latency.
+- [x] Open saved sessions on a focused route with visible restoration controls/progress; verify native reload/Back and preserve paused capture.
+- [x] Restore one native 24-tab fixture window across the bounded restoration passes; verify exact order/count, active tab and the complete journal.
+- [ ] Complete the native bookmark conflict/root/interruption matrix and interrupted/multi-window restores; measure representative latency.
 - [ ] Implement session expiry/count/size policy and finish unresolved/shared capture, general quarantine and historical backup-copy policy.
 - [ ] Measure and complete full-scale history/journal/restore responsiveness.
 - [ ] Recover missing acknowledged operations after older-backup/server loss and verify safe reconciliation/resume.
@@ -414,6 +416,31 @@ Scoped native proof: `work/native-user-profiles/open-saved-sessions-home.png` an
 - [ ] Verify a completed native root move and propagated undo. Paste was disabled; direct drags changed focus/selection but did not establish a move. Keep this acceptance item open.
 
 The existing identities, capture preferences and relay remain unchanged. No source change follows this interaction; save scoped evidence and the observed limitations in [native-smoke.md](native-smoke.md).
+
+## Native 24-tab restoration checkpoint — 2026-10-02
+
+Tested UI/background: `5df642d` / `1d00114`, at the existing approved native origin and isolated port-4321 relay. No code or permission change was needed for this test.
+
+- [x] Create one owned Test 1 window containing ordered harmless `large-restore-a-01` through `large-restore-a-24` fixture URLs; close only that window.
+- [x] Observe a received closed snapshot in Test 2 with one window, 24 tabs, all URLs in order and the original 20:38:23 capture time.
+- [x] Click Open window once. Observe exactly 24 destination tabs in order, tab 24 active, and the restoration journal reporting 24/24 pages, 1/1 windows, complete, zero skipped.
+- [x] Complete without manual resume or a repeated restore request; the implementation requires more than one 40-step pass for this fixture. DevTools remain closed and Test 2 capture stays paused.
+- [x] Save scoped proof and close only the owned destination fixture window; retain the saved source snapshot and completed journal.
+- [ ] Verify forced worker/browser interruption and multi-window restoration. This one-window pass does not establish full-scale or internet-page loading latency.
+
+All destination tabs were visible in the first observation, returned about 2.3 seconds after the click; journal completion was checked separately afterwards. Exact peer delivery latency and full page load timing were not measured. Proof: `large-restore-source-24-tabs.png`, `large-restore-destination-24-tabs.png` and `large-restore-journal-complete.png` in ignored `work/native-user-profiles`.
+
+## Focused saved-session route checkpoint — 2026-10-02
+
+The 24-tab native test exposed offscreen restore controls beneath the old snapshot list. This small UI change brings the current options total to 16 routes; session behavior/background bytes are unchanged.
+
+- [x] Open View on `/sessions/$snapshotId`; show restore controls and snapshot-specific progress before the tab list.
+- [x] Preserve type/source filters through the return link, browser Back and direct reload; display missing-snapshot error/retry/return controls and ignore stale unmounted replies.
+- [x] Verify desktop and 390 px layout, blocked-job resume and missing-snapshot UI with synthetic replies: no overflow, rounded controls or fresh warning/error logs.
+- [x] Verify the packaged page in Test 2 using the real 24-tab snapshot and existing completed journal: reload and browser Back pass; capture stays paused and no new restore is submitted.
+- [x] Run typechecks, all 237 TS tests and the production build; record an extension patch Changeset without a release bump.
+
+Only packaged UI assets were updated after saving `extension-before-session-detail-route`; the named manifest, origin, permissions and approved background SHA-256 remain unchanged. Scoped proof: ignored `session-detail-native-24.png` and preview screenshots. Full native onboarding/restart/endurance, remaining permutations, session/retained-copy policy, scale/recovery and section 10 remain open.
 
 ## 1. Product requirements and boundaries
 
