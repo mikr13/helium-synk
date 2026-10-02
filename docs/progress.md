@@ -216,6 +216,8 @@ Both checklists record this checkpoint. History/session expiry, full-scale perfo
 
 ## History retention checkpoint — 2026-10-02
 
+`abc7bea feat(history): expire acknowledged source-owned visits` records this checkpoint.
+
 Automatic history expiry now persists as an opt-in profile policy, initially 90 days, configurable from 1 to 3,650 days. Only the source author expires its own acknowledged visits. Age uses the original visit timestamp with a strict cutoff; pending drafts, encrypted uploads and duplicate copies sharing the same native identity remain protected. A pending old visit uploads first and can expire on the next reconciliation. Disabling expiry or lengthening the window cannot undo permanent selected deletion.
 
 Each pass selects at most 100 visits from up to 500 indexed candidates, saving deletion proofs, projection/content cleanup, counters and scan progress in one transaction. It advances past protected entries, revisits them after exhaustion and resumes across database reopening. Failed writes roll back; concurrent workers cannot independently expire the same visible visit. Empty ranges avoid a journal scan. Duplicate protection and causal projection still scan retained history state; this does not claim bounded full-scale latency.

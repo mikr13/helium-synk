@@ -17,7 +17,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Logo and favicon                                                   | Complete branding implementation checkpoint                        | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
 | Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
 | History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
-| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`; history expiry checkpoint below                          |
+| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                 |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                              | Disposable profiles only                                            |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                   |
 
@@ -258,6 +258,8 @@ Checkpoint commit: `a28c1b1 feat(storage): preserve local work with bounded admi
 Defaults are 512 MiB estimated origin bytes, 100,000 pending work items, 500,000 journal records and 30,000 capture tasks. The byte estimate is sampled admission guidance, not a physical disk reservation. [local-storage.md](local-storage.md) records scope and failure behavior; no native or milestone gate is complete.
 
 ## History retention checkpoint — 2026-10-02
+
+Checkpoint commit: `abc7bea feat(history): expire acknowledged source-owned visits`.
 
 - [x] Persist configurable, opt-in history expiry with an initial 90-day value and dark square shadcn controls.
 - [x] Expire only acknowledged visits owned by this source, using their original timestamps; protect pending drafts, ciphertext and duplicate native identities.
