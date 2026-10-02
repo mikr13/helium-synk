@@ -27,8 +27,9 @@ Build: frozen `abc7bea` extension/server, extension version 0.1.0; Helium 0.18.1
 - [x] Enroll Test 1 with a fresh credential and pair Test 2 through the private single-use bundle; both show Connected and separate installations.
 - [x] Send `Native smoke A · Test 1` and `Native smoke B · Test 2`; both dashboards show both server-acknowledged notes and zero pending work.
 - [x] Create `Synk Native Smoke` and its fixture link in Test 1; Test 2 receives both; Test 2 renames the link to `Renamed from Test 2` and Test 1’s native bookmark manager shows the rename.
-- [ ] Verify current/closed sessions and native restoration.
-- [ ] Verify source/timestamp history and selected removal.
+- [x] Verify current/closed session capture, single-tab restoration and full-window restoration, including order/pin/active selection and named group; the native closure bug was fixed and repeated successfully.
+- [x] Verify real visits from both source profiles arrive with original timestamps.
+- [ ] Verify selected history removal.
 - [ ] Verify short relay outage and worker/browser restart.
 
 The first attempt with the earlier kit credential was rejected because the relay already had a registered public identity and this installation lacked its private wrapping key. No synchronized content was erased. Fresh enrollment passed without changing the identity guard. The cause of that earlier credential use is unconfirmed. Private bundles/test assets remain in ignored `work/native-user-profiles`; no native milestone exit gate is complete.

@@ -18,7 +18,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
 | History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
 | Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                 |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Native pairing/notes/bookmarks pass; remaining gates open          | Two named test profiles; native-smoke.md                            |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Native pairing/domains pass; removal/lifecycle gates open          | Two named test profiles; native-smoke.md                            |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
@@ -40,7 +40,7 @@ This table and both checklist copies are updated at implementation checkpoints a
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 236 TS + 40 relay + 14 cross-stack tests; native gates pending      |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 237 TS + 40 relay + 14 cross-stack tests; native gates pending      |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
 | M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |

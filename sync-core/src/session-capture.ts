@@ -211,6 +211,21 @@ export class SessionCapture {
         } catch {
           return;
         }
+      } else {
+        try {
+          await this.native.getWindow(tab.windowId);
+        } catch {
+          // Teardown can unpin/reorder tabs before the window-removal event. Keep
+          // the cached layout, while retaining captured navigation/title changes.
+          const previous = window.tabs.find((t) => t.id === tab.id);
+          if (previous)
+            tab = {
+              ...previous,
+              url: tab.url ?? previous.url,
+              pendingUrl: tab.pendingUrl,
+              title: tab.title ?? previous.title,
+            };
+        }
       }
       if (window.incognito || window.type !== 'normal') return;
       const next = {

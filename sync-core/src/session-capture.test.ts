@@ -138,6 +138,40 @@ describe('durable native session capture', () => {
     expect(p.snapshots[p.closed[source]![0]!]!.windows[0]!.groups[0]!.title).toBe('Research');
     expect(p.snapshots[p.current[source]!]!.windows).toHaveLength(0);
   });
+  it('keeps pins, ordering and groups through late teardown updates without duplicating the closed API entry', async () => {
+    const { db, native, capture, source } = await fixture();
+    const original = structuredClone(native.windows[0]!);
+    native.windows = [];
+    const lastTitle = 'Title captured before closure';
+    original.tabs[0]!.title = lastTitle;
+    await capture.observeTab({
+      ...original.tabs[0]!,
+      index: 2,
+      pinned: false,
+      active: true,
+      groupId: -1,
+    });
+    for (const t of original.tabs) await capture.removeTab(t.id, 10, true);
+    await capture.closeWindow(10);
+    native.recent = [
+      { id: 'closed-teardown', closed_at: new Date().toISOString(), window: original },
+    ];
+    await capture.reconcile();
+    db.close();
+    const reopened = new SynkDatabase(db.name);
+    dbs.push(reopened);
+    await new SessionCapture(reopened, native).reconcile();
+    const projection = await reopened.sessionProjection();
+    expect(projection.closed[source]).toHaveLength(1);
+    const closed = projection.snapshots[projection.closed[source]![0]!]!.windows[0]!;
+    expect(closed.tabs.map((t) => [t.url, t.pinned, t.active])).toEqual([
+      ['https://example.com/0', true, false],
+      ['https://example.com/1', false, true],
+      ['https://example.com/2', false, false],
+    ]);
+    expect(closed.tabs[0]!.title).toBe(lastTitle);
+    expect(closed.groups[0]).toMatchObject({ title: 'Research', color: 'blue', collapsed: true });
+  });
   it('keeps two identical separately closed windows rather than collapsing them by content fingerprint', async () => {
     const { db, native, capture, source } = await fixture();
     const first = native.windows[0]!,
