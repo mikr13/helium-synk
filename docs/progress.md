@@ -324,8 +324,14 @@ Saved scoped proof in ignored `work/native-user-profiles`: `history-removal-test
 
 ## Saved collection action follow-up — 2026-10-02
 
-After documentation checkpoint `a97063c`, disabled collections with saved data now offer Open, while empty disabled collections retain Set up. The same focused routes and opt-in capture controls remain. Rendered saved/off and empty/off branches pass for bookmarks, sessions and history with no fresh preview warning/error logs.
+Commit `5df642d fix(extension): open saved collections while capture is paused` follows documentation checkpoint `a97063c`. Disabled collections with saved data now offer Open, while empty disabled collections retain Set up. The same focused routes and opt-in capture controls remain. Rendered saved/off and empty/off branches pass for bookmarks, sessions and history with no fresh preview warning/error logs.
 
 Update only the approved native UI assets after saving `extension-before-saved-collections`; the named manifest, permissions/origin, identities, existing relay and background SHA-256 remain unchanged. Test 2 Home shows Sessions Off, 98 saved snapshots and Open sessions after reload. Clicking it displays the saved current session while Capture is paused and Enable session capture remain visible. No capture setting was changed or restore started. Scoped proof: `open-saved-sessions-home.png` and `open-saved-sessions-paused.png` in ignored `work/native-user-profiles`.
 
 Both typechecks, 237 TS tests and the production WXT build pass. Extension patch Changeset recorded; no release bump. This UI-only patch does not rerun the preceding 44 Rust/16 integration results. Both checklist copies record this checkpoint and leave full native onboarding/clear/reconnect/restart/endurance, retained-copy/scale/recovery and milestone gates open.
+
+## Native bookmark interaction follow-up — 2026-10-02
+
+A second scoped root-move attempt in Test 2 did not establish a move. After Cut, the native manager stopped listing the test folder and Paste was disabled at Other Bookmarks. Menu Undo showed no visible restoration; the normal Undo shortcut restored the folder. The immediate folder view briefly showed two copies of the existing `After worker restart · Test 1` fixture link. Reloading that manager shows one link; Test 1’s native folder also shows one. No persistent duplicate or implementation cause is established. Direct drags from the tree/main list changed focus/selection without establishing movement, so root move and propagated undo remain unchecked.
+
+Saved ignored evidence: `bookmark-cut-undo-duplicate.png` records the intermediate view and `bookmark-cut-undo-peer-single.png` the peer’s one-link view. The fixture is preserved; no new code, identities, permissions or relay changes follow this interaction. Both checklist copies record the limitation and the `5df642d` action-label checkpoint.

@@ -4,7 +4,7 @@
 
 **Updated:** 2026-10-02
 
-**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` the native UI/startup follow-up at `ae87613`, and selected history removal at `a97063c`. The saved-collection action follow-up below is verified and awaiting its checkpoint commit.
+**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` the native UI/startup follow-up at `ae87613`, and selected history removal at `a97063c`. The saved-collection action follow-up is committed at `5df642d`; native root-move interaction remains unverified below.
 
 ## Current goal status
 
@@ -396,7 +396,7 @@ Proof files and exact observations are recorded in [native-smoke.md](native-smok
 
 ## Saved collection action follow-up — 2026-10-02
 
-Follows selected history-removal checkpoint `a97063c`. This extension patch changes action labels only.
+Checkpoint commit: `5df642d fix(extension): open saved collections while capture is paused`. Follows selected history-removal checkpoint `a97063c`; this extension patch changes action labels only.
 
 - [x] Offer Open for collections with saved data even when capture is off; retain Set up for empty, disabled collections. Keep the existing destination routes and collection opt-in controls.
 - [x] Verify all three saved/off and empty/off action branches in the rendered preview, with no fresh warning/error logs.
@@ -406,6 +406,14 @@ Follows selected history-removal checkpoint `a97063c`. This extension patch chan
 - [ ] Complete the fresh native onboarding, clear/reconnect, restart/endurance and other acceptance gates above.
 
 Scoped native proof: `work/native-user-profiles/open-saved-sessions-home.png` and `open-saved-sessions-paused.png`. This does not establish fresh enrollment, a browser restart or all native acceptance permutations.
+
+## Native bookmark interaction follow-up — 2026-10-02
+
+- [x] Recover and verify the existing test fixture after an incomplete cut/paste attempt: Test 2 retains the folder and original fixture link, and Test 1’s native folder shows one link.
+- [x] Reload Test 2’s native bookmark manager after its transient two-row Undo view; it displays one fixture link. No persistent duplicate or root cause is established.
+- [ ] Verify a completed native root move and propagated undo. Paste was disabled; direct drags changed focus/selection but did not establish a move. Keep this acceptance item open.
+
+The existing identities, capture preferences and relay remain unchanged. No source change follows this interaction; save scoped evidence and the observed limitations in [native-smoke.md](native-smoke.md).
 
 ## 1. Product requirements and boundaries
 

@@ -80,8 +80,18 @@ An all-profile clear review was opened accidentally while navigating, then cance
 
 ## Open saved sessions while capture is paused — 2026-10-02
 
+Checkpoint commit: `5df642d fix(extension): open saved collections while capture is paused`.
+
 - [x] Update only packaged UI assets at the existing approved path, preserving the named manifest, permissions, background bytes, origin and identities; save `extension-before-saved-collections` for rollback.
 - [x] Reload Test 2 Home: Sessions remains Off, with 98 saved snapshots and the corrected Open sessions action.
 - [x] Click Open sessions: the focused page displays the saved current-session row while Capture is paused and Enable session capture remain visible. No capture toggle or restoration was submitted.
 
 Scoped proof: ignored `open-saved-sessions-home.png` and `open-saved-sessions-paused.png` in `work/native-user-profiles`. Typechecks, 237 TS tests and production build pass. This action-label follow-up leaves the other native/full acceptance gates open.
+
+## Root-move interaction remains unverified — 2026-10-02
+
+- [x] Preserve the existing fixture after an incomplete Test 2 cut/paste attempt. Paste was disabled; menu Undo showed no change, then the normal Undo shortcut restored the folder. Test 1’s native folder still shows its single fixture link.
+- [x] Reload Test 2’s native bookmark manager after an intermediate two-link Undo view; it shows one original fixture link. No persistent duplicate or root cause is established.
+- [ ] Establish a completed root move and propagated undo. Direct drags from the tree/main list changed focus/selection but did not establish a move.
+
+Ignored scoped evidence: `bookmark-cut-undo-duplicate.png` (intermediate view) and `bookmark-cut-undo-peer-single.png` (peer preservation). This does not pass the cross-profile move/undo gate, and no code changes are justified by these observations alone.
