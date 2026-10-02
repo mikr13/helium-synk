@@ -26,7 +26,7 @@ Build: frozen `abc7bea` extension/server, extension version 0.1.0; Helium 0.18.1
 - [x] Load the approved fresh test copy in both profiles. Original copy is disabled and retained, with Test 1's local replica exported.
 - [x] Enroll Test 1 with a fresh credential and pair Test 2 through the private single-use bundle; both show Connected and separate installations.
 - [x] Send `Native smoke A · Test 1` and `Native smoke B · Test 2`; both dashboards show both server-acknowledged notes and zero pending work.
-- [ ] Verify real bookmark create, peer application and reverse rename.
+- [x] Create `Synk Native Smoke` and its fixture link in Test 1; Test 2 receives both; Test 2 renames the link to `Renamed from Test 2` and Test 1’s native bookmark manager shows the rename.
 - [ ] Verify current/closed sessions and native restoration.
 - [ ] Verify source/timestamp history and selected removal.
 - [ ] Verify short relay outage and worker/browser restart.
