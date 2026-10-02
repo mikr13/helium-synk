@@ -6,6 +6,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
+use synk_server::recovery::{RelayLease, backup, mark_restored};
 use synk_server::{App, Limits};
 
 #[derive(Parser)]
@@ -18,6 +19,16 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Create a new consistent private snapshot, including committed WAL content. Never overwrites.
+    Backup {
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Mark an isolated/stopped database as restored; retained clients must explicitly recover.
+    MarkRestored {
+        #[arg(long)]
+        expected_epoch: String,
+    },
     Serve {
         #[arg(long, env = "SYNK_PORT", default_value_t = 4318)]
         port: u16,
@@ -55,8 +66,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
     let cli = Cli::parse();
+    if matches!(
+        &cli.command,
+        Command::Backup { .. } | Command::MarkRestored { .. }
+    ) && !cli.database.is_file()
+    {
+        return Err("An existing relay database is required for backup or restore marking.".into());
+    }
+    let _lease = if matches!(
+        &cli.command,
+        Command::Serve { .. } | Command::MarkRestored { .. }
+    ) {
+        Some(RelayLease::acquire(&cli.database)?)
+    } else {
+        None
+    };
     let app = App::open(&cli.database).await?;
     match cli.command {
+        Command::Backup { output } => {
+            backup(&app, &output).await?;
+            println!("Consistent private backup written to {}.", output.display());
+        }
+        Command::MarkRestored { expected_epoch } => {
+            let epoch = mark_restored(&app, &expected_epoch).await?;
+            println!(
+                "Restored relay epoch: {epoch}. Client synchronization stays paused until recovery is reviewed."
+            );
+        }
         Command::Serve { port } => {
             let listener = tokio::net::TcpListener::bind(SocketAddr::new(
                 IpAddr::V4(Ipv4Addr::LOCALHOST),

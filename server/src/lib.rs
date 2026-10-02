@@ -3,6 +3,7 @@ mod hardening;
 pub mod history_erasure;
 mod keys;
 mod pairing;
+pub mod recovery;
 pub use hardening::Limits;
 
 use axum::{

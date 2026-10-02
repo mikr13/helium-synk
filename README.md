@@ -76,6 +76,8 @@ CLI revocation removes API access. The dashboard's installation-removal flow als
 
 ## Hosting and releases
 
+The relay provides `backup --output` for consistent private SQLite snapshots and `mark-restored --expected-epoch` for stopped-database restore marking. See [relay snapshots and restore guards](docs/relay-recovery.md). Surviving clients keep their local work after rejected synchronization; missing acknowledged-operation replay and safe recovery/resume remain unfinished.
+
 The [Mac Mini hosting guide](docs/self-hosting.md) records the Tailscale/launchd/backup work required before production use. Tailscale and startup settings have not been changed on this machine. iCloud is future research only.
 
 Use Conventional Commits for each coherent step and a Changeset for user-visible package changes. Packages are private and are not published to npm. [CONTRIBUTING.md](CONTRIBUTING.md) describes checks and the intentional, reviewed release/changelog procedure.

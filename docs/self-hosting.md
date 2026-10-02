@@ -41,7 +41,9 @@ tailscale serve status
 
 ## Backups and recovery
 
-Use [SQLite's online backup facilities](https://sqlite.org/backup.html) or a tested coordinated snapshot. Copying only an active WAL-mode main database file can omit committed data.
+Use the relay's tested `backup --output` command; see [snapshots and restore guards](relay-recovery.md). It includes committed WAL data in a new private file. Copying only an active WAL-mode main database file can omit committed data.
+
+- [x] Implement consistent snapshot creation and atomic expected-epoch restore marking with a Unix serving/restore lease; verify isolated older-backup and server-loss client-state preservation.
 
 - [ ] Generate consistent daily backups with failure reporting and a tested rotation policy.
 - [ ] Keep at least one encrypted backup off the Mini; store root-key recovery separately and protect both.
@@ -50,4 +52,4 @@ Use [SQLite's online backup facilities](https://sqlite.org/backup.html) or a tes
 - [ ] Recover missing acknowledged operations from surviving clients/exports, rather than relying on an empty upload queue.
 - [ ] Exercise disk-full, migration failure, stale backup, and server-disk-loss scenarios.
 
-The current checkpoint has no production backup automation, restore-epoch CLI, or data-loss recovery workflow. iCloud fallback remains research for a later phase.
+Production backup automation and acknowledged-operation replay/recovery remain unfinished. Restore marking keeps ordinary clients paused; it does not make a restored service ready for daily use. iCloud fallback remains research for a later phase.
