@@ -1,16 +1,17 @@
 import { ReviewDialog } from '@/components/review-dialog';
 import { AlertDialogCancel } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { Field, FieldLabel, FieldGroup, FieldDescription } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Card } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import React, { useState } from 'react';
 import { parsePairingBundle } from '@helium-synk/core';
 import type { Reply, Request, Status } from '@/lib/messages';
 import { grantEndpoint } from '@/lib/endpoint-permission';
 import { downloadJson } from '@/entrypoints/options/bookmarks';
+import { JsonFile } from '@/entrypoints/options/file-import';
+import { Disclosure } from '@/components/disclosure';
 export function PairingPanel({
   status,
   request,
@@ -47,167 +48,185 @@ export function PairingPanel({
   const pending = status.pairing_pending;
   return (
     <Card className="panel pairing" id="pairing">
-      <div className="panel-heading">
+      <CardHeader className="panel-heading flex px-0 pt-0">
         <span className="number">↔</span>
-        <div>
-          <h2>
-            {status.enrolled
-              ? 'Connect another profile'
-              : pending
-                ? 'Finish connecting'
-                : 'Join your devices'}
-          </h2>
-          <p>
-            {status.enrolled
-              ? 'Create a private invitation for one new browser profile.'
-              : 'Use a pairing bundle from an already connected profile.'}
-          </p>
+        <div className="min-w-0 space-y-2">
+          <CardTitle>
+            <h1>
+              {status.enrolled
+                ? 'Add a device'
+                : pending
+                  ? 'Finish connecting'
+                  : 'Connect to your devices'}
+            </h1>
+          </CardTitle>
+          <CardDescription className="leading-6">
+            {pending
+              ? 'Retry your saved connection attempt.'
+              : status.enrolled
+                ? 'Create an invitation, then open it on your other device.'
+                : 'On a connected device, open Devices → Add device and save an invitation.'}
+          </CardDescription>
         </div>
-      </div>
-      {error && (
-        <Alert variant="destructive" className="error">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {status.enrolled ? (
-        <>
-          <p className="fine">
-            The bundle contains your encryption keys. Transfer it privately, then remove the
-            transfer copy after pairing. New registrations expire after 15 minutes.
-          </p>
-          <Button
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                const reply = await request({ type: 'pairing-create' });
-                if (!reply.pairing) throw new Error('Pairing invitation was not returned.');
-                downloadJson(reply.pairing, 'helium-synk-pairing.json');
-                setExpires(reply.pairing.expires_at);
-              })
-            }
-          >
-            {busy ? 'Creating invitation…' : 'Save pairing bundle'}
-            <span>↗</span>
-          </Button>
-          {expires && (
-            <p className="fine" role="status">
-              Invitation saved. Register the new profile before{' '}
-              {new Date(expires * 1000).toLocaleString()}.
+      </CardHeader>
+      <CardContent className="space-y-4 px-0">
+        {error && (
+          <Alert variant="destructive" className="error">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {status.enrolled ? (
+          <>
+            <ol className="pairing-steps">
+              <li>
+                <span>1</span>Save an invitation below.
+              </li>
+              <li>
+                <span>2</span>Transfer it privately to your other device.
+              </li>
+              <li>
+                <span>3</span>Open Synk there and choose Connect another device.
+              </li>
+            </ol>
+            <p className="fine">
+              For one device, valid for 15 minutes. Contains private keys; remove the transfer copy
+              after connecting.
             </p>
-          )}
-        </>
-      ) : pending ? (
-        <>
-          <p>
-            <strong>{pending.name}</strong> has a saved connection attempt.
-          </p>
-          <p className="endpoint">{pending.endpoint}</p>
-          <p className="fine">
-            Retry uses the same installation identity, including when the relay registered it but
-            its reply was lost. An accepted claim can retry for one hour after invitation expiry.
-          </p>
-          <div className="actions">
             <Button
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await grantEndpoint(pending.endpoint);
-                  const reply = await request({ type: 'pairing-retry' });
-                  if (reply.status) onStatus(reply.status);
+                  const reply = await request({ type: 'pairing-create' });
+                  if (!reply.pairing) throw new Error('Pairing invitation was not returned.');
+                  downloadJson(reply.pairing, 'helium-synk-pairing.json');
+                  setExpires(reply.pairing.expires_at);
                 })
               }
             >
-              {busy ? 'Connecting…' : 'Retry connection'}
-              <span>↗</span>
+              {busy ? 'Creating invitation…' : 'Save invitation file'}
+              <span aria-hidden="true">↗</span>
             </Button>
-            <Button variant="outline" disabled={busy} onClick={() => setDiscard(true)}>
-              Discard setup attempt
-            </Button>
-          </div>
-          <ReviewDialog
-            open={discard}
-            onOpenChange={(open) => {
-              if (!busy) setDiscard(open);
-            }}
-            title="Discard connection attempt"
-            description="The relay may already have registered this installation. Review the saved attempt before removing its local setup secrets."
-          >
-            {error && (
-              <Alert variant="destructive" className="error">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
+            {expires && (
+              <p className="fine" role="status">
+                Invitation saved. Open it on the other device before{' '}
+                {new Date(expires * 1000).toLocaleString()}.
+              </p>
             )}
+          </>
+        ) : pending ? (
+          <>
             <p>
-              This removes the saved setup secrets. The relay may already have registered this
-              profile; revoke that installation from the relay if you discard it.
+              Finish connecting <strong>{pending.name}</strong>.
             </p>
+            <p className="endpoint">{pending.endpoint}</p>
             <p className="fine">
-              Installation: <code>{pending.device_id}</code>
+              Your connection attempt is saved. Retry when your sync server is available.
             </p>
             <div className="actions">
-              <AlertDialogCancel disabled={busy} onClick={() => setDiscard(false)}>
-                Keep and retry
-              </AlertDialogCancel>
               <Button
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
-                    const reply = await request({ type: 'pairing-discard' });
+                    await grantEndpoint(pending.endpoint);
+                    const reply = await request({ type: 'pairing-retry' });
                     if (reply.status) onStatus(reply.status);
-                    setDiscard(false);
                   })
                 }
               >
-                Discard saved attempt
+                {busy ? 'Connecting…' : 'Retry connection'}
+                <span aria-hidden="true">↗</span>
               </Button>
             </div>
-          </ReviewDialog>
-        </>
-      ) : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void run(async () => {
-              const bundle = parsePairingBundle(JSON.parse(json));
-              await grantEndpoint(bundle.server_url);
-              const reply = await request({ type: 'pairing-start', bundle, name });
-              if (reply.status) onStatus(reply.status);
-              setJson('');
-              setName('');
-            });
-          }}
-        >
-          <Label htmlFor="pairing-name">Profile name</Label>
-          <Input
-            id="pairing-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            maxLength={100}
-            autoComplete="off"
-            placeholder="My MacBook · Helium"
-          />
-          <Label htmlFor="pairing-bundle">Private pairing bundle JSON</Label>
-          <Textarea
-            id="pairing-bundle"
-            value={json}
-            onChange={(e) => setJson(e.target.value)}
-            required
-            rows={4}
-            spellCheck={false}
-            autoComplete="off"
-            placeholder="Paste the bundle saved by your connected profile"
-          />
-          <p className="fine">
-            Each browser profile receives its own relay credential. This build unlocks automatically
-            using keys saved in the local profile.
-          </p>
-          <Button disabled={busy || !name.trim() || !json.trim()}>
-            {busy ? 'Connecting…' : 'Connect with invitation'}
-            <span>↗</span>
-          </Button>
-        </form>
-      )}
+            <Disclosure title="Start over instead">
+              <p>Retry first if the connection was interrupted.</p>
+              <Button variant="outline" disabled={busy} onClick={() => setDiscard(true)}>
+                Discard setup attempt
+              </Button>
+            </Disclosure>
+            <ReviewDialog
+              open={discard}
+              onOpenChange={(open) => {
+                if (!busy) setDiscard(open);
+              }}
+              title="Discard connection attempt"
+              description="The relay may already have registered this installation. Review the saved attempt before removing its local setup secrets."
+            >
+              {error && (
+                <Alert variant="destructive" className="error">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <p>
+                This removes the saved setup secrets. The relay may already have registered this
+                profile; revoke that installation from the relay if you discard it.
+              </p>
+              <p className="fine">
+                Installation: <code>{pending.device_id}</code>
+              </p>
+              <div className="actions">
+                <AlertDialogCancel disabled={busy} onClick={() => setDiscard(false)}>
+                  Keep and retry
+                </AlertDialogCancel>
+                <Button
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const reply = await request({ type: 'pairing-discard' });
+                      if (reply.status) onStatus(reply.status);
+                      setDiscard(false);
+                    })
+                  }
+                >
+                  Discard saved attempt
+                </Button>
+              </div>
+            </ReviewDialog>
+          </>
+        ) : (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void run(async () => {
+                const bundle = parsePairingBundle(JSON.parse(json));
+                await grantEndpoint(bundle.server_url);
+                const reply = await request({ type: 'pairing-start', bundle, name });
+                if (reply.status) onStatus(reply.status);
+                setJson('');
+                setName('');
+              });
+            }}
+          >
+            <FieldGroup>
+              <JsonFile
+                id="pairing-bundle"
+                label="Invitation file"
+                value={json}
+                onChange={setJson}
+              />
+              <Field>
+                <FieldLabel htmlFor="pairing-name">Name this device</FieldLabel>
+                <Input
+                  id="pairing-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  maxLength={100}
+                  autoComplete="off"
+                  aria-describedby="pairing-name-help"
+                  placeholder="My laptop"
+                />
+                <FieldDescription id="pairing-name-help">
+                  Choose a name you’ll recognize on your other devices.
+                </FieldDescription>
+              </Field>
+              <Button className="w-fit max-w-full" disabled={busy || !name.trim() || !json.trim()}>
+                {busy ? 'Connecting…' : 'Connect this device'}
+                <span aria-hidden="true">↗</span>
+              </Button>
+            </FieldGroup>
+          </form>
+        )}
+      </CardContent>
     </Card>
   );
 }

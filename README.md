@@ -4,7 +4,7 @@
 
 Private browser sync for Helium, built with WXT/TypeScript and a self-hosted Rust/Axum/SQLite relay on a Mac Mini behind Tailscale.
 
-The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. It also supports **opt-in session capture and restoration**: source-owned current/closed/previous snapshots, encrypted multipart transport and a durable restoration journal. It also supports **opt-in history capture and local search**, with original timestamps, profile filters and logical removal. The dashboard also supports private pairing, installation removal with future-content key rotation, durable rotation retries and private recovery bundles. Authenticated history ciphertext purge and opt-in source-owned expiry are implemented; general retained-copy/backup policy remains pending. Production hosting and real Helium lifecycle/API acceptance remain pending.
+The development build supports encrypted diagnostic notes and **opt-in bookmark sync**: durable native-event capture, causal merges, conservative import previews, recovery backups, and journaled browser application. It uses IndexedDB, authenticated push/pull, idempotent acknowledgements, and WebSocket hints. It also supports **opt-in session capture and restoration**: source-owned current/closed/previous snapshots, encrypted multipart transport and a durable restoration journal. It also supports **opt-in history capture and local search**, with original timestamps, profile filters and logical removal. The dashboard also supports private pairing, installation removal with future-content key rotation, durable rotation retries and private recovery bundles. Authenticated history ciphertext purge and opt-in source-owned expiry are implemented; general retained-copy/backup policy remains pending. Basic native pairing/domain/short-outage/worker checks pass; full Helium acceptance and production hosting remain pending.
 
 Read the [bookmark merge contract](docs/bookmark-merge.md) and [native adapter/recovery contract](docs/bookmark-browser.md). Read the [session capture/restoration contract](docs/sessions.md). Automated native-adapter tests use a simulated browser port; they do not establish live Helium compatibility.
 
@@ -36,8 +36,6 @@ mkdir -p work
 ./scripts/cargo.sh build --locked
 ./target/debug/synk-server --database work/relay.sqlite issue-device \
   --name 'Helium profile A' --output work/profile-a.credential.json
-./target/debug/synk-server --database work/relay.sqlite issue-device \
-  --name 'Helium profile B' --output work/profile-b.credential.json
 ./target/debug/synk-server --database work/relay.sqlite serve
 ```
 
@@ -53,14 +51,15 @@ The [first native smoke checklist](docs/native-smoke.md) covers the initial hand
 
 In a **disposable Helium profile**, open `chrome://extensions`, enable developer mode, and load `extension/.output/chrome-mv3` as an unpacked extension. Click its toolbar action to open the dashboard. Use another disposable profile for the second client. Keep the unpacked extension path stable; changing identity/origin can strand local storage.
 
-1. Paste profile A's credential JSON into its dashboard. Leave the recovery-key field blank on the first profile.
-2. Save the generated recovery file somewhere private, outside the source repository. On the trusted profile, use **Save pairing bundle** to create a private 15-minute invitation.
-3. In profile B, paste the pairing bundle and choose a profile name. A distinct credential is issued without sending encryption keys to the relay. Retry the saved claim if a reply is lost; resolve an ambiguous attempt before discarding it. For recovery, issue a fresh CLI credential and import an updated private recovery bundle; an existing profile's credential must never be copied to another profile.
-4. Queue a test note on each profile. Stop the relay, queue another note, and restart it to check catch-up synchronization.
-5. In each disposable profile, preview the bookmark merge, save its backup, and enable bookmark sync. Keep a stable extension identity/path. Use the interrupted-addition review if an ambiguous create pauses application.
-6. Enable session capture in the dashboard. Inspect another profile's current/closed/previous snapshots and restore a tab, window or whole session. Use disposable URLs and check partial progress; cancelling keeps opened pages. Live Helium acceptance for these APIs is still pending.
+1. In profile A, choose **Set up my first device**, select `work/profile-a.credential.json`, then **Connect this device**. Keys are generated locally.
+2. Open **Settings → Recovery & backups** and save a private recovery file separately from server backups.
+3. Open **Devices → Add device → Save invitation file**. Transfer it privately to profile B. There, choose **Connect another device**, select the invitation file, name the device and connect. Each browser profile gets its own credential. Retry a saved connection attempt if a reply is lost.
+4. Choose which collections to enable. **Bookmarks** requires a merge preview and saving a bookmark backup. **Sessions** enables capture and offers explicit tab/window restoration. **History** starts with new visits only; importing older visits is optional.
+5. To check the connection, send a test message from **Settings → Diagnostics** and look for it on the other profile. The [native smoke record](docs/native-smoke.md) distinguishes observed browser results from remaining acceptance work.
 
-A first profile generates a new key when the field is blank. Use pairing or a current private recovery bundle when joining an existing account. Save a fresh recovery bundle after rotation. Using different keys for the same account causes decryption failure; this checkpoint has no re-enrollment/key-correction UI. Diagnose with disposable profiles. Do not clear a profile that contains pending work.
+The [routed UI contract](docs/extension-ux.md) describes the focused setup and page architecture. The redesigned UI still needs its packaged native profile pass. Keep the invitation private and remove its transfer copy after pairing. Invitations expire after 15 minutes, but their keys remain sensitive. Save a fresh recovery file after key rotation.
+
+For recovery when no connected profile remains, issue a fresh credential and choose **Restore from a recovery file**. Use the new connection file with an updated recovery file; never copy an enrolled profile's credential to another profile. This checkpoint has no re-enrollment/key-correction UI. Do not clear a profile that contains pending work.
 
 `pnpm dev` runs WXT's development build. Browser loading may require the same manual unpacked-extension step. The ignored `extension/web-ext.config.ts` can select a local browser binary; it must never point at your normal browser profile for tests.
 

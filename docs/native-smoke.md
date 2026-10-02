@@ -39,3 +39,11 @@ The outage lasted approximately two minutes (14:36–14:38). Test 1 showed Waiti
 For worker revival, replaced Test 1's only dashboard with Helium's service-worker manager. Its sole registration matched the approved test extension ID. Stop changed RUNNING to STOPPED; DevTools/start-on-debug remained off. Closed the manager and renamed the native fixture bookmark to `After worker restart · Test 1`. Test 2's native bookmark manager received that title with the original URL and one link. The source dashboard was not reopened and Start was not clicked. Saved evidence: ignored `worker-stopped.png` and `worker-revival-bookmark-pass.png` in the native kit. The specific wake trigger could be a native event or scheduled reconciliation; this establishes automatic revival/delivery, not which trigger fired first.
 
 The first attempt with the earlier kit credential was rejected because the relay already had a registered public identity and this installation lacked its private wrapping key. No synchronized content was erased. Fresh enrollment passed without changing the identity guard. The cause of that earlier credential use is unconfirmed. Private bundles/test assets remain in ignored `work/native-user-profiles`; no native milestone exit gate is complete.
+
+## Folder rename follow-up and UI boundary — 2026-10-02
+
+- [x] Rename the test folder in Test 2 to `Synk folder rename · Test 2`; Test 1’s native bookmark manager shows that name with its existing `After worker restart · Test 1` link and original URL.
+- [ ] Verify root-folder moves and propagated undo. A cut/paste attempt did not complete; Undo restored the folder locally in Test 1. No peer move/undo result is claimed. Native interaction stopped when the user resumed using Helium.
+- [ ] Repeat the new routed/file-based setup and navigation with the packaged build. Desktop/390 px checks used actual UI components with synthetic background replies; the running native test copy and relay were not upgraded.
+
+The earlier selected-history review was cancelled during this work; no removal was confirmed or performed. Existing installation identities, exports and prior native results remain recorded above.

@@ -26,7 +26,7 @@ export function Disclosure({
           <ChevronDown aria-hidden="true" />
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent>{children}</CollapsibleContent>
+      <CollapsibleContent className="space-y-4 pt-4">{children}</CollapsibleContent>
     </Collapsible>
   );
 }

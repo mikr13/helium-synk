@@ -1,8 +1,9 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Card } from '@/components/ui/card';
+import { Empty, EmptyHeader, EmptyDescription } from '@/components/ui/empty';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import React, { useEffect, useState } from 'react';
@@ -195,191 +196,206 @@ export function SessionPanel({ status, request, onStatus }: Props) {
   const sources = [...new Map(items.map((s) => [s.source_id, s.source_name])).entries()];
   return (
     <Card className="panel session-panel" id="sessions">
-      <div className="panel-heading">
+      <CardHeader className="panel-heading flex px-0 pt-0">
         <span className="number">03</span>
-        <div>
-          <p className="eyebrow">ACROSS YOUR DEVICES</p>
-          <h2>Your open worlds.</h2>
-          <p>Current sessions, closed windows and saved snapshots stay available locally.</p>
+        <div className="min-w-0 space-y-2">
+          <CardTitle>
+            <h1>Sessions</h1>
+          </CardTitle>
+          <CardDescription className="leading-6">
+            Current sessions, closed windows and saved snapshots stay available locally.
+          </CardDescription>
         </div>
-      </div>
-      <div className="actions">
-        <Button
-          disabled={busy}
-          onClick={() =>
-            void run(() =>
-              action({ type: status.sessions.enabled ? 'session-pause' : 'session-enable' }),
-            )
-          }
-        >
-          {status.sessions.enabled ? 'Pause session capture' : 'Enable session capture'}
-        </Button>
-        {status.sessions.enabled && (
+      </CardHeader>
+      <CardContent className="space-y-4 px-0">
+        <div className="actions">
           <Button
-            variant="outline"
             disabled={busy}
-            onClick={() => void run(() => action({ type: 'session-save' }))}
+            onClick={() =>
+              void run(() =>
+                action({ type: status.sessions.enabled ? 'session-pause' : 'session-enable' }),
+              )
+            }
           >
-            Save current snapshot
+            {status.sessions.enabled ? 'Pause session capture' : 'Enable session capture'}
           </Button>
-        )}
-      </div>
-      <p className="fine">
-        {status.sessions.enabled
-          ? 'Capturing normal windows. Private windows are excluded.'
-          : 'Capture is paused. Existing snapshots remain available; re-enabling starts from your current windows.'}{' '}
-        Restoring opens pages here and keeps the source session intact.
-      </p>
-      {(error || status.sessions.error) && (
-        <Alert variant="destructive" className="error">
-          <AlertDescription>{error || status.sessions.error}</AlertDescription>
-        </Alert>
-      )}
-      {status.sessions.incomplete > 0 && (
-        <p className="fine">
-          {status.sessions.incomplete} snapshot(s) still downloading. The last complete session
-          stays visible.
-        </p>
-      )}
-      <Tabs value={kind} onValueChange={setKind}>
-        <div className="session-toolbar">
-          <TabsList aria-label="Session type" className="border bg-background">
-            {['current', 'closed', 'previous'].map((k) => (
-              <TabsTrigger key={k} value={k}>
-                {k[0]!.toUpperCase() + k.slice(1)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <div className="form-field">
-            <Label htmlFor="session-source">Source profile</Label>
-            <NativeSelect
-              id="session-source"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
+          {status.sessions.enabled && (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => void run(() => action({ type: 'session-save' }))}
             >
-              <NativeSelectOption value="all">All profiles</NativeSelectOption>
-              {sources.map(([id, name]) => (
-                <NativeSelectOption key={id} value={id}>
-                  {name} · {id.slice(0, 8)}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </div>
+              Save current snapshot
+            </Button>
+          )}
         </div>
         <p className="fine">
-          Capture age describes this snapshot. It does not indicate whether the source device is
-          online.
+          {status.sessions.enabled
+            ? 'Capturing normal windows. Private windows are excluded.'
+            : 'Capture is paused. Existing snapshots remain available; re-enabling starts from your current windows.'}{' '}
+          Restoring opens pages here and keeps the source session intact.
         </p>
-        <TabsContent value={kind}>
-          {!filtered.length && <div className="empty">No {kind} sessions in this view yet.</div>}
-          {sources
-            .filter(([id]) => filtered.some((s) => s.source_id === id))
-            .map(([id, name]) => (
-              <div className="session-source" key={id}>
-                <h3>
-                  {name}
-                  <span>{id.slice(0, 8)}</span>
-                </h3>
-                {filtered
-                  .filter((s) => s.source_id === id)
-                  .map((s) => (
+        {(error || status.sessions.error) && (
+          <Alert variant="destructive" className="error">
+            <AlertDescription>{error || status.sessions.error}</AlertDescription>
+          </Alert>
+        )}
+        {status.sessions.incomplete > 0 && (
+          <p className="fine">
+            {status.sessions.incomplete} snapshot(s) still downloading. The last complete session
+            stays visible.
+          </p>
+        )}
+        <Tabs value={kind} onValueChange={setKind}>
+          <div className="session-toolbar">
+            <TabsList aria-label="Session type" className="border bg-background">
+              {['current', 'closed', 'previous'].map((k) => (
+                <TabsTrigger key={k} value={k}>
+                  {k[0]!.toUpperCase() + k.slice(1)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            <Field className="w-full max-w-64">
+              <FieldLabel htmlFor="session-source">Source profile</FieldLabel>
+              <NativeSelect
+                id="session-source"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              >
+                <NativeSelectOption value="all">All profiles</NativeSelectOption>
+                {sources.map(([id, name]) => (
+                  <NativeSelectOption key={id} value={id}>
+                    {name} · {id.slice(0, 8)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+          </div>
+          <p className="fine">
+            Capture age describes this snapshot. It does not indicate whether the source device is
+            online.
+          </p>
+          <TabsContent value={kind}>
+            {!filtered.length && (
+              <Empty className="border">
+                <EmptyHeader>
+                  <EmptyDescription>No {kind} sessions in this view yet.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+            {sources
+              .filter(([id]) => filtered.some((s) => s.source_id === id))
+              .map(([id, name]) => (
+                <div className="session-source" key={id}>
+                  <h3>
+                    {name}
+                    <span>{id.slice(0, 8)}</span>
+                  </h3>
+                  {filtered
+                    .filter((s) => s.source_id === id)
+                    .map((s) => (
+                      <Button
+                        variant="ghost"
+                        size="row"
+                        className={`session-card ${selected?.id === s.id ? 'selected' : ''}`}
+                        key={s.id}
+                        disabled={busy}
+                        onClick={() => void run(() => inspect(s.id))}
+                      >
+                        <div>
+                          <strong>
+                            {s.windows} window{s.windows !== 1 ? 's' : ''} · {s.tabs} tabs
+                          </strong>
+                          <span>
+                            {age(s.captured_at)} · {new Date(s.captured_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <span>View ↗</span>
+                      </Button>
+                    ))}
+                </div>
+              ))}
+            {more && (
+              <Button variant="outline" disabled={busy} onClick={() => setOffset(offset + 100)}>
+                Load older snapshots
+              </Button>
+            )}
+          </TabsContent>
+        </Tabs>
+        {selected && (
+          <div className="session-detail">
+            <div className="session-detail-heading">
+              <div>
+                <p className="eyebrow">
+                  {selected.source_name} / {selected.kind.toUpperCase()}
+                </p>
+                <h3>{age(selected.captured_at)}</h3>
+                <p className="fine">
+                  Restores HTTP/HTTPS pages. Local, internal and unsupported URLs are skipped.
+                </p>
+              </div>
+              <Button disabled={busy} onClick={() => restore({ mode: 'all' })}>
+                Open all windows ↗
+              </Button>
+            </div>
+            {selected.windows.length ? (
+              selected.windows.map((w) => (
+                <WindowView key={w.id} window={w} busy={busy} restore={restore} />
+              ))
+            ) : (
+              <Empty className="border">
+                <EmptyHeader>
+                  <EmptyDescription>This snapshot has no open windows.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </div>
+        )}
+        {status.sessions.restores.length > 0 && (
+          <div className="session-jobs">
+            <h3>Restoration progress</h3>
+            {status.sessions.restores.map((j) => (
+              <div className="session-job" key={j.id}>
+                <div>
+                  <strong>
+                    {j.opened}/{j.total} pages opened · {j.windows_done}/{j.windows_total} windows
+                    ready
+                  </strong>
+                  <p>
+                    {j.status} · {j.skipped} unsupported URL(s) skipped
+                  </p>
+                  {j.error && (
+                    <Alert variant="destructive" className="error">
+                      <AlertDescription>{j.error}</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+                <div className="actions">
+                  {j.status === 'blocked' && (
                     <Button
-                      variant="ghost"
-                      size="row"
-                      className={`session-card ${selected?.id === s.id ? 'selected' : ''}`}
-                      key={s.id}
+                      variant="outline"
                       disabled={busy}
-                      onClick={() => void run(() => inspect(s.id))}
+                      onClick={() => void run(() => action({ type: 'session-resume', id: j.id }))}
                     >
-                      <div>
-                        <strong>
-                          {s.windows} window{s.windows !== 1 ? 's' : ''} · {s.tabs} tabs
-                        </strong>
-                        <span>
-                          {age(s.captured_at)} · {new Date(s.captured_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <span>View ↗</span>
+                      Resume safely
                     </Button>
-                  ))}
+                  )}
+                  {(j.status === 'running' || j.status === 'blocked') && (
+                    <Button
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void run(() => action({ type: 'session-cancel', id: j.id }))}
+                    >
+                      Cancel; keep opened tabs
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
-          {more && (
-            <Button variant="outline" disabled={busy} onClick={() => setOffset(offset + 100)}>
-              Load older snapshots
-            </Button>
-          )}
-        </TabsContent>
-      </Tabs>
-      {selected && (
-        <div className="session-detail">
-          <div className="session-detail-heading">
-            <div>
-              <p className="eyebrow">
-                {selected.source_name} / {selected.kind.toUpperCase()}
-              </p>
-              <h3>{age(selected.captured_at)}</h3>
-              <p className="fine">
-                Restores HTTP/HTTPS pages. Local, internal and unsupported URLs are skipped.
-              </p>
-            </div>
-            <Button disabled={busy} onClick={() => restore({ mode: 'all' })}>
-              Open all windows ↗
-            </Button>
           </div>
-          {selected.windows.length ? (
-            selected.windows.map((w) => (
-              <WindowView key={w.id} window={w} busy={busy} restore={restore} />
-            ))
-          ) : (
-            <div className="empty">This snapshot has no open windows.</div>
-          )}
-        </div>
-      )}
-      {status.sessions.restores.length > 0 && (
-        <div className="session-jobs">
-          <h3>Restoration progress</h3>
-          {status.sessions.restores.map((j) => (
-            <div className="session-job" key={j.id}>
-              <div>
-                <strong>
-                  {j.opened}/{j.total} pages opened · {j.windows_done}/{j.windows_total} windows
-                  ready
-                </strong>
-                <p>
-                  {j.status} · {j.skipped} unsupported URL(s) skipped
-                </p>
-                {j.error && (
-                  <Alert variant="destructive" className="error">
-                    <AlertDescription>{j.error}</AlertDescription>
-                  </Alert>
-                )}
-              </div>
-              <div className="actions">
-                {j.status === 'blocked' && (
-                  <Button
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void run(() => action({ type: 'session-resume', id: j.id }))}
-                  >
-                    Resume safely
-                  </Button>
-                )}
-                {(j.status === 'running' || j.status === 'blocked') && (
-                  <Button
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void run(() => action({ type: 'session-cancel', id: j.id }))}
-                  >
-                    Cancel; keep opened tabs
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </CardContent>
     </Card>
   );
 }

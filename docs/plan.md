@@ -4,11 +4,11 @@
 
 **Updated:** 2026-10-02
 
-**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, including the session closure fix and relay recovery guards.
+**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then added the routed setup and shared shadcn spacing checkpoint below.
 
 ## Current goal status
 
-Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress. The native first pass has verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
+Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented and preview-verified; their packaged native pass and user feedback remain open. The native first pass has verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
 
 | Checkpoint                                                         | Status                                                             | Commit / evidence                                                                      |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
@@ -22,12 +22,14 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                                    |
 | Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open    | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md)      |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/outage/worker pass; removal/restart gates open     | `b753fce`, `483b08b`, `1d00114`, `448dd49`, `47567e4`; [native smoke](native-smoke.md) |
+| Guided setup, separate routes and consistent shadcn spacing        | Implemented and rendered-preview verified; new native pass open    | This checkpoint; 237 TS tests, production build and route/layout checks                |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                                      |
 
-Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrations**, typechecks, production WXT build, rustfmt/clippy, formatting, version consistency and Changeset status. Latest native checkpoint: `47567e4`; closure fix: `1d00114`; backup/restore guards: `09bf1bd`. No release/version bump or production deployment has been performed. This checklist audit changes documentation only; it does not rerun or broaden those results.
+Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrations**, typechecks, production WXT build, rustfmt/clippy, formatting, version consistency and Changeset status. Latest native checkpoint: `47567e4`; closure fix: `1d00114`; backup/restore guards: `09bf1bd`. No release/version bump or production deployment has been performed. This UI checkpoint reruns TypeScript checks, 237 TS tests and the production WXT build. All 16 real-process integrations also passed during this work; the 44 Rust test result is from the preceding server checkpoint. Preview replies are synthetic; native profiles still use the earlier approved test build.
 
 ### Remaining before full acceptance
 
+- [ ] Verify the redesigned packaged routes/setup in Helium Sync Test 1 and Test 2, preserving their installations and collections; obtain user feedback on clarity.
 - [ ] Finish the selected native test-visit removal after confirmation, then native clear/reconnect checks.
 - [ ] Verify full browser restart, alarm behavior and an hours-long offline run with concurrent domain edits.
 - [ ] Complete the native bookmark conflict/root/interruption matrix and large/multi-window interrupted restores; measure latency.
@@ -317,10 +319,12 @@ The earlier empty kit directories were not used for the native pass. The approve
 
 - [x] Load/enroll/pair the approved fresh build in Helium Sync Test 1 and Test 2; exchange acknowledged notes with distinct installation identities.
 - [x] Verify native bookmark folder/link creation and reverse title edit, with recovery exports saved before enabling the merge.
+- [x] Verify reverse native folder rename: Test 2’s `Synk folder rename · Test 2` appears in Test 1 with the existing nested link.
+- [ ] Verify native folder moves/undo across profiles; the attempted root move was undone locally, with no peer pass claimed.
 - [x] Verify current/closed session capture and real single-tab/full-window restoration with pin/order/group/active selection. Fix and repeat the teardown-layout regression (`1d00114`); restoration progress completes 2/2 pages.
 - [x] Verify original-timestamp history from both named source profiles and filter the real synced timeline.
 - [x] Verify a short native relay outage: saved local note/bookmark/closed-window work reaches the other profile after restart, without duplicate fixtures.
-- [ ] Confirm and verify selected test-visit removal; its one-visit review dialog is prepared.
+- [ ] Confirm and verify selected test-visit removal; the earlier review was cancelled while changing test views.
 - [x] Verify worker stop/revival with DevTools closed: observe STOPPED, close the manager, edit a native bookmark and receive it in Test 2 without opening the source dashboard.
 - [ ] Verify full browser restart, hours-long outage and the remaining native acceptance permutations.
 
@@ -337,6 +341,22 @@ See [native-smoke.md](native-smoke.md) for exact build/profile/version/results a
 - [ ] Schedule/rotate backups and verify deployment, physical interruption/disk-full backup behavior and native recovery acceptance.
 
 Read [relay-recovery.md](relay-recovery.md) for exact commands and current boundaries. These operations were tested in isolated fixtures; the native smoke relay and production settings were not upgraded.
+
+## Routed setup and shared shadcn spacing checkpoint — 2026-10-02
+
+- [x] Replace the long options dashboard with 15 focused TanStack Router views; mount only the active collection/settings page.
+- [x] Guide first-device connection, invitation pairing and recovery through file-based forms, with optional paste fallback and local key generation.
+- [x] Preserve durable interrupted pairing retry/discard, bookmark preview/backup gates, collection opt-in and existing removal/rotation review flows.
+- [x] Move recovery, device access and diagnostics to separate settings pages; show collection choices after setup and default history import to new visits only.
+- [x] Add official shadcn Field, Item and Empty components; use Card headers/content/footers and Button links throughout the revised pages.
+- [x] Remove conflicting global label/form margins; use 8 px label/control gaps, grouped fields and 40 px inputs/selects/buttons. Align History’s select/textarea and filter rows, storage label/value rows and mobile connection actions.
+- [x] Verify desktop routes, direct reload/back navigation, all 15 options views at 390 px without page overflow, and the shared restoration page.
+- [x] Exercise invalid file handling, first setup, invitation import, lost-reply state and retry to collection choices using synthetic preview replies.
+- [x] Pass TypeScript checks, 237 TS tests, production WXT build and 16 real-process integrations during this work; add an extension patch Changeset without a version bump.
+- [ ] Load the redesigned packaged build in the two named native test profiles and repeat navigation/setup checks without replacing their installations or saved collections.
+- [ ] Obtain user feedback on first-device versus another-device clarity.
+
+See [extension-ux.md](extension-ux.md) and [design-system.md](design-system.md). Rendered previews establish layout/UI behavior only; they do not complete native or whole milestone gates. No native relay/profile was upgraded for this revision.
 
 ## 1. Product requirements and boundaries
 
