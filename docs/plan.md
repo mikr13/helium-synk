@@ -4,7 +4,7 @@
 
 **Updated:** 2026-10-02
 
-**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then added the routed setup and shared shadcn spacing checkpoint below.
+**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` and the native UI/startup follow-up at `ae87613` below.
 
 ## Current goal status
 
@@ -364,7 +364,7 @@ See [extension-ux.md](extension-ux.md) and [design-system.md](design-system.md).
 
 ## Native routed UI and startup wording follow-up — 2026-10-02
 
-UI base: `1cee5fb`. Follow-up changes are recorded with this checkpoint.
+Checkpoint commit: `ae87613 fix(extension): clarify startup status and recovery guidance`. UI base: `1cee5fb`.
 
 - [x] Snapshot the previous approved UI and update only options/restoration assets at its stable extension path. Keep identical background bytes, manifest permissions/version, origin, identities and the existing isolated relay/database.
 - [x] Verify Test 1 and Test 2 keep their names, two shared bookmark entries, saved sessions/history and capture preferences; Test 2's previously paused session capture remains paused.

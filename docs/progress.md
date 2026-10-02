@@ -300,6 +300,8 @@ Both checklist copies record completed UI work and the remaining packaged native
 
 ## Native routed UI, startup wording and removal attempt — 2026-10-02
 
+Checkpoint commit: `ae87613 fix(extension): clarify startup status and recovery guidance`.
+
 Snapshot the previous native copy in ignored `work/native-user-profiles/extension-before-routed-ui`, then update only options/restoration pages, chunks and styles at the same stable approved path. Base UI: `1cee5fb`, followed by startup/recovery wording corrections. The manifest permissions/version, background SHA-256 (`7191114df95cd00dcb851ede8d4c4b915ef88e96e360e13b7eceadd187e2a0ef`), extension origin, saved installation identities and isolated port-4321 relay/database remain unchanged. The old copy stays disabled.
 
 Both named profiles retain their names, two shared bookmark entries, saved sessions/history and capture preferences; Test 2 remains paused for session capture. Native Home/Devices/Add device/Settings/Recovery navigation passes. Recovery survives direct reload; the native Back button returns to Settings. Test 2's old `#history` normalizes to `#/history`. The first offscreen Recovery click and macOS Alt+Left had no effect; the visible link and actual toolbar Back were used successfully.

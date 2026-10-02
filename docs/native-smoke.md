@@ -51,6 +51,8 @@ The earlier selected-history review was cancelled during this work; no removal w
 
 ## Native routed UI follow-up — 2026-10-02
 
+Checkpoint commit: `ae87613 fix(extension): clarify startup status and recovery guidance`.
+
 Updated only `options.html`, `restore.html`, `chunks/` and `assets/` at the same approved native extension path after saving `extension-before-routed-ui`. Base UI commit: `1cee5fb`, followed by startup/recovery copy corrections. Manifest version/permissions/options/background configuration match the previous copy. The background SHA-256 remains `7191114df95cd00dcb851ede8d4c4b915ef88e96e360e13b7eceadd187e2a0ef`. The old extension stays disabled. The relay stays at its earlier approved frozen build on port 4321.
 
 - [x] Reload Test 1's approved extension and options; reload Test 2's options. Both retain their distinct names/identities, two shared bookmark entries, saved sessions/history and existing capture preferences. Test 2's paused session capture remains paused.
