@@ -19,4 +19,16 @@ Keep DevTools closed for the hands-on pass. Use harmless fixture pages, such as 
 
 Record actual results below or in `docs/progress.md`: date, Helium/Chromium version, tested build commit, profile labels, pass/fail and the concrete observed result. Leave a row unverified until the real browser result is observed. This first pass does not establish every conflict, interrupted restore, physical disk-full, key rotation, hours-long outage or milestone exit gate.
 
-No native results are recorded yet.
+## Native run — 2026-10-02
+
+Build: frozen `abc7bea` extension/server, extension version 0.1.0; Helium 0.18.1.1 / Chromium 154.0.0.0. User-created profiles: **Helium Sync Test 1** and **Helium Sync Test 2**. DevTools remain closed. Fresh isolated relay: `http://127.0.0.1:4321`.
+
+- [x] Load the approved fresh test copy in both profiles. Original copy is disabled and retained, with Test 1's local replica exported.
+- [x] Enroll Test 1 with a fresh credential and pair Test 2 through the private single-use bundle; both show Connected and separate installations.
+- [x] Send `Native smoke A · Test 1` and `Native smoke B · Test 2`; both dashboards show both server-acknowledged notes and zero pending work.
+- [ ] Verify real bookmark create, peer application and reverse rename.
+- [ ] Verify current/closed sessions and native restoration.
+- [ ] Verify source/timestamp history and selected removal.
+- [ ] Verify short relay outage and worker/browser restart.
+
+The first attempt with the earlier kit credential was rejected because the relay already had a registered public identity and this installation lacked its private wrapping key. No synchronized content was erased. Fresh enrollment passed without changing the identity guard. The cause of that earlier credential use is unconfirmed. Private bundles/test assets remain in ignored `work/native-user-profiles`; no native milestone exit gate is complete.
