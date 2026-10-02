@@ -29,6 +29,8 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 
 ### Remaining before full acceptance
 
+[remaining-work.md](remaining-work.md) consolidates all current pending work with suggested owners; historical checkpoint notes below record the scope at their dates.
+
 - [x] Load the revised packaged UI in Helium Sync Test 1 and Test 2; verify navigation, direct reload/back, legacy hash migration and two-way diagnostics while preserving installation identities and collection settings.
 - [ ] Verify fresh file-based native enrollment/pairing/recovery and obtain user feedback on clarity.
 - [x] Verify the approved single native test-visit removal after manual sync and reload in both profiles; preserve the neighboring fixture and native browser history.
@@ -37,7 +39,8 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 - [x] Open saved sessions on a focused route with visible restoration controls/progress; verify native reload/Back and preserve paused capture.
 - [x] Restore one native 24-tab fixture window across the bounded restoration passes; verify exact order/count, active tab and the complete journal.
 - [x] Verify one empty native folder cut/paste across roots and two-step Undo propagated to the peer after reload.
-- [ ] Complete the native bookmark drag/child/conflict/root/interruption matrix and interrupted/multi-window restores; measure representative latency.
+- [x] Restore one reviewed native three-window snapshot: verify 5/5 supported pages, 3/3 completed windows, internal-page skips and preserved source fixtures.
+- [ ] Complete the native bookmark drag/child/conflict/root/interruption matrix and interrupted large/multi-window restores; measure representative latency.
 - [ ] Implement session expiry/count/size policy and finish unresolved/shared capture, general quarantine and historical backup-copy policy.
 - [ ] Measure and complete full-scale history/journal/restore responsiveness.
 - [ ] Recover missing acknowledged operations after older-backup/server loss and verify safe reconciliation/resume.
@@ -60,15 +63,15 @@ Both checklist copies are updated at checkpoints and commits. [progress.md](prog
 - Record evidence beside completed gates: test results, relevant commits, or manual verification notes.
 - If an item is blocked, add a short `Blocked: ...` note below it and continue independent work.
 
-| Milestone                                        | Status                                                 | Depends on | Evidence and remaining exit work                                                                                                 |
-| ------------------------------------------------ | ------------------------------------------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| M1 — Compatibility and hosting probes            | Native basic APIs/worker pass; gate open               | None       | `b753fce`, `1d00114`, `47567e4`; remaining API/alarm/browser-version matrix and Tailscale/reboot probes                          |
-| M2 — Durable local state and encrypted transport | Implementation and short native pass; gate open        | M1         | 237 TS / 44 Rust / 16 integrations; full browser restart and hours-long outage pending                                           |
-| M3 — Bidirectional bookmarks                     | Implementation/basic native pass; gate open            | M2         | Model/adapter conflict tests; native creation/reverse rename/outage/revival pass; full native matrix pending                     |
-| M4 — Current, closed, and previous sessions      | Implementation/basic native pass; gate open            | M2         | Current/closed + single-tab/two-tab grouped window restore pass; interrupted large/multi-window and lifecycle acceptance pending |
-| M5 — Cross-device history and deletion           | Implementation/native capture/search pass; gate open   | M2         | Purge/expiry automated checks; native removal/clears, retained-copy policy and scale pending                                     |
-| M6 — Production hosting and recovery             | Backup/restore guards implemented; deployment deferred | M3–M5      | `09bf1bd`; full replay/resume, launchd/Tailscale/availability/scheduled backup gates pending                                     |
-| M7 — Product polish and release                  | Requested branding/UI/aliases implemented; gate open   | M6         | `9b2e6da`, `93bea2c`; remaining retention/compatibility/distribution/daily-use acceptance pending                                |
+| Milestone                                        | Status                                                 | Depends on | Evidence and remaining exit work                                                                                |
+| ------------------------------------------------ | ------------------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------- |
+| M1 — Compatibility and hosting probes            | Native basic APIs/worker pass; gate open               | None       | `b753fce`, `1d00114`, `47567e4`; remaining API/alarm/browser-version matrix and Tailscale/reboot probes         |
+| M2 — Durable local state and encrypted transport | Implementation and short native pass; gate open        | M1         | 237 TS / 44 Rust / 16 integrations; full browser restart and hours-long outage pending                          |
+| M3 — Bidirectional bookmarks                     | Implementation/basic native pass; gate open            | M2         | Model/adapter conflict tests; native creation/reverse rename/outage/revival pass; full native matrix pending    |
+| M4 — Current, closed, and previous sessions      | Implementation/basic native pass; gate open            | M2         | Current/closed, grouped/pinned, 24-tab and three-window restore pass; interruption/lifecycle acceptance pending |
+| M5 — Cross-device history and deletion           | Implementation/native capture/search pass; gate open   | M2         | Purge/expiry automated checks; native removal/clears, retained-copy policy and scale pending                    |
+| M6 — Production hosting and recovery             | Backup/restore guards implemented; deployment deferred | M3–M5      | `09bf1bd`; full replay/resume, launchd/Tailscale/availability/scheduled backup gates pending                    |
+| M7 — Product polish and release                  | Requested branding/UI/aliases implemented; gate open   | M6         | `9b2e6da`, `93bea2c`; remaining retention/compatibility/distribution/daily-use acceptance pending               |
 
 ## Initial implementation checkpoint — 2026-10-01
 
@@ -454,6 +457,17 @@ Only packaged UI assets were updated after saving `extension-before-session-deta
 
 UI/background checkpoint: `f688edd` / `1d00114`; the approved relay, profile identities and capture settings remain unchanged. Native tree AX clicks require activation with Return for this flow; the earlier incomplete attempts did not establish a destination. No browser code fix follows. Retain the disposable folder for follow-up checks. Scoped ignored proof: `root-move-test2-other.png`, `root-move-test1-other.png`, `root-undo-test2-bar.png`, `root-undo-test1-bar-after-reload.png` and `root-undo-test1-other-empty.png`.
 
+## Native multi-window restoration checkpoint — 2026-10-02
+
+- [x] Create two owned Test 1 windows with ordered `multi-window-a-01/a-02` and `multi-window-b-01/b-02` localhost pages, each with its second tab active.
+- [x] Review the received three-window/eight-tab current snapshot before Open all. The pre-existing source window contains one public Helium GitHub issue and three internal pages; no private URL is selected.
+- [x] Submit Open all once in Test 2. Both fixture destinations retain their two-tab order and second active tab; the reviewed public page opens in a third destination, and three internal pages are skipped.
+- [x] Verify the journal reaches 5/5 supported pages and 3/3 windows, complete, three skipped, without manual resume or a second request.
+- [x] Verify both original fixture windows remain intact; close only the three owned destination windows and the two owned source fixture windows after verification. The pre-existing source window remains untouched and Test 2 capture stays paused.
+- [ ] Verify forced interruption and resume during large/multi-window restoration; this normal completion does not pass the interruption or full-scale gate.
+
+UI/background checkpoint: `f688edd` / `1d00114`; approved origin, permissions and isolated relay remain unchanged. Scoped ignored proof: `multi-window-source-review.png`, `multi-window-destination-a.png`, `multi-window-destination-b.png` and `multi-window-journal-complete.png`. Exact delivery/full-page loading latency was not measured.
+
 ## 1. Product requirements and boundaries
 
 ### Required behavior
@@ -687,7 +701,7 @@ Reference: [Chrome bookmarks API](https://developer.chrome.com/docs/extensions/r
 
 ## 6. Current, closed, and previous sessions
 
-Implementation evidence: [session contract](sessions.md), model/capture/restore tests and real-relay integrations. The native two-tab restore passes pin/order/group/active checks. Measured large/interrupted restore and full browser restart remain acceptance gates.
+Implementation evidence: [session contract](sessions.md), model/capture/restore tests and real-relay integrations. The native two-tab restore passes pin/order/group/active checks; 24-tab and ordinary three-window restores also pass. Measured scale, interrupted restoration and full browser restart remain acceptance gates.
 
 - [x] Capture installation/device name, capture time, source revision, ordered windows/tabs, URLs/titles, pinned state, active tab, and group metadata.
 - [x] Allocate internal snapshot/window/tab/group identities; do not use runtime browser IDs as cross-device identities.
