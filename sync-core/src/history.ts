@@ -37,7 +37,7 @@ export interface HistoryOperation {
   action: HistoryAction;
 }
 export type HistoryClear = HistoryOperation & { action: Extract<HistoryAction, { type: 'clear' }> };
-/** Local suppression receipt. It is never an encrypted wire payload. */
+/** Suppression receipt; ordinary history wire payloads reject it. Certificates carry minimal receipts. */
 export interface ErasedHistoryOperation extends Omit<HistoryOperation, 'action'> {
   action: {
     type: 'erased-visit';

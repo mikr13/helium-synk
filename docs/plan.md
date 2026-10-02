@@ -1,25 +1,25 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Implementation active through sections 1–9; bookmark/session/history capture and transport implemented; client key lifecycle, suppressed journal plaintext, obsolete capture-job cleanup and relay purge protocol implemented; client erasure integration pending; native Helium acceptance, complete history erasure/scale and local storage/older-backup recovery pending.
+**Status:** Implementation active through sections 1–9; bookmark/session/history capture and transport implemented; client key lifecycle, local history cleanup and authenticated client/relay ciphertext purge implemented; retained-copy/backup policy still pending; native Helium acceptance, complete history erasure/scale and local storage/older-backup recovery pending.
 
-**Updated:** 2026-10-01
+**Updated:** 2026-10-02
 
 ## Current goal status
 
 Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress; every whole milestone and native acceptance gate remains open.
 
-| Checkpoint                                                         | Status                                                                    | Commit / evidence                                                   |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                                     | `a0429bd` and earlier checkpoints; native gates open                |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                        | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                        | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
-| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open                      | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
-| Logo and favicon                                                   | Complete branding implementation checkpoint                               | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
-| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open                      | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
-| History plaintext/ciphertext erasure                               | In progress: local cleanup and relay protocol; client integration pending | `a4c17a0`; 195 TS, 40 Rust, 12 real-process tests                   |
-| Local budgets, retention, full-scale journal performance, recovery | Pending                                                                   | Sections 2–4, 7–9                                                   |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                                     | Disposable profiles only                                            |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                           | Section 10 onward                                                   |
+| Checkpoint                                                         | Status                                                          | Commit / evidence                                                   |
+| ------------------------------------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                           | `a0429bd` and earlier checkpoints; native gates open                |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                              | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                              | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
+| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open            | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
+| Logo and favicon                                                   | Complete branding implementation checkpoint                     | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open            | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
+| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open | Client checkpoint below; 215 TS, 40 Rust, 12 real-process tests     |
+| Local budgets, retention, full-scale journal performance, recovery | Pending                                                         | Sections 2–4, 7–9                                                   |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                           | Disposable profiles only                                            |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                 | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
 
@@ -40,7 +40,7 @@ This table and both checklist copies are updated at implementation checkpoints a
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 195 TS + 40 relay + 12 cross-stack tests; native gates pending      |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 215 TS + 40 relay + 12 cross-stack tests; native gates pending      |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
 | M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
@@ -78,7 +78,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 195 TypeScript, 40 Rust and 12 real-relay integration tests, with rustfmt/clippy, typechecks and production build.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 215 TypeScript, 40 Rust and 12 real-relay integration tests, with rustfmt/clippy, typechecks and production build.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -223,10 +223,23 @@ Checkpoint commit: `a4c17a0 feat(server): add atomic history ciphertext purge pr
 - [x] Require explicit erasure capability after activation and provide byte-bounded redacted slots/certificates without skipping sequences.
 - [x] Verify rollback, net quota cleanup, concurrent proofs, schema-4 preservation, SHA-256 interoperability and real lost-reply/restart behavior.
 - [x] Verify 195 TypeScript, 40 Rust and 12 real-process tests, rustfmt/clippy, typechecks and production WXT build.
-- [ ] Implement authenticated client certificate validation, durable purge intent/retry/rekey and redacted-record/certificate consumption.
+- [x] Implement authenticated client certificate validation, durable purge intent/retry/rekey and redacted-record/certificate consumption; see the 2026-10-02 client checkpoint.
 - [ ] Finish local outbox/quarantine/capture-copy cleanup, backup expiration/restore policy, scale/storage/recovery and native acceptance.
 
-The current extension does not invoke this API or advertise its capability. Opaque certificate fixtures prove relay behavior only; complete erasure and all milestone exit gates remain open. See [history-erasure-protocol.md](history-erasure-protocol.md) for the exact compatibility and retained-copy boundary.
+The following client checkpoint activates the API and capability with authenticated semantic proofs. The initial opaque relay fixtures prove server behavior only; complete erasure and all milestone exit gates remain open. See [history-erasure-protocol.md](history-erasure-protocol.md) for the exact compatibility and retained-copy boundary.
+
+## Client history ciphertext erasure checkpoint — 2026-10-02
+
+- [x] Validate encrypted content-free deletion certificates and bind original receipts, headers, digests, causal clocks and author counters.
+- [x] Save counter reservations, target claims, certificate drafts and exact encrypted purge requests before HTTP in IndexedDB schema 10.
+- [x] Remove certified local journal ciphertext/outbox/quarantine copies atomically; retain identities and prevent original-body replay from restoring content.
+- [x] Authenticate attached redacted-slot proofs during fresh bootstrap and process certificates for targets already behind the cursor.
+- [x] Preserve intent through lost replies/storage failures/reopening and rekey only certificates proven missing; retain original target digests across rotation.
+- [x] Verify 20 new model/database tests and the real client/relay lost-reply/restart/fresh-bootstrap erasure flow; all 215 TS and 12 real-process tests pass, with typechecks/build.
+- [ ] Finish unresolved/shared native capture copies, general quarantine and backup expiration/old-restore policy.
+- [ ] Finish storage limits, retention, full-scale performance and recovery checks, then joint disposable-profile acceptance before section 10.
+
+The live client/relay ciphertext path is implemented. Browser-owned history, physical SQLite/WAL pages, old exports/backups and remaining retained-copy policy are separate boundaries. See [history-erasure-protocol.md](history-erasure-protocol.md) and [progress.md](progress.md) for verification and commit evidence. No native or whole milestone gate is complete.
 
 ## 1. Product requirements and boundaries
 

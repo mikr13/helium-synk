@@ -1,8 +1,10 @@
 import { validateBookmarkOperation, type BookmarkOperation } from './bookmarks';
 import { validateSessionPart, type SessionPart } from './sessions';
 import { validateHistoryOperation, type HistoryOperation } from './history';
+import { validateHistoryErasure, type HistoryErasure } from './history-erasure';
 import type { Diagnostic, Envelope } from './protocol';
-export type Payload = Diagnostic | BookmarkOperation | SessionPart | HistoryOperation;
+export type Payload =
+  Diagnostic | BookmarkOperation | SessionPart | HistoryOperation | HistoryErasure;
 export type EnvelopeHeader = Omit<Envelope, 'nonce' | 'ciphertext'>;
 export const MAX_PLAINTEXT_BYTES = 65_536 - 16;
 export function validatePayload(payload: Payload, header: EnvelopeHeader): void {
@@ -26,7 +28,11 @@ export function validatePayload(payload: Payload, header: EnvelopeHeader): void 
     )
       throw new Error('Session source/revision does not match its envelope.');
   } else {
-    if (payload.kind === 'history') validateHistoryOperation(payload);
+    if (payload.kind === 'history-erasure') {
+      validateHistoryErasure(payload);
+      if (payload.targets.some((target) => target.key_epoch > header.key_epoch))
+        throw new Error('History erasure refers to a newer content epoch.');
+    } else if (payload.kind === 'history') validateHistoryOperation(payload);
     else validateBookmarkOperation(payload);
     if (
       payload.operation_id !== header.operation_id ||

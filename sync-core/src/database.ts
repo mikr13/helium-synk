@@ -1,5 +1,11 @@
 import Dexie, { type Table } from 'dexie';
 import { cleanHistoryCapture } from './history-capture-cleanup';
+import {
+  historyErasureOperations,
+  historyErasureTargetHeader,
+  mergeHistoryOperations,
+  type HistoryErasure,
+} from './history-erasure';
 import type { PairingCandidate } from './pairing';
 import {
   parseKeyRing,
@@ -40,6 +46,7 @@ import {
   type Credentials,
   type Diagnostic,
   type Envelope,
+  type HistoryPurgeRequest,
 } from './protocol';
 import {
   projectBookmarks,
@@ -94,13 +101,16 @@ export interface LocalRecord {
 export interface StoredOperation {
   operation_id: string;
   envelope: Envelope;
-  payload: BookmarkOperation | SessionPart | HistoryJournalOperation;
+  payload: BookmarkOperation | SessionPart | HistoryJournalOperation | HistoryErasure;
   sequence?: number;
+  /** Original cipher is gone; envelope is its header with empty nonce/ciphertext. */
+  redacted?: { digest: string; certificate_operation_id: string };
 }
 export interface DraftOperation {
   operation_id: string;
   header: EnvelopeHeader;
-  payload: BookmarkOperation | SessionPart | HistoryOperation;
+  payload: BookmarkOperation | SessionPart | HistoryOperation | HistoryErasure;
+  erasure_epoch?: string;
 }
 export interface ErasedHistoryDraft {
   operation_id: string;
@@ -140,6 +150,8 @@ export class SynkDatabase extends Dexie {
   bookmarkEffects!: Table<BookmarkEffect, string>;
   historyReplicas!: Table<{ id: 'history'; value: Omit<HistoryProjection, 'visits'> }, string>;
   historyErasedDrafts!: Table<ErasedHistoryDraft, string>;
+  historyPurgePending!: Table<{ operation_id: string; request: HistoryPurgeRequest }, string>;
+  historyPurgeClaims!: Table<{ operation_id: string; certificate_operation_id: string }, string>;
   historyVisits!: Table<HistoryVisit & { operation_id: string }, string>;
   historySetup!: Table<HistorySetup, string>;
   historyInbox!: Table<HistoryInbox, number>;
@@ -238,6 +250,10 @@ export class SynkDatabase extends Dexie {
         const metadata = await tx.table('historyReplicas').get('history');
         if (metadata) await cleanHistoryCapture(tx, metadata.value);
       });
+    this.version(10).stores({
+      historyPurgePending: 'operation_id',
+      historyPurgeClaims: 'operation_id, certificate_operation_id',
+    });
   }
   async enroll(
     credentials: Credentials,
@@ -453,7 +469,14 @@ export class SynkDatabase extends Dexie {
       );
       await this.transaction(
         'rw',
-        [this.state, this.drafts, this.operations, this.outbox, this.historyReplicas],
+        [
+          this.state,
+          this.drafts,
+          this.operations,
+          this.outbox,
+          this.historyReplicas,
+          this.historyPurgePending,
+        ],
         async () => {
           // Another worker/database instance may have committed ciphertext while encryption was running.
           const saved = await this.drafts.get(draft.operation_id);
@@ -472,7 +495,24 @@ export class SynkDatabase extends Dexie {
             envelope,
             payload,
           });
-          await this.outbox.add(envelope);
+          if (draft.payload.kind === 'history-erasure') {
+            if (
+              !draft.erasure_epoch ||
+              draft.erasure_epoch !== (await this.state.get('local'))!.server_epoch
+            )
+              throw new Error('History erasure server epoch changed. Preserve the saved intent.');
+            await this.historyPurgePending.add({
+              operation_id: draft.operation_id,
+              request: {
+                expected_epoch: draft.erasure_epoch,
+                certificate: envelope,
+                targets: draft.payload.targets.map((target) => ({
+                  header: historyErasureTargetHeader(envelope, target),
+                  digest: target.digest,
+                })),
+              },
+            });
+          } else await this.outbox.add(envelope);
           await this.drafts.delete(draft.operation_id);
         },
       );
@@ -572,15 +612,25 @@ export class SynkDatabase extends Dexie {
     return this.transaction(
       'r',
       [this.operations, this.drafts, this.historyErasedDrafts],
-      async () => [
-        ...(await this.operations.where('envelope.domain').equals('history').toArray()).map(
-          (o) => o.payload as HistoryJournalOperation,
-        ),
-        ...(await this.drafts.where('header.domain').equals('history').toArray()).map(
-          (o) => o.payload as HistoryOperation,
-        ),
-        ...(await this.historyErasedDrafts.toArray()).map((o) => o.payload),
-      ],
+      async () =>
+        mergeHistoryOperations([
+          ...(await this.operations.where('envelope.domain').equals('history').toArray()).map(
+            (o) => o.payload as HistoryJournalOperation,
+          ),
+          ...(await this.drafts.where('header.domain').equals('history').toArray()).map(
+            (o) => o.payload as HistoryOperation,
+          ),
+          ...(await this.historyErasedDrafts.toArray()).map((o) => o.payload),
+          ...(
+            await this.operations.where('envelope.domain').equals('history-erasure').toArray()
+          ).flatMap((o) =>
+            o.payload.kind === 'history-erasure' ? historyErasureOperations(o.payload) : [],
+          ),
+          ...(await this.drafts.where('header.domain').equals('history-erasure').toArray()).flatMap(
+            (o) =>
+              o.payload.kind === 'history-erasure' ? historyErasureOperations(o.payload) : [],
+          ),
+        ]),
     );
   }
   async historyMetadata(): Promise<Omit<HistoryProjection, 'visits'>> {
@@ -811,8 +861,11 @@ export class SynkDatabase extends Dexie {
   async pendingCount(): Promise<number> {
     return this.transaction(
       'r',
-      [this.outbox, this.drafts],
-      async () => (await this.outbox.count()) + (await this.drafts.count()),
+      [this.outbox, this.drafts, this.historyPurgePending],
+      async () =>
+        (await this.outbox.count()) +
+        (await this.drafts.count()) +
+        (await this.historyPurgePending.count()),
     );
   }
   async exportReplica(): Promise<unknown> {
@@ -834,6 +887,8 @@ export class SynkDatabase extends Dexie {
         this.sessionRestores,
         this.historyReplicas,
         this.historyErasedDrafts,
+        this.historyPurgePending,
+        this.historyPurgeClaims,
         this.historyVisits,
         this.historySetup,
         this.historyInbox,
@@ -877,6 +932,8 @@ export class SynkDatabase extends Dexie {
           session_restores: await this.sessionRestores.toArray(),
           history_metadata: await this.historyReplicas.toArray(),
           history_erased_drafts: await this.historyErasedDrafts.toArray(),
+          history_purge_pending: await this.historyPurgePending.toArray(),
+          history_purge_claims: await this.historyPurgeClaims.toArray(),
           history_visits: await this.historyVisits.toArray(),
           history_setup: await this.historySetup.toArray(),
           history_inbox: await this.historyInbox.toArray(),

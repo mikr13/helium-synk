@@ -66,6 +66,8 @@ The fifth real Rust-process integration test preserves fractional original times
 
 The actual dashboard components were exercised with synthetic localhost responses: opt-in, text search, selection/removal refresh, exact source-clear preview and narrow-window wrapping. The 390 px layout has no horizontal overflow and produced no warning/error logs. The preview was closed; no actual Helium profile was read or changed.
 
-## Relay purge implementation checkpoint
+## Client and relay purge implementation checkpoint
 
-The schema-5 relay now implements atomic ciphertext replacement with header/digest receipts, encrypted certificate references, exact retry/rekey identity and paged redacted slots. The [erasure protocol](history-erasure-protocol.md) records the trust, compatibility and remaining-copy boundary. Client certificate verification, durable scheduling and local erasure/consumption remain pending; the current extension does not invoke this API or advertise its capability. The relay tests use opaque certificate fixtures and prove server behavior only. Full history erasure remains open.
+The schema-5 relay and schema-10 client now replace live ciphertext with authenticated header/digest receipts. Suppressed encrypted visits receive a content-free permanent selected-deletion certificate, committed through a durable purge request. The client authenticates certificates on ordinary pulls and attached redacted slots, removes local ciphertext/outbox/quarantine copies transactionally, and prevents exact old retries from resurrecting content. Pending certificates survive lost replies/reopening and adopt a new encryption epoch only with an explicit missing-record proof.
+
+The [erasure protocol](history-erasure-protocol.md) records the trusted-client, compatibility and retained-copy boundaries. General quarantine retention, unresolved/shared native capture copies, physical SQLite/WAL pages, historical exports/backups and old-backup restore policy remain open. Browser-owned native history is not deleted by sync removal. Full erasure, storage/scale/recovery and native acceptance gates remain open.

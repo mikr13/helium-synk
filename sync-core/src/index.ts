@@ -1,4 +1,6 @@
 export * from './protocol';
+export * from './history-erasure';
+export * from './history-purge';
 export * from './crypto';
 export * from './database';
 export * from './sync';

@@ -322,10 +322,10 @@ it('encrypted multipart sessions and offline closed windows survive client and R
   expect(stored.trim().split('\n').length).toBeGreaterThan(4);
 });
 
-it('history retains original visits and suppresses delayed offline uploads after clears across real relay restarts', async () => {
+it('history erases live ciphertext across lost purge replies, client/relay restarts and fresh bootstrap', async () => {
   let a = await local(credentialsH, sharedKey);
-  const b = await local(credentialsI, sharedKey),
-    incarnation = crypto.randomUUID();
+  let b = await local(credentialsI, sharedKey);
+  const incarnation = crypto.randomUUID();
   const url = 'https://history-integration.example/private-research';
   async function visit(db: SynkDatabase, native: string, time: number) {
     const local = (await db.state.get('local'))!,
@@ -367,7 +367,30 @@ it('history retains original visits and suppresses delayed offline uploads after
   localDatabases.push(a);
   expect(await a.pendingCount()).toBe(1);
   await start();
-  await new SyncCoordinator(b).sync(); // Clear commits before the stale source returns.
+  const transport = new HttpTransport((await b.state.get('local'))!);
+  await expect(
+    new SyncCoordinator(b, () => ({
+      keys: transport.keys,
+      pull: (cursor) => transport.pull(cursor),
+      push: (envelopes, epoch) => transport.push(envelopes, epoch),
+      acknowledge: (cursor, epoch) => transport.acknowledge(cursor, epoch),
+      purge: async (request) => {
+        await transport.purge(request);
+        throw new Error('Discarded committed purge reply');
+      },
+    })).sync(),
+  ).rejects.toThrow('Discarded committed purge reply');
+  expect(await b.historyPurgePending.count()).toBe(1);
+  const saved = (await b.historyPurgePending.toArray())[0]!;
+  await stop();
+  await start();
+  b.close();
+  const resumed = new SynkDatabase(b.name);
+  localDatabases.push(resumed);
+  expect(await resumed.historyPurgePending.get(saved.operation_id)).toEqual(saved);
+  await new SyncCoordinator(resumed).sync();
+  expect(await resumed.historyPurgePending.count()).toBe(0);
+  b = resumed; // Clear commits before the stale source returns.
   await new SyncCoordinator(a).sync();
   await new SyncCoordinator(b).sync();
   expect((await a.historyProjection()).visits).toEqual((await b.historyProjection()).visits);
@@ -375,9 +398,9 @@ it('history retains original visits and suppresses delayed offline uploads after
   // This never-encrypted visit is now a private suppression receipt, not an upload.
   expect(await a.historyErasedDrafts.get(canceled)).toBeDefined();
   expect(await a.outbox.get(canceled)).toBeUndefined();
-  expect(Object.keys((await b.historyProjection()).stale)).toHaveLength(2);
+  expect(Object.keys((await b.historyProjection()).deleted)).toHaveLength(2);
   expect(await a.historyVisits.count()).toBe(0);
-  expect(Object.keys((await a.historyProjection()).stale)).toHaveLength(3);
+  expect(Object.keys((await a.historyProjection()).stale)).toHaveLength(1);
   await visit(a, 'fresh-generation', 4_000.875);
   await new SyncCoordinator(a).sync();
   await new SyncCoordinator(b).sync();
@@ -389,11 +412,50 @@ it('history retains original visits and suppresses delayed offline uploads after
   await start();
   await new SyncCoordinator(a).sync();
   expect(await a.historyVisits.count()).toBe(0);
-  expect((await a.historyProjection()).deleted[fresh.id]).toHaveLength(1);
+  expect((await a.historyProjection()).deleted[fresh.id]).toHaveLength(2);
   expect(await a.pendingCount()).toBe(0);
   expect(await b.pendingCount()).toBe(0);
-  for (const original of originals)
-    expect((await a.operations.get(original.operation_id))?.envelope).toEqual(original);
+  for (const original of originals) {
+    const current = (await a.operations.get(original.operation_id))!;
+    if (original.domain === 'history') {
+      expect(current.envelope.ciphertext).toBe('');
+      expect(current.redacted?.digest).toBe(await envelopeDigest(original));
+      expect(JSON.stringify(await a.exportReplica())).not.toContain(original.ciphertext);
+      expect(JSON.stringify(await b.exportReplica())).not.toContain(original.ciphertext);
+    } else expect(current.envelope).toEqual(original);
+  }
+  const freshCredentialsPath = join(directory, 'erasure-bootstrap.credential.json');
+  execFileSync(
+    binary,
+    [
+      '--database',
+      database,
+      'issue-device',
+      '--name',
+      'Erasure bootstrap',
+      '--server-url',
+      `http://127.0.0.1:${port}`,
+      '--output',
+      freshCredentialsPath,
+    ],
+    { stdio: 'ignore' },
+  );
+  const bootstrap = await local(JSON.parse(readFileSync(freshCredentialsPath, 'utf8')), sharedKey);
+  await new SyncCoordinator(bootstrap).sync();
+  expect(await bootstrap.historyVisits.count()).toBe(0);
+  for (const original of originals.filter((e) => e.domain === 'history')) {
+    expect((await bootstrap.operations.get(original.operation_id))!.envelope.ciphertext).toBe('');
+    // Real relay retries reserve identity and ACK without restoring the old body.
+    const owner = original.device_id === credentialsH.device_id ? a : b;
+    const reply = await new HttpTransport((await owner.state.get('local'))!).push(
+      [original],
+      (await a.state.get('local'))!.server_epoch!,
+    );
+    expect(reply.acknowledgements[0]!.sequence).toBe(
+      (await a.operations.get(original.operation_id))!.sequence,
+    );
+  }
+
   expect(JSON.stringify(await a.exportReplica())).not.toContain(url);
   expect(JSON.stringify(await b.exportReplica())).not.toContain('Private history title');
   const stored = execFileSync(
@@ -409,6 +471,12 @@ it('history retains original visits and suppresses delayed offline uploads after
   expect(stored).not.toContain('Private history title');
   expect(stored).not.toContain(sharedKey);
   expect(stored).not.toContain(await a.ensureHistoryIndexKey());
+  for (const original of originals.filter((e) => e.domain === 'history'))
+    expect(stored).not.toContain(original.ciphertext);
+  const counts = execFileSync('sqlite3', [database, 'SELECT COUNT(*) FROM history_redactions;'], {
+    encoding: 'utf8',
+  });
+  expect(Number(counts.trim())).toBe(3);
 });
 
 async function relayStatus(credentials: Credentials) {

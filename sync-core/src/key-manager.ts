@@ -403,9 +403,12 @@ export class KeyManager {
   async rekeyOutbox(): Promise<void> {
     const { local, secrets } = await keySnapshot(this.db),
       epoch = local.key_epoch ?? 1;
+    const claimed = new Set(
+      (await this.db.historyPurgeClaims.toArray()).map((r) => r.operation_id),
+    );
     const batch = envelopeBatch(
       (await this.db.outbox.orderBy('counter').limit(100).toArray()).filter(
-        (e) => e.key_epoch < epoch,
+        (e) => e.key_epoch < epoch && !claimed.has(e.operation_id),
       ),
     );
     if (!batch.length) return;
@@ -453,12 +456,22 @@ export class KeyManager {
     }
     await this.db.transaction(
       'rw',
-      [this.db.state, this.db.outbox, this.db.records, this.db.operations],
+      [
+        this.db.state,
+        this.db.outbox,
+        this.db.records,
+        this.db.operations,
+        this.db.historyPurgeClaims,
+      ],
       async () => {
         const latest = (await this.db.state.get('local'))!;
         if ((latest.key_epoch ?? 1) !== epoch || latest.server_epoch !== local.server_epoch)
           throw new Error('Keys changed during offline rekey. Pending ciphertext was retained.');
         for (const old of batch) {
+          if (await this.db.historyPurgeClaims.get(old.operation_id))
+            throw new Error(
+              'History erasure claimed this ciphertext during rekey. Retry synchronization.',
+            );
           const queued = await this.db.outbox.get(old.operation_id);
           if (!queued) continue; // An exact committed push already acknowledged it.
           if (!sameEnvelope(queued, old)) throw new Error('Queued envelope changed during rekey.');

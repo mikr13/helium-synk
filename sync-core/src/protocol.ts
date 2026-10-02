@@ -10,7 +10,7 @@ export interface Envelope {
   account_id: string;
   device_id: string;
   counter: number;
-  domain: 'diagnostic' | 'bookmark' | 'session' | 'history';
+  domain: 'diagnostic' | 'bookmark' | 'session' | 'history' | 'history-erasure';
   key_epoch: number;
   nonce: string;
   ciphertext: string;
@@ -20,9 +20,33 @@ export interface RecordEntry {
   sequence: number;
   envelope: Envelope;
 }
+export interface RedactedHistoryEntry {
+  sequence: number;
+  redacted: {
+    header: Omit<Envelope, 'nonce' | 'ciphertext'>;
+    digest: string;
+    certificate: Envelope;
+    certificate_sequence: number;
+  };
+}
+export interface HistoryPurgeRequest {
+  expected_epoch: string;
+  certificate: Envelope;
+  targets: { header: Omit<Envelope, 'nonce' | 'ciphertext'>; digest: string }[];
+}
+export interface HistoryPurgeReply {
+  server_epoch: string;
+  certificate_sequence: number;
+  redactions: {
+    operation_id: string;
+    sequence: number;
+    digest: string;
+    certificate_operation_id: string;
+  }[];
+}
 export interface PullPage {
   server_epoch: string;
-  records: RecordEntry[];
+  records: (RecordEntry | RedactedHistoryEntry)[];
   next_cursor: number;
   has_more: boolean;
 }
@@ -61,7 +85,7 @@ export function validateEnvelope(e: Envelope): void {
   if (
     !e ||
     e.protocol_version !== 1 ||
-    !['diagnostic', 'bookmark', 'session', 'history'].includes(e.domain) ||
+    !['diagnostic', 'bookmark', 'session', 'history', 'history-erasure'].includes(e.domain) ||
     !validKeyEpoch(e.key_epoch) ||
     !isUuid(e.operation_id) ||
     !isUuid(e.account_id) ||

@@ -4,13 +4,25 @@ import type { KeyTransport } from './key-state';
 import { projectHistory } from './history';
 import { projectSessions } from './sessions';
 import { projectBookmarks } from './bookmarks';
+import { historyErasureTargetHeader } from './history-erasure';
+import {
+  HistoryPurger,
+  applyHistoryErasure,
+  historyPurgeTables,
+  preserveHistoryIdentity,
+  sameHistoryHeader,
+  validateAuthorCounters,
+} from './history-purge';
 import { type LocalState, type LocalRecord, type StoredOperation, SynkDatabase } from './database';
 import {
   MAX_BATCH,
   envelopeBatch,
   isUuid,
   sameEnvelope,
+  validateEnvelope,
   type Envelope,
+  type HistoryPurgeRequest,
+  type HistoryPurgeReply,
   type PullPage,
   type PushReply,
   type ProgressReply,
@@ -18,6 +30,7 @@ import {
 
 export interface Transport {
   keys?: KeyTransport;
+  purge?(request: HistoryPurgeRequest): Promise<HistoryPurgeReply>;
   pull(cursor: number): Promise<PullPage>;
   push(envelopes: Envelope[], epoch: string): Promise<PushReply>;
   acknowledge(cursor: number, epoch: string): Promise<ProgressReply>;
@@ -46,6 +59,7 @@ export class HttpTransport implements Transport {
       method: body ? 'POST' : 'GET',
       headers: {
         Authorization: `Bearer ${this.state.credentials.token}`,
+        'X-Synk-History-Erasure': '1',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -82,6 +96,9 @@ export class HttpTransport implements Transport {
   }
   pull(cursor: number): Promise<PullPage> {
     return this.request(`/v1/sync/pull?cursor=${cursor}`);
+  }
+  purge(request: HistoryPurgeRequest): Promise<HistoryPurgeReply> {
+    return this.request('/v1/history/purge', request);
   }
   push(envelopes: Envelope[], epoch: string): Promise<PushReply> {
     return this.request('/v1/sync/push', { envelopes, expected_epoch: epoch });
@@ -142,35 +159,87 @@ export class SyncCoordinator {
       let previous = state.cursor;
       const records: LocalRecord[] = [];
       const operations: StoredOperation[] = [];
+      const byOperation = new Map<string, StoredOperation>();
+      const addOperation = (record: StoredOperation) => {
+        const existing = byOperation.get(record.operation_id);
+        if (existing) {
+          if (
+            existing.sequence !== record.sequence ||
+            !sameEnvelope(existing.envelope, record.envelope)
+          )
+            throw new Error('Conflicting repeated operation in a cursor page.');
+          return;
+        }
+        byOperation.set(record.operation_id, record);
+        operations.push(record);
+      };
+      const redactedSequences = new Map<string, number>();
       const { secrets } = await keySnapshot(this.db);
       for (const entry of page.records) {
         if (
           !Number.isSafeInteger(entry.sequence) ||
           entry.sequence <= previous ||
-          entry.sequence > page.next_cursor ||
-          entry.envelope.account_id !== state.credentials.account_id
+          entry.sequence > page.next_cursor
         )
           throw new Error('Invalid record sequence or account.');
         previous = entry.sequence;
+        const envelope = 'redacted' in entry ? entry.redacted?.certificate : entry.envelope;
         try {
-          const root = secrets.roots[entry.envelope.key_epoch];
+          validateEnvelope(envelope);
+          if (envelope.account_id !== state.credentials.account_id)
+            throw new Error('Invalid record account.');
+          const root = secrets.roots[envelope.key_epoch];
           if (!root)
             throw new Error('This content-key epoch is unavailable. Refresh keys before retrying.');
-          const payload = await decryptPayload(root, entry.envelope, state.history_index_key);
+          const payload = await decryptPayload(root, envelope, state.history_index_key);
           const record = {
-            operation_id: entry.envelope.operation_id,
-            envelope: entry.envelope,
+            operation_id: envelope.operation_id,
+            envelope,
             sequence: entry.sequence,
           };
-          if (payload.kind === 'diagnostic') records.push({ ...record, payload });
-          else operations.push({ ...record, payload });
+          if ('redacted' in entry) {
+            const { header, digest, certificate_sequence } = entry.redacted;
+            validateEnvelope({ ...header, nonce: '', ciphertext: '' });
+            if (
+              payload.kind !== 'history-erasure' ||
+              !Number.isSafeInteger(certificate_sequence) ||
+              certificate_sequence <= 0 ||
+              certificate_sequence === entry.sequence
+            )
+              throw new Error('Invalid certified history slot.');
+            const target = payload.targets.find(
+              (t) => t.receipt.operation_id === header.operation_id,
+            );
+            if (
+              !target ||
+              target.digest !== digest ||
+              !sameHistoryHeader(header, historyErasureTargetHeader(envelope, target))
+            )
+              throw new Error('Certified history slot differs from its encrypted proof.');
+            addOperation({ ...record, sequence: certificate_sequence, payload });
+            addOperation({
+              operation_id: header.operation_id,
+              envelope: {
+                ...historyErasureTargetHeader(envelope, target),
+                nonce: '',
+                ciphertext: '',
+              },
+              payload: target.receipt,
+              sequence: entry.sequence,
+              redacted: { digest, certificate_operation_id: envelope.operation_id },
+            });
+            redactedSequences.set(header.operation_id, entry.sequence);
+          } else if (payload.kind === 'diagnostic') records.push({ ...record, payload });
+          else addOperation({ ...record, payload });
         } catch (cause) {
-          await this.db.quarantine.put({
-            operation_id: entry.envelope.operation_id,
-            sequence: entry.sequence,
-            envelope: entry.envelope,
-            reason: cause instanceof Error ? cause.message : 'Unable to validate encrypted record.',
-          });
+          if (envelope && isUuid(envelope.operation_id))
+            await this.db.quarantine.put({
+              operation_id: envelope.operation_id,
+              sequence: entry.sequence,
+              envelope,
+              reason:
+                cause instanceof Error ? cause.message : 'Unable to validate encrypted record.',
+            });
           throw cause;
         }
       }
@@ -186,21 +255,9 @@ export class SyncCoordinator {
       try {
         await this.db.transaction(
           'rw',
-          [
-            this.db.records,
-            this.db.operations,
-            this.db.drafts,
-            this.db.replicas,
-            this.db.sessionReplicas,
-            this.db.historyReplicas,
-            this.db.historyErasedDrafts,
-            this.db.historyVisits,
-            ...this.db.historyCaptureTables(),
-            this.db.state,
-            this.db.quarantine,
-          ],
+          [...historyPurgeTables(this.db), this.db.replicas, this.db.sessionReplicas],
           async () => {
-            for (const record of [...records, ...operations]) {
+            for (const record of records) {
               const existing =
                 (await this.db.records.get(record.operation_id)) ??
                 (await this.db.operations.get(record.operation_id));
@@ -213,49 +270,37 @@ export class SyncCoordinator {
                 throw validationFailure;
               }
             }
+            await this.db.records.bulkPut(records);
+            for (const record of operations) {
+              let checked: StoredOperation;
+              try {
+                if (await this.db.historyErasedDrafts.get(record.operation_id))
+                  throw new Error('Received an unpublished erased history identity.');
+                checked = await preserveHistoryIdentity(this.db, record);
+              } catch (cause) {
+                validationFailure =
+                  cause instanceof Error ? cause : new Error('Invalid operation identity.');
+                throw validationFailure;
+              }
+              await this.db.operations.put(checked);
+            }
+            for (const record of operations)
+              if (record.payload.kind === 'history-erasure')
+                await applyHistoryErasure(this.db, record, redactedSequences);
             const bookmarkOperations = await this.db.bookmarkOperations();
-            const byId = new Map(bookmarkOperations.map((op) => [op.operation_id, op]));
-            for (const record of operations)
-              if (record.payload.kind === 'bookmark') byId.set(record.operation_id, record.payload);
-            const sessionParts = await this.db.sessionParts(),
-              sessionsById = new Map(sessionParts.map((p) => [p.operation_id, p]));
-            for (const record of operations)
-              if (record.payload.kind === 'session')
-                sessionsById.set(record.operation_id, record.payload);
-            const historyById = new Map(
-              (await this.db.historyOperations()).map((op) => [op.operation_id, op]),
-            );
-            for (const record of operations)
-              if (record.payload.kind === 'history')
-                historyById.set(record.operation_id, record.payload);
+            const sessionParts = await this.db.sessionParts();
+            const historyOperations = await this.db.historyOperations();
             let projection, sessions, history;
             try {
-              projection = projectBookmarks([...byId.values()]);
-              sessions = projectSessions([...sessionsById.values()]);
-              history = projectHistory([...historyById.values()]);
-              const counters = new Map<string, string>();
-              const headers = [
-                ...(await this.db.records.toArray()).map((r) => r.envelope),
-                ...(await this.db.operations.toArray()).map((r) => r.envelope),
-                ...(await this.db.drafts.toArray()).map((r) => r.header),
-                ...(await this.db.historyErasedDrafts.toArray()).map((r) => r.header),
-                ...records.map((r) => r.envelope),
-                ...operations.map((r) => r.envelope),
-              ];
-              for (const header of headers) {
-                const key = `${header.device_id}/${header.counter}`,
-                  old = counters.get(key);
-                if (old && old !== header.operation_id)
-                  throw new Error('Received author counter was reused across domains.');
-                counters.set(key, header.operation_id);
-              }
+              projection = projectBookmarks(bookmarkOperations);
+              sessions = projectSessions(sessionParts);
+              history = projectHistory(historyOperations);
+              await validateAuthorCounters(this.db);
             } catch (cause) {
               validationFailure =
-                cause instanceof Error ? cause : new Error('Invalid bookmark journal.');
+                cause instanceof Error ? cause : new Error('Invalid replicated journal.');
               throw validationFailure;
             }
-            await this.db.records.bulkPut(records);
-            await this.db.operations.bulkPut(operations);
             await this.db.replicas.put({ domain: 'bookmark', value: projection });
             await this.db.sessionReplicas.put({ id: 'session', value: sessions });
             await this.db.persistHistory(history);
@@ -314,6 +359,27 @@ export class SyncCoordinator {
       throw new Error('Transport lacks required content-key APIs. Pending work was retained.');
     // Establish/check epoch before acknowledging any queued work.
     await this.pull(transport);
+    const purger = transport.purge ? new HistoryPurger(this.db, transport.keys) : undefined;
+    if (purger) {
+      const purge = (request: HistoryPurgeRequest) => transport.purge!(request);
+      // Finish saved requests first; retries retain their original target digests.
+      await purger.resume(purge);
+      for (let batchNumber = 0; batchNumber < 20; batchNumber++) {
+        const staged = await purger.prepare();
+        await this.db.flushDrafts();
+        await purger.resume(purge);
+        const savedDraft = await this.db.drafts
+          .where('header.domain')
+          .equals('history-erasure')
+          .count();
+        if (!staged && !savedDraft && !(await purger.remaining())) break;
+      }
+      if (
+        (await purger.remaining()) ||
+        (await this.db.drafts.where('header.domain').equals('history-erasure').count())
+      )
+        throw new Error('More history erasure remains. Sync again to continue.');
+    }
     for (let batchNumber = 0; batchNumber < 20; batchNumber++) {
       await this.db.flushDrafts();
       if (keys) await keys.rekeyOutbox();
@@ -347,6 +413,8 @@ export class SyncCoordinator {
       );
     }
     await this.pull(transport);
+    if (purger && (await purger.remaining()))
+      throw new Error('New history erasure remains. Sync again to continue.');
     if (await this.db.pendingCount())
       throw new Error('More pending work remains. Sync again to continue.');
     await this.db.state.update('local', { last_synced: new Date().toISOString() });

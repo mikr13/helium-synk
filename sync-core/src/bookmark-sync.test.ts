@@ -133,7 +133,9 @@ describe('durable bookmark pipeline', () => {
           records: page.records.map((record) => ({
             ...record,
             envelope: Object.fromEntries(
-              Object.entries(record.envelope).reverse(),
+              Object.entries(
+                'envelope' in record ? record.envelope : record.redacted.certificate,
+              ).reverse(),
             ) as unknown as Envelope,
           })),
         };
