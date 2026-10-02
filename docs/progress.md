@@ -262,6 +262,8 @@ The single selected history fixture visit has been filtered and its review dialo
 
 ## Relay snapshots and restore guards — 2026-10-02
 
+`09bf1bd feat(server): snapshot backups and guard restore epochs` records this checkpoint.
+
 Added `backup --output` for consistent SQLite `VACUUM INTO` snapshots including committed WAL content. Outputs use exclusive creation/mode 0600, never overwrite an existing file, sync the file and parent before success and remove only their own failed ordinary-error output. Interrupted artifacts require integrity checking. `backup` and `mark-restored` require an existing database, preventing a typo from creating a fresh account.
 
 `mark-restored --expected-epoch` requires a stopped database, checked through a Unix process lease shared with `serve`. The lease canonicalizes ordinary paths and lasts for the process; older binaries do not honor it and must be stopped explicitly. Marking generates a new epoch, resets delivery/processed progress and removes stale pairing invitations in one transaction. It preserves account/credential hashes, records, sequence/counter identities and key-rotation registry. Wrong epochs and forced transaction failures leave the old state intact.
@@ -269,3 +271,9 @@ Added `backup --output` for consistent SQLite `VACUUM INTO` snapshots including 
 Four added Rust cases verify WAL contents/integrity/private token-hash-only snapshots, exact retry after reopening, no-overwrite/failure cleanup, epoch/reset rollback and process-lease exclusion/release. Two real-process cases exercise live backup and isolated older restore after acknowledged history erasure/key rotation, plus a completely lost relay database. Newer clients reject the older key/cursor frontier (HTTP 409); disk-loss credentials are rejected (401). Exact ordinary exports, keys, pending envelopes/domain drafts, later acknowledged local notes and deletion proofs remain intact. No missing operation replay or client resume is claimed.
 
 All 237 TS tests, 44 Rust tests and 16 real-process integrations pass, along with typechecks, production WXT build, rustfmt/clippy and formatting/version/Changeset checks. The server Changeset is recorded without a release bump. [relay-recovery.md](relay-recovery.md) documents the commands and remaining replay/resume, retained-backup deletion, physical interruption/disk-full and deployment gates. No native profile or running pilot relay was upgraded for this checkpoint. Both checklist copies are updated.
+
+## Native worker termination and revival — 2026-10-02
+
+Navigated Test 1’s only extension dashboard to Helium’s service-worker manager. The sole registration matched approved extension `icjnepaninedejemijejhdoofomipbgm`. With DevTools/debug-on-start disabled, Stop changed its visible Running Status from RUNNING to STOPPED (renderer process 0). Saved `work/native-user-profiles/worker-stopped.png`, then closed that internal manager.
+
+Edited the existing fixture bookmark in Test 1’s native manager to `After worker restart · Test 1`. Without opening the source dashboard or clicking Start, Test 2’s native manager received the title with the original URL and one link. Saved `work/native-user-profiles/worker-revival-bookmark-pass.png`. This proves automatic revival and resumed bookmark delivery after verified worker termination; it does not distinguish native-event waking from an intervening alarm or verify full browser restart. Removal confirmation, hours-long outage and remaining native acceptance permutations remain open. Both checklist copies are updated; no normal profile or production setting changed.

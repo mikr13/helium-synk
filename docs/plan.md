@@ -8,19 +8,19 @@
 
 Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress; every whole milestone and native acceptance gate remains open.
 
-| Checkpoint                                                         | Status                                                             | Commit / evidence                                                      |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                              | `a0429bd` and earlier checkpoints; native gates open                   |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                 | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint    |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                 | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint    |
-| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open               | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                      |
-| Logo and favicon                                                   | Complete branding implementation checkpoint                        | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass      |
-| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI          |
-| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                      |
-| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                    |
-| Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open    | 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md) |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/short outage pass; removal/lifecycle gates open    | `b753fce`, `483b08b`, `1d00114`; [native smoke](native-smoke.md)       |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                      |
+| Checkpoint                                                         | Status                                                             | Commit / evidence                                                                 |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                              | `a0429bd` and earlier checkpoints; native gates open                              |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                 | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint               |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                 | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint               |
+| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open               | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                                 |
+| Logo and favicon                                                   | Complete branding implementation checkpoint                        | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass                 |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI                     |
+| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                                 |
+| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                               |
+| Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open    | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md) |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/outage/worker pass; removal/restart gates open     | `b753fce`, `483b08b`, `1d00114`, `448dd49`; [native smoke](native-smoke.md)       |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                                 |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
 
@@ -289,7 +289,8 @@ Installed Helium is 0.18.1.1. Empty directories and service readiness do not est
 - [x] Verify original-timestamp history from both named source profiles and filter the real synced timeline.
 - [x] Verify a short native relay outage: saved local note/bookmark/closed-window work reaches the other profile after restart, without duplicate fixtures.
 - [ ] Confirm and verify selected test-visit removal; its one-visit review dialog is prepared.
-- [ ] Verify DevTools-closed worker/browser restart, hours-long outage and the remaining native acceptance permutations.
+- [x] Verify worker stop/revival with DevTools closed: observe STOPPED, close the manager, edit a native bookmark and receive it in Test 2 without opening the source dashboard.
+- [ ] Verify full browser restart, hours-long outage and the remaining native acceptance permutations.
 
 See [native-smoke.md](native-smoke.md) for exact build/profile/version/results and evidence boundaries. These checks do not complete a whole milestone or production deployment gate.
 
