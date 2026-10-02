@@ -21,7 +21,7 @@ Record actual results below or in `docs/progress.md`: date, Helium/Chromium vers
 
 ## Native run — 2026-10-02
 
-Build: frozen `abc7bea` extension/server, extension version 0.1.0; Helium 0.18.1.1 / Chromium 154.0.0.0. User-created profiles: **Helium Sync Test 1** and **Helium Sync Test 2**. DevTools remain closed. Fresh isolated relay: `http://127.0.0.1:4321`.
+Build: initially frozen `abc7bea` extension/server; extension updated at `1d00114` for the closure fix, retaining its origin and saved state. Extension version 0.1.0; Helium 0.18.1.1 / Chromium 154.0.0.0. User-created profiles: **Helium Sync Test 1** and **Helium Sync Test 2**. DevTools remain closed. Fresh isolated relay: `http://127.0.0.1:4321`.
 
 - [x] Load the approved fresh test copy in both profiles. Original copy is disabled and retained, with Test 1's local replica exported.
 - [x] Enroll Test 1 with a fresh credential and pair Test 2 through the private single-use bundle; both show Connected and separate installations.
@@ -30,6 +30,9 @@ Build: frozen `abc7bea` extension/server, extension version 0.1.0; Helium 0.18.1
 - [x] Verify current/closed session capture, single-tab restoration and full-window restoration, including order/pin/active selection and named group; the native closure bug was fixed and repeated successfully.
 - [x] Verify real visits from both source profiles arrive with original timestamps.
 - [ ] Verify selected history removal.
-- [ ] Verify short relay outage and worker/browser restart.
+- [x] Verify short relay outage: queue a note, rename a bookmark and close a fixture window while offline; both profiles catch up with no duplicate fixture entries after restarting the same relay/database.
+- [ ] Verify worker/browser restart.
+
+The outage lasted approximately two minutes (14:36–14:38). Test 1 showed Waiting to sync, saved pending work and `Native outage note · Test 1` as QUEUED LOCALLY. Its one-tab closed snapshot retained `fixture=outage-a` at 14:36:55. After restart, both profiles showed Connected/zero pending uploads, Test 2 had the acknowledged note and exactly one new closed-window entry, and its native bookmark manager showed `Offline rename from Test 1` with the original URL and no duplicate. Saved evidence: ignored `work/native-user-profiles/outage-bookmark-pass.png`. The full-window restoration journal also reports 2/2 pages opened, 1/1 windows ready, complete.
 
 The first attempt with the earlier kit credential was rejected because the relay already had a registered public identity and this installation lacked its private wrapping key. No synchronized content was erased. Fresh enrollment passed without changing the identity guard. The cause of that earlier credential use is unconfirmed. Private bundles/test assets remain in ignored `work/native-user-profiles`; no native milestone exit gate is complete.

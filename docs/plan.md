@@ -18,7 +18,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
 | History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
 | Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                 |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Native pairing/domains pass; removal/lifecycle gates open          | Two named test profiles; native-smoke.md                            |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/short outage pass; removal/lifecycle gates open    | `b753fce`, `483b08b`, `1d00114`; [native smoke](native-smoke.md)    |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
@@ -279,6 +279,18 @@ Expiry is off until selected. Offline source/peer reconciliation can delay remov
 - [ ] Launch/load/pair the disposable profiles with the user and record actual native API, restoration and lifecycle results.
 
 Installed Helium is 0.18.1.1. Empty directories and service readiness do not establish native acceptance. Session/retained-copy policy, scale/recovery and the hours-long outage remain before full acceptance and section 10 deployment.
+
+## Native Helium first pass — 2026-10-02
+
+- [x] Load/enroll/pair the approved fresh build in Helium Sync Test 1 and Test 2; exchange acknowledged notes with distinct installation identities.
+- [x] Verify native bookmark folder/link creation and reverse title edit, with recovery exports saved before enabling the merge.
+- [x] Verify current/closed session capture and real single-tab/full-window restoration with pin/order/group/active selection. Fix and repeat the teardown-layout regression (`1d00114`); restoration progress completes 2/2 pages.
+- [x] Verify original-timestamp history from both named source profiles and filter the real synced timeline.
+- [x] Verify a short native relay outage: saved local note/bookmark/closed-window work reaches the other profile after restart, without duplicate fixtures.
+- [ ] Confirm and verify selected test-visit removal; its one-visit review dialog is prepared.
+- [ ] Verify DevTools-closed worker/browser restart, hours-long outage and the remaining native acceptance permutations.
+
+See [native-smoke.md](native-smoke.md) for exact build/profile/version/results and evidence boundaries. These checks do not complete a whole milestone or production deployment gate.
 
 ## 1. Product requirements and boundaries
 

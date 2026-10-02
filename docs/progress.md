@@ -251,3 +251,11 @@ Test 1 captured a two-tab localhost fixture window with its first tab pinned and
 After typechecks, 237 TS tests, a production WXT build and all 16 real-relay cases passed, updated/reloaded only the approved native test copy in both profiles. The repeated closure produced exactly one new archive entry with the original pin and named group. Restoring its full window in Test 2 opened two ordered real tabs, first pinned and second active in Synk fixed smoke. The two original failed-run entries remain for comparison. Evidence: ignored work/native-user-profiles/session-window-restored.png.
 
 Native history visits from Test 1 (13:21:43/13:22:00) and Test 2 (13:32:23) arrived in both dashboards with their original source labels/times. New-only capture was used. Selected removal, short outage, full worker/browser lifecycle and hours-long outage gates remain open. Extension reload retained enrollment, shared data and collection settings; it is not a full browser restart.
+
+## Native short relay outage — 2026-10-02
+
+Stopped only the isolated port-4321 relay, keeping its existing database. With DevTools closed, Test 1 closed a loaded one-tab `fixture=outage-a` window, saved `Native outage note · Test 1` (14:37:09), and renamed the native test bookmark to `Offline rename from Test 1`. Its dashboard showed Waiting to sync, queued local work and the intact closed snapshot (14:36:55). Existing notes/history remained available.
+
+Restarted the same frozen server/database after approximately two minutes. Test 1 returned to Connected and the note became server-acknowledged; Test 2 automatically received it and exactly one new closed-window entry containing the original fixture URL. Both showed zero pending uploads. Test 2’s native bookmark manager displayed the offline rename with the original URL and no duplicate. Evidence is ignored `work/native-user-profiles/outage-bookmark-pass.png`. Also inspected Test 2’s full-window restoration journal: 2/2 pages opened, 1/1 windows ready, complete; both single-page attempts are complete.
+
+The single selected history fixture visit has been filtered and its review dialog prepared, awaiting at-action permanent-deletion confirmation. Full browser/worker restart and hours-long native outage remain unverified. No production service or normal profile changed. Both checklist copies record this checkpoint.
