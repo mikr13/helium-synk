@@ -286,6 +286,8 @@ The latest recorded verification remains 237 TypeScript tests, 44 Rust tests and
 
 ## Guided routes and consistent shadcn layout — 2026-10-02
 
+Checkpoint commit: `1cee5fb feat(extension): guide setup with routed shadcn pages`.
+
 Replaced the scroll-only options page with 15 TanStack Router views and a shared status provider. Setup separates the first connection, invitation pairing and fresh-credential recovery, accepts private files with optional paste fallback and generates initial keys locally. Successful setup leads to opt-in collection choices. Recovery/security/diagnostics have their own settings routes; History defaults to new visits. Existing APIs, identities, saved pairing retry/discard, bookmark preview/backup gates and removal/key-rotation reviews remain in use. No backend protocol changed.
 
 Added official shadcn Field, Item and Empty source components. Forms use explicit label/control/helper/error composition; cards use headers/content/footers and action links use Button composition. Removed conflicting label/form margins and stale layout rules. Desktop History’s textarea/select now start at the same Y position, and all four filters share label/control baselines. Standard inputs/selects/buttons are 40 px tall with 8 px label gaps; storage metrics and narrow connection actions align.

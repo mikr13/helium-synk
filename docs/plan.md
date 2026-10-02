@@ -22,7 +22,7 @@ Continue disposable-profile testing and simplify the extension setup/navigation.
 | Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                                    |
 | Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open    | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md)      |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/outage/worker pass; removal/restart gates open     | `b753fce`, `483b08b`, `1d00114`, `448dd49`, `47567e4`; [native smoke](native-smoke.md) |
-| Guided setup, separate routes and consistent shadcn spacing        | Implemented and rendered-preview verified; new native pass open    | This checkpoint; 237 TS tests, production build and route/layout checks                |
+| Guided setup, separate routes and consistent shadcn spacing        | Implemented and rendered-preview verified; new native pass open    | `1cee5fb`; 237 TS tests, production build and route/layout checks                      |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                                      |
 
 Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrations**, typechecks, production WXT build, rustfmt/clippy, formatting, version consistency and Changeset status. Latest native checkpoint: `47567e4`; closure fix: `1d00114`; backup/restore guards: `09bf1bd`. No release/version bump or production deployment has been performed. This UI checkpoint reruns TypeScript checks, 237 TS tests and the production WXT build. All 16 real-process integrations also passed during this work; the 44 Rust test result is from the preceding server checkpoint. Preview replies are synthetic; native profiles still use the earlier approved test build.
@@ -343,6 +343,8 @@ See [native-smoke.md](native-smoke.md) for exact build/profile/version/results a
 Read [relay-recovery.md](relay-recovery.md) for exact commands and current boundaries. These operations were tested in isolated fixtures; the native smoke relay and production settings were not upgraded.
 
 ## Routed setup and shared shadcn spacing checkpoint — 2026-10-02
+
+Checkpoint commit: `1cee5fb feat(extension): guide setup with routed shadcn pages`.
 
 - [x] Replace the long options dashboard with 15 focused TanStack Router views; mount only the active collection/settings page.
 - [x] Guide first-device connection, invitation pairing and recovery through file-based forms, with optional paste fallback and local key generation.
