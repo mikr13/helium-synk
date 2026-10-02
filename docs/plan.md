@@ -4,11 +4,11 @@
 
 **Updated:** 2026-10-02
 
-**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` and the native UI/startup follow-up at `ae87613` below.
+**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` the native UI/startup follow-up at `ae87613`, and selected history removal at `a97063c`. The saved-collection action follow-up below is verified and awaiting its checkpoint commit.
 
 ## Current goal status
 
-Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. Native navigation, saved identity/settings, two-way diagnostic messages and the approved single-visit removal pass. A fresh options tab recovered rendering without quitting Helium; the removed visit stays absent after manual sync/reload in both profiles, while native history and the neighboring fixture remain. Fresh file-based native onboarding and user feedback remain open. The native first pass has also verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
+Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. Native navigation, saved identity/settings, two-way diagnostic messages and the approved single-visit removal pass. A fresh options tab recovered rendering without quitting Helium; the removed visit stays absent after manual sync/reload in both profiles, while native history and the neighboring fixture remain. Saved collections now offer Open even when capture is off; Test 2’s 98 saved snapshots remain browsable with capture paused. Fresh file-based native onboarding and user feedback remain open. The native first pass has also verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
 
 | Checkpoint                                                         | Status                                                              | Commit / evidence                                                                      |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -393,6 +393,19 @@ Tested UI/background baseline: `ae87613` / `1d00114`; follows tracking commit `b
 - [ ] Complete native clear/reconnect, full restart/endurance, fresh file-based onboarding and the remaining acceptance gates. This single-visit pass does not complete history erasure or a whole milestone.
 
 Proof files and exact observations are recorded in [native-smoke.md](native-smoke.md) and [progress.md](progress.md). The prior restart request became unnecessary for this removal check; no browser quit, profile reset, key change or relay upgrade occurred.
+
+## Saved collection action follow-up — 2026-10-02
+
+Follows selected history-removal checkpoint `a97063c`. This extension patch changes action labels only.
+
+- [x] Offer Open for collections with saved data even when capture is off; retain Set up for empty, disabled collections. Keep the existing destination routes and collection opt-in controls.
+- [x] Verify all three saved/off and empty/off action branches in the rendered preview, with no fresh warning/error logs.
+- [x] Update only packaged UI assets at the approved native path after a rollback snapshot; preserve identical background bytes, named manifest, permissions, origin, identities and relay.
+- [x] Reload Test 2: Home shows Sessions Off, 98 saved snapshots and Open sessions. Clicking opens the saved current-session list while the page still says Capture is paused and offers Enable session capture.
+- [x] Pass both typechecks, 237 TS tests and the production WXT build; record an extension patch Changeset without a version bump.
+- [ ] Complete the fresh native onboarding, clear/reconnect, restart/endurance and other acceptance gates above.
+
+Scoped native proof: `work/native-user-profiles/open-saved-sessions-home.png` and `open-saved-sessions-paused.png`. This does not establish fresh enrollment, a browser restart or all native acceptance permutations.
 
 ## 1. Product requirements and boundaries
 

@@ -34,6 +34,7 @@ export function CollectionChoices() {
       title: 'Bookmarks',
       icon: Bookmark,
       enabled: status.bookmarks.phase === 'active',
+      hasSavedData: status.bookmarks.nodes > 0,
       description: 'Keep the same links and folders everywhere.',
       count: `${status.bookmarks.nodes} shared entries`,
     },
@@ -42,6 +43,7 @@ export function CollectionChoices() {
       title: 'Sessions',
       icon: PanelsTopLeft,
       enabled: status.sessions.enabled,
+      hasSavedData: status.sessions.snapshots > 0,
       description: 'Pick up your open tabs and closed windows.',
       count: `${status.sessions.snapshots} saved snapshots`,
     },
@@ -50,13 +52,14 @@ export function CollectionChoices() {
       title: 'History',
       icon: History,
       enabled: status.history.enabled,
+      hasSavedData: status.history.visits > 0,
       description: 'Find pages visited on any connected device.',
       count: `${status.history.visits} saved visits`,
     },
   ] as const;
   return (
     <div className="collection-grid">
-      {collections.map(({ to, title, icon: Icon, enabled, description, count }) => (
+      {collections.map(({ to, title, icon: Icon, enabled, hasSavedData, description, count }) => (
         <Card key={to} className="collection-card">
           <CardHeader>
             <div className="collection-heading">
@@ -72,7 +75,7 @@ export function CollectionChoices() {
           <CardFooter>
             <Button asChild variant="outline" className="w-full justify-between">
               <Link to={to}>
-                {enabled ? 'Open' : 'Set up'} {title.toLowerCase()}
+                {enabled || hasSavedData ? 'Open' : 'Set up'} {title.toLowerCase()}
                 <ArrowRight aria-hidden="true" />
               </Link>
             </Button>

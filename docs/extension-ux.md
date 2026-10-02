@@ -32,6 +32,8 @@ One shared provider polls the existing background status every two seconds. It s
 
 Files are limited to 1 MiB, parsed locally, and sent through the existing validated enrollment/pairing APIs. Failed or superseded reads do not retain a previous file's contents. First enrollment creates keys locally; later devices use private invitations. Recovery still requires a fresh installation credential. The server owner's CLI instructions are optional help; running a server remains a technical prerequisite, not an automated hosting flow.
 
+Home offers Open for any collection with saved data, including paused collections; empty disabled collections offer Set up. Opening a saved collection does not enable capture.
+
 History setup defaults to **New visits only**; importing older visits remains an explicit choice. Bookmark merging still requires a preview and saving its recovery copy. Removal warnings describe live synced-record erasure and the native/backup copies that remain. Device removal and key rotation keep their existing review/retry behavior.
 
 ## Component and spacing revision

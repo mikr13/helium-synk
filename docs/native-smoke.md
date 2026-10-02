@@ -77,3 +77,11 @@ A read-only query of the isolated relay finds one erasure certificate and one re
 Saved fixture-only proof in ignored `work/native-user-profiles`: `history-removal-test1-after-sync-reload.png`, `history-removal-test2-after-sync.png`, `history-removal-test2-after-reload.png`, `history-removal-neighbor-preserved.png` and `history-native-fixture-preserved.png`.
 
 An all-profile clear review was opened accidentally while navigating, then cancelled immediately. No broad clear was confirmed and no duplicate single deletion was sent. Native interaction was briefly interrupted when the user changed Helium; fresh state was read before continuing. No whole-app quit, profile reset, key change or relay upgrade occurred. Full browser restart, native clear/reconnect, retained-copy policy, endurance and complete milestone acceptance remain open.
+
+## Open saved sessions while capture is paused — 2026-10-02
+
+- [x] Update only packaged UI assets at the existing approved path, preserving the named manifest, permissions, background bytes, origin and identities; save `extension-before-saved-collections` for rollback.
+- [x] Reload Test 2 Home: Sessions remains Off, with 98 saved snapshots and the corrected Open sessions action.
+- [x] Click Open sessions: the focused page displays the saved current-session row while Capture is paused and Enable session capture remain visible. No capture toggle or restoration was submitted.
+
+Scoped proof: ignored `open-saved-sessions-home.png` and `open-saved-sessions-paused.png` in `work/native-user-profiles`. Typechecks, 237 TS tests and production build pass. This action-label follow-up leaves the other native/full acceptance gates open.
