@@ -4,7 +4,7 @@
 
 **Updated:** 2026-10-02
 
-**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` the native UI/startup follow-up at `ae87613`, and selected history removal at `a97063c`. The saved-collection action follow-up is committed at `5df642d`; native root-move interaction is recorded at `027f7d7` and remains unverified below. The native 24-tab restore and focused session-detail route checkpoint follow below.
+**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` the native UI/startup follow-up at `ae87613`, and selected history removal at `a97063c`. The saved-collection action follow-up is committed at `5df642d`; native root-move interaction is recorded at `027f7d7` and remains unverified below. The native 24-tab restore and focused session-detail route checkpoint are committed at `f688edd` below.
 
 ## Current goal status
 
@@ -431,6 +431,8 @@ Tested UI/background: `5df642d` / `1d00114`, at the existing approved native ori
 All destination tabs were visible in the first observation, returned about 2.3 seconds after the click; journal completion was checked separately afterwards. Exact peer delivery latency and full page load timing were not measured. Proof: `large-restore-source-24-tabs.png`, `large-restore-destination-24-tabs.png` and `large-restore-journal-complete.png` in ignored `work/native-user-profiles`.
 
 ## Focused saved-session route checkpoint — 2026-10-02
+
+Checkpoint commit: `f688edd fix(extension): open saved sessions on a focused page`.
 
 The 24-tab native test exposed offscreen restore controls beneath the old snapshot list. This small UI change brings the current options total to 16 routes; session behavior/background bytes are unchanged.
 

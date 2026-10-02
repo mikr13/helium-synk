@@ -98,6 +98,8 @@ Ignored scoped evidence: `bookmark-cut-undo-duplicate.png` (intermediate view) a
 
 ## Native 24-tab restoration and focused detail page — 2026-10-02
 
+Checkpoint commit: `f688edd fix(extension): open saved sessions on a focused page`.
+
 - [x] Create and close one owned Test 1 window containing ordered localhost `large-restore-a-01` through `large-restore-a-24` fixture URLs. Test 2 receives one closed window with 24 tabs, original 20:38:23 capture time and the last tab active.
 - [x] Submit Open window once; the destination has exactly 24 ordered tabs and tab 24 active. The journal reaches 24/24 pages, 1/1 windows, complete, zero skipped without a repeated request or manual resume. This fixture requires more than one bounded 40-step pass.
 - [x] Close only the owned destination window after saving proof; retain the source snapshot/journal. Test 2 capture stays paused and DevTools remain closed.

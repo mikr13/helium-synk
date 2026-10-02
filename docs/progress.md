@@ -338,6 +338,8 @@ Saved ignored evidence: `bookmark-cut-undo-duplicate.png` records the intermedia
 
 ## Native 24-tab restoration and focused session route — 2026-10-02
 
+Checkpoint commit: `f688edd fix(extension): open saved sessions on a focused page`.
+
 A single native Test 1 fixture window with 24 ordered localhost tabs was captured and closed. Test 2 restored it through one Open window request: exactly 24 destination tabs in order, tab 24 active, journal 24/24 pages and 1/1 windows complete with zero skipped. Automatic bounded passes completed without manual resume; forced interruption and multiple windows remain unverified. The first observation returned about 2.3 seconds after the click; exact delivery and full page loading were not measured. Only owned fixture windows were closed; the saved snapshot/journal remain and Test 2 capture stays paused.
 
 Native use exposed that View placed restore controls below the entire snapshot list. `/sessions/$snapshotId` now mounts one focused detail page, showing controls and snapshot-specific progress before tabs. Type/source search parameters preserve filters through return links, browser Back and direct reload. Missing snapshots have an error/retry/return path; obsolete unmounted requests are ignored. Existing restoration/background contracts are unchanged.
