@@ -29,7 +29,7 @@ Build: initially frozen `abc7bea` extension/server; extension updated at `1d0011
 - [x] Create `Synk Native Smoke` and its fixture link in Test 1; Test 2 receives both; Test 2 renames the link to `Renamed from Test 2` and Test 1’s native bookmark manager shows the rename.
 - [x] Verify current/closed session capture, single-tab restoration and full-window restoration, including order/pin/active selection and named group; the native closure bug was fixed and repeated successfully.
 - [x] Verify real visits from both source profiles arrive with original timestamps.
-- [ ] Verify selected history removal.
+- [x] Verify the approved single selected history visit stays absent after manual sync/reload in both profiles, preserving the neighboring fixture and native browser history; see the acceptance follow-up below.
 - [x] Verify short relay outage: queue a note, rename a bookmark and close a fixture window while offline; both profiles catch up with no duplicate fixture entries after restarting the same relay/database.
 - [x] Verify worker stop/revival with DevTools closed: after observing STOPPED and closing the manager, a native bookmark edit reaches the other profile without opening the source dashboard or manually starting the worker.
 - [ ] Verify full browser restart.
@@ -62,8 +62,18 @@ Updated only `options.html`, `restore.html`, `chunks/` and `assets/` at the same
 - [x] Fix the enrolled startup label: the pre-transport state now says Checking connection, while failed/unavailable transport remains Offline. Fix recovery guidance to the new Settings → Recovery & backups route. Typechecks, 237 TS tests and production build pass after these wording changes; synthetic rendered checking/offline branches have no fresh warning/error logs.
 - [ ] Verify fresh file-based enrollment/pairing/recovery in native Helium. Existing test profiles were preserved; no new invitation or identity was created during this pass.
 - [x] Receive at-action approval and click Confirm removal for the one original Test 1 visit `fixture=session-a-1` at 13:21:43.
-- [ ] Verify selected history removal after recovering browser rendering. The source review remained busy; Test 2's count dropped from 66 to 65, but navigating to History left Home content visible and reloading removed the page content. Helium's own Extensions manager also renders blank. The healthy relay/process and existing asset references were verified; no cause or durable deletion outcome is inferred from the count alone. No duplicate removal request was sent. Whole-app restart approval is pending.
+- [x] Verify selected history removal after recovering browser rendering; see the acceptance follow-up below. Initially the source review remained busy, Test 2's count dropped from 66 to 65, navigation left stale Home content, and reload/Extensions rendered blank. That intermediate state did not establish success. A fresh options tab subsequently rendered correctly without a whole-app restart; no cause is inferred.
 
 Saved proof: ignored `routed-ui-test1-add-device.png`, `routed-ui-test1-settings.png`, `routed-ui-test1-diagnostics.png`, `routed-ui-test2-diagnostics.png`, `routed-ui-history-removal-review.png` and `native-extensions-blank.png` in the native kit; `routed-ui-update.json` records the reversible asset update.
 
 The first Recovery click while expanded Settings fields placed the link offscreen had no effect; collapsing/reloading Settings exposed it and the visible link worked. The macOS Alt+Left attempt had no effect; Back was verified through the browser toolbar. Pre-existing extension Errors showed an earlier relay connection refusal before reload; that log was not cleared and DevTools were not opened. No complete console-clean native claim is made. History currently includes native extension-page visits, including our own navigation; exact URL exclusions are user-controlled. Similar displayed timestamps alone do not establish duplicate native visit identities.
+
+## Selected history removal acceptance — 2026-10-02
+
+The existing approved single deletion was verified without submitting it again. Test 2's fresh options tab rendered; Test 1's original review subsequently closed. Both profiles show zero matches for `fixture=session-a-1` after manual Sync now and reloading the direct History route. Their Home pages report Connected / Everything is up to date. Test 1 still shows the neighboring synced `fixture=session-a-2` visit at 13:22:00. Its native History page, filtered to `fixture=session-a-1`, finds one original browser-owned entry. That owned verification tab was closed afterwards.
+
+A read-only query of the isolated relay finds one erasure certificate and one redacted operation marked `purged = 1`, with nonce and ciphertext lengths both zero. This verifies a live relay receipt, not deletion of physical SQLite/WAL pages or historical backups. Native browser history remains as the removal warning discloses.
+
+Saved fixture-only proof in ignored `work/native-user-profiles`: `history-removal-test1-after-sync-reload.png`, `history-removal-test2-after-sync.png`, `history-removal-test2-after-reload.png`, `history-removal-neighbor-preserved.png` and `history-native-fixture-preserved.png`.
+
+An all-profile clear review was opened accidentally while navigating, then cancelled immediately. No broad clear was confirmed and no duplicate single deletion was sent. Native interaction was briefly interrupted when the user changed Helium; fresh state was read before continuing. No whole-app quit, profile reset, key change or relay upgrade occurred. Full browser restart, native clear/reconnect, retained-copy policy, endurance and complete milestone acceptance remain open.

@@ -8,22 +8,22 @@
 
 ## Current goal status
 
-Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. Native navigation, saved identity/settings and two-way diagnostic messages passed earlier in this run. The later approved removal check is interrupted by blank native browser pages; recovery, fresh file-based native onboarding and user feedback remain open. The native first pass has verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
+Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. Native navigation, saved identity/settings, two-way diagnostic messages and the approved single-visit removal pass. A fresh options tab recovered rendering without quitting Helium; the removed visit stays absent after manual sync/reload in both profiles, while native history and the neighboring fixture remain. Fresh file-based native onboarding and user feedback remain open. The native first pass has also verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
 
-| Checkpoint                                                         | Status                                                             | Commit / evidence                                                                      |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                              | `a0429bd` and earlier checkpoints; native gates open                                   |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                 | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint                    |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                 | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint                    |
-| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open               | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                                      |
-| Logo and favicon                                                   | Complete branding implementation checkpoint                        | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass                      |
-| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI                          |
-| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                                      |
-| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                                    |
-| Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open    | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md)      |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/outage/worker pass; removal/restart gates open     | `b753fce`, `483b08b`, `1d00114`, `448dd49`, `47567e4`; [native smoke](native-smoke.md) |
-| Guided setup, separate routes and consistent shadcn spacing        | Preview and native navigation/message pass; fresh onboarding open  | `1cee5fb`; 237 TS tests, production build and route/layout checks                      |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                                      |
+| Checkpoint                                                         | Status                                                              | Commit / evidence                                                                      |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                               | `a0429bd` and earlier checkpoints; native gates open                                   |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                  | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint                    |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                  | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint                    |
+| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open                | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                                      |
+| Logo and favicon                                                   | Complete branding implementation checkpoint                         | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass                      |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open                | `93bea2c`; 176 TS, 11 real-process tests, production build/UI                          |
+| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open     | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                                      |
+| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending  | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                                    |
+| Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open     | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md)      |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/removal/short outage/worker pass; restart gate open | `b753fce`, `483b08b`, `1d00114`, `448dd49`, `47567e4`; [native smoke](native-smoke.md) |
+| Guided setup, separate routes and consistent shadcn spacing        | Preview and native navigation/message pass; fresh onboarding open   | `1cee5fb`; 237 TS tests, production build and route/layout checks                      |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                     | Section 10 onward                                                                      |
 
 Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrations**, typechecks, production WXT build, rustfmt/clippy, formatting, version consistency and Changeset status. Worker checkpoint: `47567e4`; closure fix: `1d00114`; backup/restore guards: `09bf1bd`. No release/version bump or production deployment has been performed. This UI checkpoint reruns TypeScript checks, 237 TS tests and the production WXT build. All 16 real-process integrations also passed during this work; the 44 Rust test result is from the preceding server checkpoint. Synthetic previews establish layout/setup behavior. Both native profiles now use the revised UI assets with the same approved background bytes, permissions, extension origin and relay.
 
@@ -31,7 +31,8 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 
 - [x] Load the revised packaged UI in Helium Sync Test 1 and Test 2; verify navigation, direct reload/back, legacy hash migration and two-way diagnostics while preserving installation identities and collection settings.
 - [ ] Verify fresh file-based native enrollment/pairing/recovery and obtain user feedback on clarity.
-- [ ] Verify the approved single native test-visit removal after recovering Helium's blank pages, then native clear/reconnect checks.
+- [x] Verify the approved single native test-visit removal after manual sync and reload in both profiles; preserve the neighboring fixture and native browser history.
+- [ ] Verify native URL/source/global clears and delayed reconnect/reconciliation.
 - [ ] Verify full browser restart, alarm behavior and an hours-long offline run with concurrent domain edits.
 - [ ] Complete the native bookmark conflict/root/interruption matrix and large/multi-window interrupted restores; measure latency.
 - [ ] Implement session expiry/count/size policy and finish unresolved/shared capture, general quarantine and historical backup-copy policy.
@@ -41,7 +42,7 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 
 Both checklist copies are updated at checkpoints and commits. [progress.md](progress.md) identifies the evidence for each implementation step; [native-smoke.md](native-smoke.md) records observed browser results. Section 10 production deployment stays deferred until implementation and joint acceptance pass.
 
-**Testing readiness:** The basic native smoke pass is underway in Helium Sync Test 1 and Test 2, on Helium 0.18.1.1 / Chromium 154.0.0.0. The single selected history removal was approved and submitted; its end-to-end result remains unverified while Helium's own Extensions manager and the test page render blank. The relay remains healthy; a whole-app restart awaits approval. Full browser restart, hours-long outage, remaining native permutations, session/retained-copy policy, scale and complete recovery are still open. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
+**Testing readiness:** The basic native smoke pass is underway in Helium Sync Test 1 and Test 2, on Helium 0.18.1.1 / Chromium 154.0.0.0. The approved single history removal passes after manual sync/reload in both profiles, with native history and the neighboring fixture preserved. Fresh tab navigation recovered rendering without a whole-app restart; the earlier blank-page cause remains unconfirmed. Full browser restart, hours-long outage, remaining native permutations, session/retained-copy policy, scale and complete recovery are still open. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
 
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
 **Phase-one scope:** Bookmarks, history, current sessions, closed/previous sessions, encryption, offline operation, and self-hosting.  
@@ -325,7 +326,7 @@ The earlier empty kit directories were not used for the native pass. The approve
 - [x] Verify current/closed session capture and real single-tab/full-window restoration with pin/order/group/active selection. Fix and repeat the teardown-layout regression (`1d00114`); restoration progress completes 2/2 pages.
 - [x] Verify original-timestamp history from both named source profiles and filter the real synced timeline.
 - [x] Verify a short native relay outage: saved local note/bookmark/closed-window work reaches the other profile after restart, without duplicate fixtures.
-- [ ] Verify the approved selected test-visit removal; see the later native UI follow-up for the submitted request and browser rendering interruption.
+- [x] Verify the approved single test-visit removal persists across manual reconciliation and page reload in both profiles; native history and the neighboring fixture remain.
 - [x] Verify worker stop/revival with DevTools closed: observe STOPPED, close the manager, edit a native bookmark and receive it in Test 2 without opening the source dashboard.
 - [ ] Verify full browser restart, hours-long outage and the remaining native acceptance permutations.
 
@@ -373,11 +374,25 @@ Checkpoint commit: `ae87613 fix(extension): clarify startup status and recovery 
 - [x] Replace the initial enrolled-profile Offline label with Checking connection while startup reconciliation has not attempted transport; retain Offline for a failed/unavailable connection. Correct post-rotation recovery guidance to Settings → Recovery & backups.
 - [x] Rerun TypeScript checks, 237 TS tests and production WXT build; verify the startup-checking and real offline text branches with no fresh preview warning/error logs.
 - [x] Receive at-action approval and submit the one-visit removal for `fixture=session-a-1` at 13:21:43 from Test 1. Do not repeat the request while its durable outcome is unknown.
-- [ ] Verify that visit stays absent in both filtered timelines after reconciliation/reload. The source review remained busy; the peer count dropped by one, but navigation/reload and Helium's own Extensions manager then rendered blank. Relay readiness and live process checks pass. No complete deletion result or cause of the blank pages is claimed.
-- [ ] Recover native rendering and verify full browser restart; whole-app restart approval is pending because it affects any Helium windows in use.
+- [x] Recover native rendering through a fresh options tab without quitting Helium. The earlier busy/blank-page cause remains unconfirmed; the original source review subsequently closed.
+- [x] Verify the visit stays absent in both filtered timelines after manual sync/reload; confirm the adjacent `fixture=session-a-2` visit at 13:22:00 and the original native browser-history visit remain.
+- [x] Inspect the isolated relay read-only: one erasure certificate, one redaction with `purged = 1`, and empty nonce/ciphertext fields. Physical/native/backup copies remain separate boundaries.
+- [ ] Verify full browser restart; a whole-app restart was not performed.
 - [ ] Complete fresh native onboarding, full restart/endurance and the other acceptance gates listed above.
 
 Evidence: [native-smoke.md](native-smoke.md), [progress.md](progress.md), and ignored native screenshots in `work/native-user-profiles`. The localhost relay remains the previously approved frozen build. These checks do not establish production updates, key rotation/recovery, all native conflicts or full browser restart.
+
+## Selected native history removal acceptance — 2026-10-02
+
+Tested UI/background baseline: `ae87613` / `1d00114`; follows tracking commit `bb9b148`. This checkpoint changes documentation only.
+
+- [x] Observe zero matches for the exact approved `fixture=session-a-1` URL in Test 1 and Test 2 after manual sync and reloading each options page.
+- [x] Preserve the neighboring synced fixture visit and find the removed fixture still in Test 1's native history at an exact filtered search.
+- [x] Verify both native Home pages report Connected / Everything is up to date after reconciliation; confirm the relay's redacted ciphertext fields are empty through a read-only query.
+- [x] Save scoped fixture-only screenshots; close the native-history tab created for verification. An unintended all-profile review was immediately cancelled; no broad clear or repeated single deletion was submitted.
+- [ ] Complete native clear/reconnect, full restart/endurance, fresh file-based onboarding and the remaining acceptance gates. This single-visit pass does not complete history erasure or a whole milestone.
+
+Proof files and exact observations are recorded in [native-smoke.md](native-smoke.md) and [progress.md](progress.md). The prior restart request became unnecessary for this removal check; no browser quit, profile reset, key change or relay upgrade occurred.
 
 ## 1. Product requirements and boundaries
 
@@ -634,7 +649,7 @@ Public APIs support window/tab/group restoration, but do not let the extension i
 
 ## 7. Cross-device history and deletion
 
-Implementation evidence: [history](history.md), [erasure protocol](history-erasure-protocol.md), [retention](retention.md), and model/capture/real-relay tests. Native source/time capture and search pass; the approved single removal awaits durable timeline verification, and native clear/reconnect checks remain open.
+Implementation evidence: [history](history.md), [erasure protocol](history-erasure-protocol.md), [retention](retention.md), and model/capture/real-relay tests. Native source/time capture, search and the approved selected deletion across reconciliation/reload pass; native clear/reconnect checks remain open.
 
 - [x] Store individual visit records with original timestamp, source installation, URL/title, and available transition/referrer metadata.
 - [x] Namespace native visit IDs by installation/profile incarnation; deduplicate the same visit while preserving separate visits.
@@ -795,7 +810,8 @@ Implementation tasks below use the recorded model, database, port and real-relay
 
 - [x] Implement individual visits, bounded import/reconciliation, local search, device filters, and deletion/clear barriers.
 - [x] Exercise duplicate visits, original timestamps, native-clear ports and delayed uploads after deletion in model/capture/real-relay tests; verify native source/timestamp capture and search.
-- [ ] Verify the approved selected native test-visit removal, then native URL/source/global clears and delayed reconnect/reconciliation without resurrection.
+- [x] Verify the approved single native test-visit removal remains absent after manual reconciliation/reload in both profiles, preserving unrelated synced and native history.
+- [ ] Verify native URL/source/global clears and delayed reconnect/reconciliation without resurrection.
 - [ ] Finish retained-copy erasure policy and measured history/journal scale.
 - [ ] **Exit gate:** Search shows correct source/timestamps and erased visits do not reappear after reconnect/reconciliation.
 
