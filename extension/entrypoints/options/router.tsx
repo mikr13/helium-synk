@@ -74,7 +74,9 @@ function AppShell() {
       ? 'Connected'
       : status.connection === 'syncing'
         ? 'Syncing…'
-        : 'Offline';
+        : status.connection === 'not-connected'
+          ? 'Checking connection…'
+          : 'Offline';
   return (
     <div className={`shell ${!status.enrolled ? 'setup-shell' : ''}`}>
       <a

@@ -84,7 +84,7 @@ export function KeyPanel({
       <CardContent className="space-y-4 px-0">
         <p className="fine">
           Content-key generation {status.key_epoch ?? 1}. Old keys and downloaded data remain known
-          to removed installations. After rotation, save an updated recovery bundle.
+          to removed installations. After rotation, save an updated recovery file.
         </p>
         {error && (
           <Alert variant="destructive" className="error">
@@ -95,7 +95,7 @@ export function KeyPanel({
           <Alert role="status" className="key-complete">
             <AlertDescription>
               Access updated. Your profiles now use content-key generation {done}. Save a new
-              recovery bundle from This device.
+              recovery file in Settings → Recovery & backups.
             </AlertDescription>
           </Alert>
         )}

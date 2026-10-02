@@ -44,6 +44,24 @@ The first attempt with the earlier kit credential was rejected because the relay
 
 - [x] Rename the test folder in Test 2 to `Synk folder rename · Test 2`; Test 1’s native bookmark manager shows that name with its existing `After worker restart · Test 1` link and original URL.
 - [ ] Verify root-folder moves and propagated undo. A cut/paste attempt did not complete; Undo restored the folder locally in Test 1. No peer move/undo result is claimed. Native interaction stopped when the user resumed using Helium.
-- [ ] Repeat the new routed/file-based setup and navigation with the packaged build. Desktop/390 px checks used actual UI components with synthetic background replies; the running native test copy and relay were not upgraded.
+- [x] Load the new routed UI and repeat saved-state navigation with the packaged assets; see the native UI follow-up below.
+- [ ] Repeat fresh file-based enrollment/pairing/recovery with the packaged build. Desktop/390 px setup checks used actual UI components with synthetic background replies.
 
 The earlier selected-history review was cancelled during this work; no removal was confirmed or performed. Existing installation identities, exports and prior native results remain recorded above.
+
+## Native routed UI follow-up — 2026-10-02
+
+Updated only `options.html`, `restore.html`, `chunks/` and `assets/` at the same approved native extension path after saving `extension-before-routed-ui`. Base UI commit: `1cee5fb`, followed by startup/recovery copy corrections. Manifest version/permissions/options/background configuration match the previous copy. The background SHA-256 remains `7191114df95cd00dcb851ede8d4c4b915ef88e96e360e13b7eceadd187e2a0ef`. The old extension stays disabled. The relay stays at its earlier approved frozen build on port 4321.
+
+- [x] Reload Test 1's approved extension and options; reload Test 2's options. Both retain their distinct names/identities, two shared bookmark entries, saved sessions/history and existing capture preferences. Test 2's paused session capture remains paused.
+- [x] Verify Home, Devices and Add device show focused pages; inspect Settings fields without saving new budgets/retention. Recovery survives direct reload, and the native browser Back button returns to Settings.
+- [x] Reload Test 2's existing `#history` link; it normalizes to `#/history` and retains the original source/timestamp timeline.
+- [x] Send `Routed UI native · Test 1` at 16:38:16 (author `ad82e4c7`) and `Routed UI native · Test 2` at 16:43:32 (author `62ef13e7`). Both new Diagnostics pages show both as Synced; both show Connected and zero waiting changes. Earlier smoke/outage messages remain visible.
+- [x] Fix the enrolled startup label: the pre-transport state now says Checking connection, while failed/unavailable transport remains Offline. Fix recovery guidance to the new Settings → Recovery & backups route. Typechecks, 237 TS tests and production build pass after these wording changes; synthetic rendered checking/offline branches have no fresh warning/error logs.
+- [ ] Verify fresh file-based enrollment/pairing/recovery in native Helium. Existing test profiles were preserved; no new invitation or identity was created during this pass.
+- [x] Receive at-action approval and click Confirm removal for the one original Test 1 visit `fixture=session-a-1` at 13:21:43.
+- [ ] Verify selected history removal after recovering browser rendering. The source review remained busy; Test 2's count dropped from 66 to 65, but navigating to History left Home content visible and reloading removed the page content. Helium's own Extensions manager also renders blank. The healthy relay/process and existing asset references were verified; no cause or durable deletion outcome is inferred from the count alone. No duplicate removal request was sent. Whole-app restart approval is pending.
+
+Saved proof: ignored `routed-ui-test1-add-device.png`, `routed-ui-test1-settings.png`, `routed-ui-test1-diagnostics.png`, `routed-ui-test2-diagnostics.png`, `routed-ui-history-removal-review.png` and `native-extensions-blank.png` in the native kit; `routed-ui-update.json` records the reversible asset update.
+
+The first Recovery click while expanded Settings fields placed the link offscreen had no effect; collapsing/reloading Settings exposed it and the visible link worked. The macOS Alt+Left attempt had no effect; Back was verified through the browser toolbar. Pre-existing extension Errors showed an earlier relay connection refusal before reload; that log was not cleared and DevTools were not opened. No complete console-clean native claim is made. History currently includes native extension-page visits, including our own navigation; exact URL exclusions are user-controlled. Similar displayed timestamps alone do not establish duplicate native visit identities.

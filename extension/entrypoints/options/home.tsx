@@ -106,7 +106,9 @@ export function HomePage() {
                 : 'Everything is up to date'
               : status.connection === 'syncing'
                 ? 'Syncing your changes…'
-                : 'Server unavailable. Saved data is available here.'}
+                : status.connection === 'not-connected'
+                  ? 'Checking your connection…'
+                  : 'Server unavailable. Saved data is available here.'}
           </CardDescription>
           <CardAction className="row-span-3 justify-self-start pt-2 sm:justify-self-end sm:pt-0">
             <Button
