@@ -200,6 +200,8 @@ Full history erasure is still open for unresolved/shared native capture copies, 
 
 ## Local storage admission checkpoint — 2026-10-02
 
+`a28c1b1 feat(storage): preserve local work with bounded admission` records this checkpoint.
+
 Validated per-profile limits now persist in local state and exports, with defaults of 512 MiB estimated origin bytes, 100,000 pending operations/tasks, 500,000 journal/draft/private receipt records and 30,000 capture tasks. Counts are admitted in the capture/journal transaction, so concurrent workers cannot both take the final slot. Native history intent/discovery, bookmark capture/import and session/note publication use shared checks; session collection retains its last good cached windows when paused by capacity. Explicit deletion, authenticated purge and immutable retries remain possible. Existing domain queue bounds still apply.
 
 New incoming content receives journal/byte admission before writes. Capacity failures retain the cursor and avoid quarantine. An authenticated/checked epoch can be saved without processing that page, allowing outgoing retries to commit and release outbox copies. Invalid records, authentication and changed epochs still stop the pass. Certified deletion and known record retries can commit while full. Releasing capacity or increasing a limit resumes the same unprocessed page.

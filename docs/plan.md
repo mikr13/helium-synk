@@ -17,7 +17,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Logo and favicon                                                   | Complete branding implementation checkpoint                     | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
 | Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open            | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
 | History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
-| Local budgets, retention, full-scale journal performance, recovery | Local admission implemented; retention/scale/recovery pending   | Sections 2–4, 7–9                                                   |
+| Local budgets, retention, full-scale journal performance, recovery | Local admission implemented; retention/scale/recovery pending   | `a28c1b1`; 226 TS, 13 real-process tests                            |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                           | Disposable profiles only                                            |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                 | Section 10 onward                                                   |
 
@@ -244,6 +244,8 @@ Checkpoint commit: `3a6bedd feat(history): authenticate and persist client ciphe
 The live client/relay ciphertext path is implemented. Browser-owned history, physical SQLite/WAL pages, old exports/backups and remaining retained-copy policy are separate boundaries. See [history-erasure-protocol.md](history-erasure-protocol.md) and [progress.md](progress.md) for verification and commit evidence. No native or whole milestone gate is complete.
 
 ## Local storage admission checkpoint — 2026-10-02
+
+Checkpoint commit: `a28c1b1 feat(storage): preserve local work with bounded admission`.
 
 - [x] Persist validated profile limits and expose estimated origin bytes, queued work, journal counts and 80-percent warnings in the dark square shadcn dashboard.
 - [x] Check new capture/journal admission transactionally and reject competing work past the pending boundary without committing new queued content.
