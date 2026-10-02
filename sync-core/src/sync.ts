@@ -2,6 +2,7 @@ import { decryptPayload } from './crypto';
 import { KeyManager, keySnapshot } from './key-manager';
 import type { KeyTransport } from './key-state';
 import { projectHistory } from './history';
+import { expireHistory } from './history-retention';
 import { projectSessions } from './sessions';
 import { projectBookmarks } from './bookmarks';
 import { LocalCapacityError } from './local-storage';
@@ -407,6 +408,7 @@ export class SyncCoordinator {
       // Bad records, network failures and epoch changes continue to stop the pass.
       if (!(cause instanceof LocalCapacityError)) throw cause;
     }
+    await expireHistory(this.db);
     const purger = transport.purge ? new HistoryPurger(this.db, transport.keys) : undefined;
     if (purger) {
       const purge = (request: HistoryPurgeRequest) => transport.purge!(request);

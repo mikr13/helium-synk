@@ -1,4 +1,9 @@
 import Dexie, { type Table } from 'dexie';
+import {
+  historyRetentionPolicy,
+  type HistoryRetentionPolicy,
+  type HistoryRetentionProgress,
+} from './history-retention';
 import { cleanHistoryCapture } from './history-capture-cleanup';
 import {
   StorageMeter,
@@ -102,6 +107,9 @@ export interface LocalState {
   history_index_key?: string;
   history_logical?: number;
   storage_policy?: LocalStoragePolicy;
+  history_retention?: HistoryRetentionPolicy;
+  history_retention_cursor?: HistoryRetentionProgress;
+  history_retention_last?: { at: number; examined: number; expired: number; protected: number };
 }
 export interface LocalRecord {
   operation_id: string;
@@ -779,6 +787,16 @@ export class SynkDatabase extends Dexie {
   async setStoragePolicy(value: LocalStoragePolicy): Promise<void> {
     const policy = storagePolicy(value);
     if (!(await this.state.update('local', { storage_policy: policy })))
+      throw new Error('Connect this device first.');
+  }
+  async setHistoryRetention(value: HistoryRetentionPolicy): Promise<void> {
+    const policy = historyRetentionPolicy(value);
+    if (
+      !(await this.state.update('local', {
+        history_retention: policy,
+        history_retention_cursor: undefined,
+      }))
+    )
       throw new Error('Connect this device first.');
   }
   /** Caller includes budget tables; only new collection is admitted here, never retries/erasure. */

@@ -772,6 +772,95 @@ it('local capacity retains the download cursor while draining real queued upload
   expect(Number(count.trim())).toBe(1);
 });
 
+it('history retention uploads pending old visits before owner expiry and purges their ciphertext across peers and fresh bootstrap', async () => {
+  const issue = (name: string): Credentials => {
+    const output = join(directory, `${name}.json`);
+    execFileSync(
+      binary,
+      [
+        '--database',
+        database,
+        'issue-device',
+        '--name',
+        name,
+        '--server-url',
+        `http://127.0.0.1:${port}`,
+        '--output',
+        output,
+      ],
+      { stdio: 'ignore' },
+    );
+    return JSON.parse(readFileSync(output, 'utf8'));
+  };
+  let owner = await local(issue('Retention owner'), sharedKey);
+  const peer = await local(issue('Retention peer'), sharedKey);
+  await new SyncCoordinator(owner).sync();
+  await new SyncCoordinator(peer).sync();
+  const time = Date.now(),
+    day = 86_400_000;
+  const visit = async (db: SynkDatabase, native: string, age: number) => {
+    const state = (await db.state.get('local'))!;
+    const source = state.credentials.device_id,
+      incarnation = crypto.randomUUID();
+    const url = `https://retention-integration.example/${native}`;
+    const tag = await historyUrlTag(await db.ensureHistoryIndexKey(), url);
+    const visited_at = time - age * day,
+      id = historyVisitId(source, incarnation, native, visited_at);
+    const operation_id = await db.stageHistory({
+      type: 'visit',
+      visit: {
+        id,
+        source_id: source,
+        source_name: state.credentials.name,
+        incarnation,
+        native_id: native,
+        visited_at,
+        url,
+        url_tag: tag,
+        title: 'Retention integration title',
+        generation: historyGeneration(await db.historyProjection(), source, tag),
+      },
+    });
+    return { id, operation_id, visited_at };
+  };
+  const peerOld = await visit(peer, 'peer-old', 120);
+  await new SyncCoordinator(peer).sync();
+  await owner.setHistoryRetention({ enabled: true, days: 90 });
+  const old = await visit(owner, 'owner-old', 120),
+    recent = await visit(owner, 'owner-recent', 10);
+  await owner.flushDrafts();
+  const original = (await owner.outbox.get(old.operation_id))!;
+  await new SyncCoordinator(owner).sync();
+  expect((await owner.operations.get(old.operation_id))!.sequence).toBeGreaterThan(0);
+  expect((await owner.operations.get(old.operation_id))!.envelope).toEqual(original);
+  expect((await owner.historyVisits.get(old.id))!.visited_at).toBe(old.visited_at);
+  expect(await owner.outbox.get(old.operation_id)).toBeUndefined();
+  const name = owner.name;
+  owner.close();
+  owner = new SynkDatabase(name);
+  localDatabases.push(owner);
+  await new SyncCoordinator(owner).sync();
+  await new SyncCoordinator(peer).sync();
+  for (const db of [owner, peer]) {
+    expect(await db.historyVisits.get(old.id)).toBeUndefined();
+    expect((await db.operations.get(old.operation_id))!.envelope.ciphertext).toBe('');
+    expect(await db.historyVisits.get(peerOld.id)).toBeDefined();
+    expect(await db.historyVisits.get(recent.id)).toBeDefined();
+  }
+  const fresh = await local(issue('Retention fresh'), sharedKey);
+  await new SyncCoordinator(fresh).sync();
+  expect(await fresh.historyVisits.get(old.id)).toBeUndefined();
+  expect(await fresh.historyVisits.get(peerOld.id)).toBeDefined();
+  expect((await fresh.historyVisits.get(recent.id))!.visited_at).toBe(recent.visited_at);
+  expect(await owner.pendingCount()).toBe(0);
+  const stored = execFileSync(
+    'sqlite3',
+    [database, `SELECT envelope FROM operations WHERE operation_id = '${old.operation_id}';`],
+    { encoding: 'utf8' },
+  );
+  expect(stored).not.toContain(original.ciphertext);
+});
+
 it('real relay purges history ciphertext with durable receipts across a discarded reply and restart', async () => {
   const issue = (name: string): Credentials => {
     const path = join(directory, `${name}.json`);

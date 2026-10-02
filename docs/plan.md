@@ -1,6 +1,6 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Core capture, encrypted transport, key lifecycle, history ciphertext purge, local storage limits and requested UI are implemented. Retention, retained-copy policy, scale/recovery checks and joint Helium acceptance remain before section 10.
+**Status:** Core capture, encrypted transport, key lifecycle, history ciphertext purge/expiry, local storage limits and requested UI are implemented. Session expiry, retained-copy policy, scale/recovery checks and joint Helium acceptance remain before section 10.
 
 **Updated:** 2026-10-02
 
@@ -8,22 +8,22 @@
 
 Implement sections 1–9, then test together in two disposable Helium profiles. The implementation is still in progress; every whole milestone and native acceptance gate remains open.
 
-| Checkpoint                                                         | Status                                                          | Commit / evidence                                                   |
-| ------------------------------------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                           | `a0429bd` and earlier checkpoints; native gates open                |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                              | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                              | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
-| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open            | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
-| Logo and favicon                                                   | Complete branding implementation checkpoint                     | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
-| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open            | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
-| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
-| Local budgets, retention, full-scale journal performance, recovery | Local admission implemented; retention/scale/recovery pending   | `a28c1b1`; 226 TS, 13 real-process tests                            |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                           | Disposable profiles only                                            |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                 | Section 10 onward                                                   |
+| Checkpoint                                                         | Status                                                             | Commit / evidence                                                   |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                              | `a0429bd` and earlier checkpoints; native gates open                |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                 | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                 | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint |
+| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open               | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
+| Logo and favicon                                                   | Complete branding implementation checkpoint                        | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open               | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
+| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open    | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
+| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending | `a28c1b1`; history expiry checkpoint below                          |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                              | Disposable profiles only                                            |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                    | Section 10 onward                                                   |
 
 This table and both checklist copies are updated at implementation checkpoints and commits. The verification record identifies what each test actually proves.
 
-**Testing readiness:** Basic smoke testing can begin now in two disposable Helium profiles. Before full acceptance, finish retention/retained-copy policy and scale/recovery checks, then verify native APIs, worker lifecycle and an hours-long outage together. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
+**Testing readiness:** Basic smoke testing can begin now in two disposable Helium profiles. Before full acceptance, finish session/retained-copy policy and scale/recovery checks, then verify native APIs, worker lifecycle and an hours-long outage together. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
 
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
 **Phase-one scope:** Bookmarks, history, current sessions, closed/previous sessions, encryption, offline operation, and self-hosting.  
@@ -40,7 +40,7 @@ This table and both checklist copies are updated at implementation checkpoints a
 | Milestone                                        | Status                 | Depends on | Exit evidence                                                       |
 | ------------------------------------------------ | ---------------------- | ---------- | ------------------------------------------------------------------- |
 | M1 — Compatibility and hosting probes            | In progress            | None       | WXT builds; native lifecycle/API and Tailscale probes pending       |
-| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 226 TS + 40 relay + 13 cross-stack tests; native gates pending      |
+| M2 — Durable local state and encrypted transport | Foundation implemented | M1         | 236 TS + 40 relay + 14 cross-stack tests; native gates pending      |
 | M3 — Bidirectional bookmarks                     | In progress            | M2         | Model/adapter tests; live Helium gate pending                       |
 | M4 — Current, closed, and previous sessions      | In progress            | M2         | Snapshot/capture/restore tests; live Helium gate pending            |
 | M5 — Cross-device history and deletion           | In progress            | M2         | Model/transport/adapter/UI evidence; purge/scale/live gates pending |
@@ -78,7 +78,7 @@ These checks apply to synthetic diagnostic notes only. They do not complete brow
 - [x] Build opt-in preview/backup/recovery controls; exercise actual components with synthetic UI responses and a 390 px layout.
 - [ ] Verify capture/application, root capabilities, worker revival and outage behavior in real disposable Helium profiles.
 
-The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 226 TypeScript, 40 Rust and 13 real-relay integration tests, with rustfmt/clippy, typechecks and production build.
+The checked implementation items use compiled code and simulated browser-port evidence. No native API, hours-long outage or milestone exit gate is claimed complete. Automated checks currently pass 236 TypeScript, 40 Rust and 14 real-relay integration tests, with rustfmt/clippy, typechecks and production build.
 
 ## Session implementation checkpoint — 2026-10-01
 
@@ -256,6 +256,17 @@ Checkpoint commit: `a28c1b1 feat(storage): preserve local work with bounded admi
 - [ ] Complete actual Helium storage behavior, history/session retention, full-scale performance, retained-copy policy and older-backup/server-loss recovery.
 
 Defaults are 512 MiB estimated origin bytes, 100,000 pending work items, 500,000 journal records and 30,000 capture tasks. The byte estimate is sampled admission guidance, not a physical disk reservation. [local-storage.md](local-storage.md) records scope and failure behavior; no native or milestone gate is complete.
+
+## History retention checkpoint — 2026-10-02
+
+- [x] Persist configurable, opt-in history expiry with an initial 90-day value and dark square shadcn controls.
+- [x] Expire only acknowledged visits owned by this source, using their original timestamps; protect pending drafts, ciphertext and duplicate native identities.
+- [x] Persist bounded candidate scan progress and permanent selected-deletion proofs atomically; preserve rollback, concurrency and restart behavior.
+- [x] Use the existing authenticated ciphertext purge and prove late re-import, peer convergence and fresh bootstrap cannot recreate expired content.
+- [x] Verify 10 new unit/database cases, a real-relay retention case and synthetic desktop/390-px UI saving; 236 TS/14 integration checks, typechecks and production build pass.
+- [ ] Finish session expiry, full-scale journal performance, general retained-copy/backup recovery and joint native acceptance.
+
+Expiry is off until selected. Offline source/peer reconciliation can delay removal; V1 proof receipts and historical backups remain. [retention.md](retention.md) defines these semantics and the remaining gates.
 
 ## 1. Product requirements and boundaries
 
@@ -459,7 +470,7 @@ Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ 
 - [x] Specify deterministic handling of missing/deleted parents and invalid placement.
 - [x] Prove convergence from the same operation set regardless of arrival order.
 
-**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 226 TypeScript, 40 Rust and 13 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
+**Bookmark evidence (2026-10-01):** Causal merge, encrypted journal and native adapter are implemented; the native checkpoint records 22 adapter tests and synthetic UI evidence. The complete suite currently passes 236 TypeScript, 40 Rust and 14 real-process integration tests. Real Helium acceptance remains pending. See the repository `docs/bookmark-merge.md` and `docs/progress.md`.
 
 ### Browser integration and onboarding
 
@@ -591,14 +602,14 @@ Apple documents desktop sleep/power-recovery settings and FileVault startup requ
 
 ### Proposed retention defaults
 
-| Data                         | Initial policy                                                              |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| Current session              | Latest per installation                                                     |
-| Previous/closed sessions     | 30 days plus count/size caps                                                |
-| History                      | 90 days, configurable                                                       |
-| Bookmark tombstones          | Retained throughout V1                                                      |
-| Pending essential operations | Retained until acknowledged or explicitly resolved/exported                 |
-| Backups                      | Daily, with weekly/monthly rotation; exact counts decided before deployment |
+| Data                         | Initial policy                                                                   |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| Current session              | Latest per installation                                                          |
+| Previous/closed sessions     | 30 days plus count/size caps                                                     |
+| History                      | Opt-in source-owned expiry, initially 90 days and configurable; see retention.md |
+| Bookmark tombstones          | Retained throughout V1                                                           |
+| Pending essential operations | Retained until acknowledged or explicitly resolved/exported                      |
+| Backups                      | Daily, with weekly/monthly rotation; exact counts decided before deployment      |
 
 - [ ] Define retention against record semantics; encrypted historical visit timestamps are not visible to the server.
 - [ ] Specify client-driven expiry or deliberately disclosed expiry metadata rather than assuming server receipt time equals visit time.
@@ -716,7 +727,7 @@ Phase one only needs a clean separation between domain logic and transport; it d
 | Content protection        | Client-side E2EE; separate API authentication                                 | M2 key lifecycle design                     |
 | Conflict resolution       | Per-field causal merges and deterministic conflict resolution                 | M3 executable spec                          |
 | Local unlock behavior     | Auto-unlock for diagnostic checkpoint; profile stores key and decrypted cache | Before sensitive browser-content adapters   |
-| History/session retention | Proposed 90/30 days                                                           | Before M5/M6 deployment                     |
+| History/session retention | Opt-in 90-day history expiry implemented; 30-day session policy pending       | Before M5/M6 deployment                     |
 | History-page replacement  | Optional packaged release choice                                              | M7                                          |
 | iCloud                    | Future research only                                                          | After phase-one exit gates                  |
 

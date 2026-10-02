@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Disclosure } from '@/components/disclosure';
 import type { Reply, Request, Status } from '@/lib/messages';
+import { HistoryRetentionControls } from './history-retention';
 const MiB = 1024 * 1024;
 export function StoragePanel({
   status,
@@ -118,6 +119,7 @@ export function StoragePanel({
           </Button>
         </form>
       </Disclosure>
+      <HistoryRetentionControls status={status} request={request} onStatus={onStatus} />
     </Card>
   );
 }

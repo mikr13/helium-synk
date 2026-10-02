@@ -1,0 +1,17 @@
+# History retention
+
+Automatic history expiry is opt-in in **Local storage → History retention**, initially showing 90 days. The period accepts 1–3,650 days and persists with the profile and its replica export. Saving an enabled policy permits permanent synchronized deletion of eligible old visits. Disabling expiry or increasing the period cannot restore already expired visits.
+
+Only the source installation expires its own visits. Age uses the original `visited_at`, with a strict cutoff: visits at or newer than `now − days` remain. Relay receipt time never determines expiry. A peer's shorter policy cannot delete another source's history. The owner's wall clock determines expiry time; a clock jump can change eligibility, while merge ordering still uses causal clocks.
+
+Unacknowledged visits stay protected, including unencrypted drafts, immutable encrypted uploads and known duplicate copies of the same native identity. An old queued visit uploads first; expiry can select it on a subsequent reconciliation after acknowledgement. Other pending operations, bookmark tombstones, sessions and active restoration work are not aged out by this feature.
+
+A pass scans at most 500 indexed candidates and selects at most 100 visits. It writes ordinary selected-deletion proofs in protocol-sized groups of at most 80 identities. Deletion, local projection/content cleanup, counter reservation and persistent scan progress commit together. Failed writes roll back the pass. The scan advances past protected visits, wraps after exhaustion and revisits them after their uploads commit. An empty range does not scan the history journal.
+
+Passes run after the initial relay pull/check during synchronization, before the existing authenticated history purger. The owner must reconnect to drive expiry; sleeping/offline owners and disconnected peers can retain older content until reconciliation. Lowering retention is not an immediate physical-space guarantee. Candidate selection is bounded, but duplicate/pending checks and causal projection still traverse the retained history journal; full-scale latency remains an acceptance gate.
+
+Expiry uses the same deletion and ciphertext-erasure path as explicit removal. Permanent native-identity proofs prevent late re-import and exact old-envelope replay from restoring expired content. Connected clients remove matching timeline/journal plaintext, and authenticated purge replaces live local/relay ciphertext with original header/digest receipts. V1 retains causal proofs and journal receipts; no journal compaction or secure physical-page erasure is claimed.
+
+Native browser history, independently retained exports, historical backups, filesystem snapshots and old SQLite/WAL pages can retain copies. Backup expiration and older-backup recovery are separate policies. Session archive expiry/count/size policy, general quarantine/unresolved/shared capture-copy retention and native acceptance remain open.
+
+Ten unit/database tests cover settings/reopening/export, strict original-time boundaries, opt-in behavior, pending and duplicate protection, source ownership, failed-write rollback, bounded restart progress, non-starvation, concurrent workers, late re-import and a clock-rolled-back empty range. A real Rust-process integration proves old pending content uploads before expiry, owner-policy reopening, peer convergence, fresh bootstrap and live SQL ciphertext removal. The settings UI is verified with synthetic replies at desktop and 390 px; this is not native Helium storage or lifecycle evidence.

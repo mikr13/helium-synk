@@ -15,6 +15,7 @@ import {
   BookmarkAdapter,
   SessionCapture,
   HistoryCapture,
+  DEFAULT_HISTORY_RETENTION,
   type HistoryInbox,
   SessionRestorer,
   restoreSummary,
@@ -141,6 +142,10 @@ export default defineBackground(() => {
       rotation_pending: await rotationSummary(),
       pairing_pending: pairingSummary(await db.pairingPending.get('pairing')),
       history: {
+        retention: {
+          policy: local?.history_retention ?? DEFAULT_HISTORY_RETENTION,
+          last: local?.history_retention_last,
+        },
         enabled: !!historySetup?.enabled,
         phase: historySetup?.phase ?? 'off',
         visits: await db.historyVisits.count(),
@@ -200,6 +205,11 @@ export default defineBackground(() => {
   }
   async function handle(request: Request): Promise<Reply> {
     try {
+      if (request.type === 'history-retention-set') {
+        await db.setHistoryRetention(request.policy);
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
       if (request.type === 'storage-set') {
         await db.setStoragePolicy(request.policy);
         void sync(true);
