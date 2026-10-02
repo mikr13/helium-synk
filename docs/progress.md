@@ -184,6 +184,8 @@ Nine Rust tests cover those invariants, authentication/revocation, wrong targets
 
 ## Client history ciphertext erasure checkpoint — 2026-10-02
 
+`3a6bedd feat(history): authenticate and persist client ciphertext erasure` records this checkpoint.
+
 Encrypted schema-1 `history-erasure` certificates now authorize permanent selected deletion for their target native visit identities. They carry original minimal receipts, encryption epochs and canonical envelope digests; no URL/title/source-name/transition/referring ID or old ciphertext is copied into the proof. Strict payload validation binds outer author/counter/operation ID, causal observation and original metadata, with at most 100 operation targets/80 distinct visit identities per bounded certificate.
 
 IndexedDB schema 10 adds per-target claims and exact pending requests. Counter reservation, certificate draft, claims and history projection commit before encryption; certificate bytes and request commit before HTTP. Successful validated replies remove target ciphertext/outbox/quarantine entries, intent and claims transactionally. Failures retain exact work. Concurrent claims cannot reserve the same target twice. Original outbox rekey respects claims; pending certificates replace encryption only after an explicit missing proof, preserving target digests/epochs and IDs/counters. Committed certificates retry exactly after rotation.

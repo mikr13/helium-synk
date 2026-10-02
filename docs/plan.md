@@ -16,7 +16,7 @@ Implement sections 1–9, then test together in two disposable Helium profiles. 
 | Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open            | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                   |
 | Logo and favicon                                                   | Complete branding implementation checkpoint                     | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass   |
 | Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open            | `93bea2c`; 176 TS, 11 real-process tests, production build/UI       |
-| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open | Client checkpoint below; 215 TS, 40 Rust, 12 real-process tests     |
+| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                   |
 | Local budgets, retention, full-scale journal performance, recovery | Pending                                                         | Sections 2–4, 7–9                                                   |
 | Native Helium APIs, worker lifecycle and hours-long outage         | Joint testing pending                                           | Disposable profiles only                                            |
 | Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                 | Section 10 onward                                                   |
@@ -229,6 +229,8 @@ Checkpoint commit: `a4c17a0 feat(server): add atomic history ciphertext purge pr
 The following client checkpoint activates the API and capability with authenticated semantic proofs. The initial opaque relay fixtures prove server behavior only; complete erasure and all milestone exit gates remain open. See [history-erasure-protocol.md](history-erasure-protocol.md) for the exact compatibility and retained-copy boundary.
 
 ## Client history ciphertext erasure checkpoint — 2026-10-02
+
+Checkpoint commit: `3a6bedd feat(history): authenticate and persist client ciphertext erasure`.
 
 - [x] Validate encrypted content-free deletion certificates and bind original receipts, headers, digests, causal clocks and author counters.
 - [x] Save counter reservations, target claims, certificate drafts and exact encrypted purge requests before HTTP in IndexedDB schema 10.
