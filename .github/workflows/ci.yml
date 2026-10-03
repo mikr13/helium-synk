@@ -42,7 +42,7 @@ jobs:
       - run: pnpm exec vp run check:server
       - run: pnpm exec vp run test:integration
       - run: pnpm exec vp run check:deployment
-      - run: node --test scripts/package-release.test.mjs scripts/plan-release.test.mjs
+      - run: node --test scripts/package-release.test.mjs scripts/plan-release.test.mjs scripts/release-workflow.test.mjs
       - name: Check Conventional Commits
         if: github.event_name == 'pull_request'
         env:

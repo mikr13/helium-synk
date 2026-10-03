@@ -88,6 +88,9 @@ jobs:
             release/extension-SHA256SUMS
   relay:
     needs: [plan, extension]
+    if: >-
+      !cancelled() && needs.plan.result == 'success' &&
+      needs.plan.outputs.release == 'true' && needs.extension.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -140,6 +143,9 @@ jobs:
           path: release/helium-synk-${{ needs.extension.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
   publish:
     needs: [plan, extension, relay]
+    if: >-
+      !cancelled() && needs.plan.result == 'success' &&
+      needs.extension.result == 'success' && needs.relay.result == 'success'
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -171,6 +177,8 @@ jobs:
           echo "Published v$VERSION from $SOURCE_SHA with extension, four relay bundles and checksums." >> "$GITHUB_STEP_SUMMARY"
   chrome:
     needs: [plan, publish]
+    if: >-
+      !cancelled() && needs.plan.result == 'success' && needs.publish.result == 'success'
     uses: ./.github/workflows/chrome-publish.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
