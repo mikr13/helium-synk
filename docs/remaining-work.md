@@ -1,16 +1,17 @@
 # Remaining work and suggested owners
 
-Updated 2026-10-02. This consolidates the current unchecked requirements in [plan.md](plan.md); repeated historical checkpoint notes are not additional tasks. Ordinary native multi-window restoration and empty-folder cross-root cut/paste with two-step Undo now pass. Forced interruption, child preservation and the broader matrices remain open.
+Updated 2026-10-03. This consolidates the current unchecked requirements in [plan.md](plan.md); repeated historical checkpoint notes are not additional tasks. Fresh native connection-file enrollment and invitation-file pairing now pass, including expired-invitation reload/retry and replacement. The user also completed the setup review and full restart check. Ordinary multi-window restoration and empty-folder cross-root cut/paste with two-step Undo pass; forced interruption, child preservation and the broader matrices remain open.
 
 ## Work the user can take on
 
-- [ ] **Review setup clarity.** Try Home, Add device and Settings in the test profiles. Identify any unclear next action, label, spacing or file-transfer step. Review fresh setup once Setup Test A/B are prepared; their creation/build access is approved, not yet performed.
-- [ ] **Perform a full Helium restart when personal work is saved.** Quit the app completely, reopen Test 1 and Test 2, and record whether names, saved collections, pending work and sync survive. Coordinate with the native test run before restarting. Closing one window alone does not test full browser restart.
-- [ ] **Choose the intended daily-use devices and support floor.** Decide whether older Helium versions must be supported. Older-version testing and browser-upgrade preservation still need evidence.
-- [ ] **Choose retention and backup preferences.** The proposed session policy is 30 days plus count/size caps; choose desired caps and daily/weekly/monthly backup counts, destination and off-Mini copy. History already has opt-in configurable 90-day expiry.
-- [ ] **Settle release choices.** Choose a stable extension distribution/update method, whether a compact popup is wanted, and whether to replace the native History page. Popup/history override are product choices, not unfinished core sync.
-- [ ] **Resolve repository push access.** The last recorded push failed; check the intended GitHub account/repository access without switching global authentication implicitly. Publishing/pushing remains a separate authorized action.
-- [ ] **Prepare deployment information.** Identify the installed Tailscale variant, intended tailnet clients, backup destination and FileVault startup/unlock constraints. Production configuration is deferred until acceptance.
+- [x] **Review setup clarity.** User marked Home/Add device/Settings review complete on 2026-10-03. Setup Test A/B now have the approved build and fresh file-based enrollment/pairing evidence.
+- [x] **Perform a full Helium restart.** User marked the Test 1/Test 2 restart check complete on 2026-10-03. Agent subsequently observed Setup Test A's name, connection and paused collections intact. Abrupt shutdown and restart during a controlled hours-long outage remain separate tests.
+- [x] **Choose the support floor.** Mihir decided older Helium support/testing is unnecessary for V1; use the current Helium build. Browser-upgrade and extension-update preservation remain engineering checks.
+- [x] **Choose retention and backup preferences.** User marked this decision complete. Continue with the proposed 30-day session policy plus count/size caps and daily/weekly/monthly backups. Exact cap/rotation values and off-Mini destination have not been recorded; document concrete defaults during implementation/deployment. History already has opt-in configurable 90-day expiry.
+- [x] **Choose a compact popup.** Mihir requested it; implementation is tracked below.
+- [ ] **Settle distribution and History override.** Stable extension distribution/update method and any packaged native History replacement remain release choices.
+- [x] **Resolve repository push access.** User marked access resolved; the earlier failed push is historical evidence. Publishing/pushing still needs explicit authorization.
+- [x] **Choose this Mac Mini as the Tailscale host.** User confirmed it; local read-only CLI verification shows Running/online, no health warnings. The plugin has no callable tools in this session. Final client access, backup destination and FileVault/reboot details remain deployment verification.
 - [ ] **Perform daily-use acceptance on the intended devices** after the disposable-profile and release/deployment gates pass.
 
 For manual checks, record profile names, browser/build version, actions, pass/fail and observed result. Use disposable fixtures for bookmark/history mutations.
@@ -21,15 +22,17 @@ For manual checks, record profile names, browser/build version, actions, pass/fa
 - [ ] **Retained-copy policy:** finish unresolved/shared history-capture copies, general quarantine, historical backup expiration/deletion lag and safe older-backup behavior.
 - [ ] **Complete relay recovery:** replay missing acknowledged operations after an older backup or server disk loss, reconcile deletion proofs/membership/key generations, and safely resume client/browser application. Current restore guards preserve state by refusing unsafe resume; they do not complete recovery.
 - [ ] **Scale and responsiveness:** measure representative large history/journal/session/restore workloads and publication/reconnect latency; optimize where measurements fail the targets.
-- [ ] **Release compatibility:** dependency/protocol review, minimum Helium verification, actual browser upgrades and production extension updates preserving storage/origin/identity; stable distribution/update procedure.
+- [ ] **Compact popup:** status, pending changes, Sync now, collection shortcuts and clear setup/connection-error states using the existing dark square shadcn/Tailwind UI.
+- [ ] **Release compatibility:** dependency/protocol review on the current Helium build, actual browser upgrades and production extension updates preserving storage/origin/identity; stable distribution/update procedure. Older Helium testing is excluded by Mihir's decision.
 
 ## Browser acceptance still pending
 
-- [ ] **Fresh onboarding:** native connection-file enrollment, invitation-file pairing, interrupted/retry handling and recovery in the approved empty Setup Test A/B profiles. Human clarity feedback remains separate.
+- [x] **Fresh onboarding baseline:** native connection-file enrollment on A, invitation-file pairing on B, opt-in collection defaults and expired-file reload/retry/replacement. User clarity review is complete.
+- [ ] **Onboarding recovery/interruption:** fresh-author recovery and remaining network/worker-interruption permutations.
 - [ ] **Security/recovery:** native device removal/key rotation and recovery into a fresh author without cloning identity/counters.
 - [ ] **Bookmarks:** folders with children, true drag/onMoved, ordering, deletion, concurrent/offline conflicts, intentional duplicates, managed/ambiguous roots and interrupted remote application. The empty-folder cut/paste pass does not establish retained node identity.
 - [ ] **History:** URL/source/global clears, delayed reconnect without resurrection, native exclusions/private/permission edges, original-time/clock behavior, and retention controls.
-- [ ] **Lifecycle:** full browser restart/abrupt shutdown, alarm recreation/timing with DevTools closed, and termination between native mutation and journal/mapping commit.
+- [ ] **Lifecycle:** abrupt shutdown, alarm recreation/timing with DevTools closed, and termination between native mutation and journal/mapping commit. Ordinary full restart is recorded above as user-tested.
 - [ ] **Interrupted restoration:** worker/browser interruption and resume during large/multiple-window jobs, with count/order/pin/group/active selection and no unintended source closing or duplicates. Ordinary 24-tab and three-window restoration pass.
 - [ ] **Hours-long outage:** concurrent edits in both profiles, independent bookmarks/history, locally retained closed sessions, full restart while offline, later reconnection of one peer, convergence and queue drain.
 - [ ] **Storage failures:** native quota/eviction, physical client and backup disk exhaustion, and actual deployment failure/retry paths in isolated test storage.

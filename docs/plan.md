@@ -2,13 +2,13 @@
 
 **Status:** Core capture, encrypted transport, key lifecycle, history ciphertext purge/expiry, local storage limits and requested UI are implemented. Session expiry, retained-copy policy, scale/recovery checks and joint Helium acceptance remain before section 10.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-03
 
-**Checklist audit:** Reconciled implementation and native evidence through `47567e4`, then recorded routed setup/spacing at `1cee5fb` the native UI/startup follow-up at `ae87613`, and selected history removal at `a97063c`. The saved-collection action follow-up is committed at `5df642d`; native root-move interaction is recorded at `027f7d7` and remains unverified below. The native 24-tab restore and focused session-detail route checkpoint are committed at `f688edd` below.
+**Checklist audit:** Implementation/native evidence is recorded through `d57bb80`, including routed setup/spacing, selected history removal, focused session details, 24-tab and three-window restoration, and empty-folder cross-root cut/paste with Undo. The 2026-10-03 checkpoint below adds fresh file enrollment/pairing and the user's completed checks/decisions; broader interruption/conflict/recovery gates remain open.
 
 ## Current goal status
 
-Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. Native navigation, saved identity/settings, two-way diagnostic messages and the approved single-visit removal pass. A fresh options tab recovered rendering without quitting Helium; the removed visit stays absent after manual sync/reload in both profiles, while native history and the neighboring fixture remain. Saved collections now offer Open even when capture is off; Test 2’s 98 saved snapshots remain browsable with capture paused. A native 24-tab window restore now passes exact order/count, active selection and automatic completion. Saved-session details have their own route, verified in Test 2 with reload and filtered Back. Fresh file-based native onboarding and user feedback remain open. The native first pass has also verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
+Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. Native navigation, saved identity/settings, two-way diagnostic messages and the approved single-visit removal pass. A fresh options tab recovered rendering without quitting Helium; the removed visit stays absent after manual sync/reload in both profiles, while native history and the neighboring fixture remain. Saved collections now offer Open even when capture is off; Test 2’s 98 saved snapshots remain browsable with capture paused. A native 24-tab window restore now passes exact order/count, active selection and automatic completion. Saved-session details have their own route, verified in Test 2 with reload and filtered Back. Fresh native connection-file enrollment and invitation-file pairing now pass in Setup Test A/B, with expired-invitation reload/retry/replacement and two-way acknowledged diagnostics. User setup review and full restart are recorded complete; fresh-author recovery and controlled interruption/endurance remain open. The native first pass has also verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
 
 | Checkpoint                                                         | Status                                                              | Commit / evidence                                                                      |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -32,10 +32,13 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 [remaining-work.md](remaining-work.md) consolidates all current pending work with suggested owners; historical checkpoint notes below record the scope at their dates.
 
 - [x] Load the revised packaged UI in Helium Sync Test 1 and Test 2; verify navigation, direct reload/back, legacy hash migration and two-way diagnostics while preserving installation identities and collection settings.
-- [ ] Verify fresh file-based native enrollment/pairing/recovery and obtain user feedback on clarity.
+- [x] Verify fresh file-based native enrollment and invitation pairing in Setup Test A/B, including expired-invitation reload/retry and replacement.
+- [x] Obtain user feedback on setup clarity; the user marked their review complete on 2026-10-03.
+- [ ] Verify native recovery into a fresh author and remaining connection-interruption permutations.
 - [x] Verify the approved single native test-visit removal after manual sync and reload in both profiles; preserve the neighboring fixture and native browser history.
 - [ ] Verify native URL/source/global clears and delayed reconnect/reconciliation.
-- [ ] Verify full browser restart, alarm behavior and an hours-long offline run with concurrent domain edits.
+- [x] Record the user's full Helium restart check as complete on 2026-10-03; observe Setup Test A's saved enrollment/name and paused collections after that restart. This is not the abrupt-shutdown or offline-restart matrix.
+- [ ] Verify alarm behavior and an hours-long offline run with concurrent domain edits and restart.
 - [x] Open saved sessions on a focused route with visible restoration controls/progress; verify native reload/Back and preserve paused capture.
 - [x] Restore one native 24-tab fixture window across the bounded restoration passes; verify exact order/count, active tab and the complete journal.
 - [x] Verify one empty native folder cut/paste across roots and two-step Undo propagated to the peer after reload.
@@ -48,7 +51,7 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 
 Both checklist copies are updated at checkpoints and commits. [progress.md](progress.md) identifies the evidence for each implementation step; [native-smoke.md](native-smoke.md) records observed browser results. Section 10 production deployment stays deferred until implementation and joint acceptance pass.
 
-**Testing readiness:** The basic native smoke pass is underway in Helium Sync Test 1 and Test 2, on Helium 0.18.1.1 / Chromium 154.0.0.0. The approved single history removal passes after manual sync/reload in both profiles, with native history and the neighboring fixture preserved. Fresh tab navigation recovered rendering without a whole-app restart; the earlier blank-page cause remains unconfirmed. Full browser restart, hours-long outage, remaining native permutations, session/retained-copy policy, scale and complete recovery are still open. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
+**Testing readiness:** The basic native smoke pass is underway in Helium Sync Test 1 and Test 2, on Helium 0.18.1.1 / Chromium 154.0.0.0. The approved single history removal passes after manual sync/reload in both profiles, with native history and the neighboring fixture preserved. Fresh tab navigation recovered rendering without a whole-app restart; the earlier blank-page cause remains unconfirmed. The user completed an ordinary full restart and setup review. Fresh file enrollment/pairing pass; hours-long outage, abrupt/interrupted lifecycle, remaining native permutations, session/retained-copy policy, scale and complete recovery are still open. Section 10 is Mac Mini deployment, availability and backups, after joint acceptance.
 
 **Stack:** WXT + TypeScript extension; Rust + Axum + SQLite server; Mac Mini hosting; Tailscale networking.  
 **Phase-one scope:** Bookmarks, history, current sessions, closed/previous sessions, encryption, offline operation, and self-hosting.  
@@ -468,6 +471,19 @@ UI/background checkpoint: `f688edd` / `1d00114`; the approved relay, profile ide
 
 UI/background checkpoint: `f688edd` / `1d00114`; approved origin, permissions and isolated relay remain unchanged. Scoped ignored proof: `multi-window-source-review.png`, `multi-window-destination-a.png`, `multi-window-destination-b.png` and `multi-window-journal-complete.png`. Exact delivery/full-page loading latency was not measured.
 
+## Fresh native file onboarding and user decisions — 2026-10-03
+
+- [x] Load the approved `f688edd` UI / `1d00114` background into the approved empty Setup Test A/B profiles, retaining extension ID and permissions. Use a separate ready localhost relay on port 4322 (`abc7bea` frozen test binary, epoch `d6eb303d-96ee-43c8-a788-be70bbeb716b`). Test 1/Test 2's origin/data and relay remain separate.
+- [x] Enroll A through the native connection-file chooser; arrive at Choose what to sync / Connected, with bookmarks, sessions and history off and zero saved domain records.
+- [x] Load an expired invitation in B; reject it, retain the pending device/name across reload, retry with the same expiry error, and replace only that unsuccessful setup attempt.
+- [x] Save a new invitation from A and pair B through the native file chooser. B lists A as Linked and itself as You; both collections screens retain opt-in defaults.
+- [x] Send `Fresh file onboarding · Setup A/B` from independent authors `0044ac4d` and `e4bdf698`. Both Diagnostics pages show both messages Synced / Connected with zero changes waiting; A's direct reload preserves this result.
+- [x] Record Mihir's setup clarity and ordinary full Helium restart checks as user-tested. Agent subsequently observes A's saved identity, Connected state and all collections off; abrupt/offline restart is not inferred.
+- [x] Record decisions: current Helium only for V1, compact popup wanted, proposed session/backup policy accepted, GitHub access resolved, and this Mac Mini chosen for Tailscale hosting. Local read-only Tailscale status is Running/online with no health warnings; production service configuration is not performed.
+- [ ] Complete fresh-author recovery, remaining connection interruptions, abrupt lifecycle/endurance, domain matrices, retained-copy/session policy and scale/full relay recovery.
+
+Ignored fixture proof: `setup-a-welcome.png`, `setup-a-collections.png`, `setup-b-expired-retry.png`, `setup-b-collections.png`, `setup-a-diagnostics-synced.png`, `setup-b-diagnostics-synced.png` under `work/native-setup-profiles`. Private file contents are excluded from screenshots/docs. This checkpoint changes documentation only and does not rerun code suites or pass a whole milestone.
+
 ## 1. Product requirements and boundaries
 
 ### Required behavior
@@ -648,7 +664,7 @@ These are targets to measure, not guarantees while a browser/device/network is u
 - [x] Exchange WebSocket application messages approximately every 20 seconds in responsive mode.
 - [x] Persist all essential state despite the heartbeat; workers can still terminate unexpectedly.
 - [x] Recreate missing alarms and reconcile on startup, UI-open/manual-sync, and connection recovery.
-- [ ] Validate minimum Chromium behavior in Helium before choosing the manifest baseline.
+- [x] Set V1 support to the current tested Helium build, per Mihir on 2026-10-03. The manifest capability floor 134 is not a claim of older-version support; older-version acceptance is excluded.
 - [ ] Measure latency with DevTools closed and under representative offline/reconnect conditions.
 
 Chromium 116+ lets WebSocket traffic reset a worker's idle timer; Chromium 120+ supports 30-second alarm periods. The design must still tolerate termination and delayed alarms. [WebSockets](https://developer.chrome.com/docs/extensions/how-to/web-platform/websockets), [worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)
@@ -849,11 +865,13 @@ Implementation tasks below use the recorded model, database, port and real-relay
 - [ ] Complete the native API/permission matrix, including managed/private/root/exclusion/removal edge cases.
 - [x] Verify native WXT startup, worker stop/automatic revival and retained enrollment/data/settings through same-origin extension reload.
 - [x] Implement/test persisted state and 30-second alarm recreation/startup/manual-sync/reconnect paths.
-- [ ] Directly verify alarm recreation/timing, full browser restart and native quota/physical-storage behavior.
+- [x] Record ordinary full browser restart as user-tested on 2026-10-03; observe Setup Test A enrollment/name/settings intact afterwards.
+- [ ] Directly verify alarm recreation/timing and native quota/physical-storage behavior.
 - [x] Demonstrate representative window/tab/group capture and restoration.
 - [ ] Demonstrate authenticated HTTPS/WSS through Tailscale Serve.
 - [x] Record tested Helium 0.18.1.1 / Chromium 154.0.0.0 and the provisional manifest floor 134.
-- [ ] Verify the minimum supported older Helium build and actual Mac Mini reboot/login limitations.
+- [x] Limit V1 support to the current Helium build; Mihir declined older-version testing.
+- [ ] Verify actual Mac Mini reboot/login limitations.
 - [ ] **Exit gate:** Compatibility evidence is recorded; no test modifies the user's real bookmark collection.
 
 ### M2 — Durable local state and encrypted transport
@@ -902,10 +920,11 @@ Implementation tasks below use the recorded model, database, port and real-relay
 - [x] Implement setup/import guidance, status/error reporting, explicit bookmark-effect recovery, exclusions, local storage controls and opt-in history retention; exercise synthetic/native UI as recorded.
 - [ ] Finish session/general retained-copy policy and remaining native UI acceptance.
 - [x] Provide the full Sessions/History options dashboard, opened by the toolbar action in the current build.
-- [ ] Settle whether to add the originally proposed compact popup before release.
+- [x] Choose a compact popup before release, per Mihir on 2026-10-03.
+- [ ] Implement and verify the compact popup.
 - [ ] Evaluate a packaged `chrome://history` override after the dashboard is stable; explain the choice before enabling it.
 - [x] Verify current protocol/schema migration/upgrade refusal, package-version consistency and Changeset release generation in a disposable copy.
-- [ ] Complete release dependency/compatibility review, minimum Helium verification and stable extension distribution/update identity procedure.
+- [ ] Complete release dependency/protocol review on current Helium, browser/extension upgrade preservation and stable distribution/update identity procedure.
 - [ ] Run daily-use verification across the user's actual intended devices after disposable-profile gates pass.
 - [ ] **Exit gate:** Daily use, offline recovery, and documented self-hosting are reliable; unresolved limitations are recorded.
 
@@ -935,7 +954,8 @@ Checked model/port/relay results below describe their recorded automated scope, 
 - [x] Consistent WAL backup/isolated restore integrity and epoch/frontier/credential rejection preserve exact surviving client exports/keys/queues.
 - [ ] Verify complete post-restore reconciliation, missing acknowledged-operation replay and safe client resume.
 - [x] Native pairing/domain/short-outage/worker-stop checks ran with DevTools closed.
-- [ ] Run full browser restart, hours-long outage and remaining interruption/lifecycle checks with DevTools closed.
+- [x] Record the user-completed ordinary full restart on 2026-10-03.
+- [ ] Run hours-long outage and remaining abrupt/interruption/lifecycle checks with DevTools closed.
 
 ## 13. Future scope: optional iCloud
 
@@ -982,7 +1002,7 @@ Phase one only needs a clean separation between domain logic and transport; it d
 ### Decisions to settle during implementation planning
 
 - [x] Select the user-created Helium Sync Test 1 and Test 2 profiles for joint acceptance and record the tested browser version.
-- [ ] Select actual daily-use devices and verify the supported minimum Helium version.
+- [x] Use current Helium for V1; older-version support is unnecessary per Mihir on 2026-10-03. Intended daily-use acceptance remains in M7.
 - [x] Select local key-unlock policy and recovery-bundle handling.
 - [x] Finalize executable bookmark merge and history-clear specifications.
 - [x] Set/enforce account and per-profile storage budgets; retain uncompacted V1 tombstones and pending essential work.

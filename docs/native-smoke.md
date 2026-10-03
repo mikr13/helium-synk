@@ -133,3 +133,16 @@ UI/background checkpoint: `f688edd` / `1d00114`; the approved relay, profile ide
 - [ ] Verify forced interruption and resume during large/multi-window restoration; this normal completion does not pass the interruption or full-scale gate.
 
 UI/background checkpoint: `f688edd` / `1d00114`; approved origin, permissions and isolated relay remain unchanged. Scoped ignored proof: `multi-window-source-review.png`, `multi-window-destination-a.png`, `multi-window-destination-b.png` and `multi-window-journal-complete.png`. Exact delivery/full-page loading latency was not measured.
+
+## Fresh native file onboarding and user decisions — 2026-10-03
+
+- [x] Load the approved `f688edd` UI / `1d00114` background into the approved empty Setup Test A/B profiles, retaining extension ID and permissions. Use a separate ready localhost relay on port 4322 (`abc7bea` frozen test binary, epoch `d6eb303d-96ee-43c8-a788-be70bbeb716b`). Test 1/Test 2's origin/data and relay remain separate.
+- [x] Enroll A through the native connection-file chooser; arrive at Choose what to sync / Connected, with bookmarks, sessions and history off and zero saved domain records.
+- [x] Load an expired invitation in B; reject it, retain the pending device/name across reload, retry with the same expiry error, and replace only that unsuccessful setup attempt.
+- [x] Save a new invitation from A and pair B through the native file chooser. B lists A as Linked and itself as You; both collections screens retain opt-in defaults.
+- [x] Send `Fresh file onboarding · Setup A/B` from independent authors `0044ac4d` and `e4bdf698`. Both Diagnostics pages show both messages Synced / Connected with zero changes waiting; A's direct reload preserves this result.
+- [x] Record Mihir's setup clarity and ordinary full Helium restart checks as user-tested. Agent subsequently observes A's saved identity, Connected state and all collections off; abrupt/offline restart is not inferred.
+- [x] Record decisions: current Helium only for V1, compact popup wanted, proposed session/backup policy accepted, GitHub access resolved, and this Mac Mini chosen for Tailscale hosting. Local read-only Tailscale status is Running/online with no health warnings; production service configuration is not performed.
+- [ ] Complete fresh-author recovery, remaining connection interruptions, abrupt lifecycle/endurance, domain matrices, retained-copy/session policy and scale/full relay recovery.
+
+Ignored fixture proof: `setup-a-welcome.png`, `setup-a-collections.png`, `setup-b-expired-retry.png`, `setup-b-collections.png`, `setup-a-diagnostics-synced.png`, `setup-b-diagnostics-synced.png` under `work/native-setup-profiles`. Private file contents are excluded from screenshots/docs. This checkpoint changes documentation only and does not rerun code suites or pass a whole milestone.
