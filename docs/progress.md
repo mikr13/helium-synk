@@ -380,3 +380,14 @@ UI/background checkpoint: `f688edd` / `1d00114`; approved origin, permissions an
 - [ ] Complete fresh-author recovery, remaining connection interruptions, abrupt lifecycle/endurance, domain matrices, retained-copy/session policy and scale/full relay recovery.
 
 Ignored fixture proof: `setup-a-welcome.png`, `setup-a-collections.png`, `setup-b-expired-retry.png`, `setup-b-collections.png`, `setup-a-diagnostics-synced.png`, `setup-b-diagnostics-synced.png` under `work/native-setup-profiles`. Private file contents are excluded from screenshots/docs. This checkpoint changes documentation only and does not rerun code suites or pass a whole milestone.
+
+## Compact toolbar popup checkpoint — 2026-10-03
+
+- [x] Add the requested dark square popup using shared logo tokens and shadcn Button/Badge/Alert components. Show profile/connection state, queued changes, Sync now, collection shortcuts and Open Helium Synk / Connect another device.
+- [x] Keep setup, saved connection retry, storage, retention and recovery on their focused options routes. An empty popup offers Set up sync; a durable pairing attempt offers Finish connecting; unavailable worker status offers retry and dashboard access.
+- [x] Verify rendered online/offline/checking/empty/pending/worker-error and long-name states, manual sync feedback, 360 px width, no overflow, zero rounded controls and no fresh preview warning/error logs. Long-name height is about 440 px.
+- [x] Load UI assets and popup manifest action at the approved stable extension path with a complete rollback copy. Background SHA-256, permissions, optional hosts, identity and stored data are unchanged.
+- [x] Reload only Setup Test B's extension; verify its native popup shows the saved profile and Connected / Everything is up to date. Sync now returns normally. Sessions, Add device and Open Helium Synk open the correct full-page routes and close the popup. Collections remain off; only owned shortcut verification tabs are closed.
+- [x] Pass both TypeScript checks, all 237 existing tests, production WXT build, changed-file formatting and version consistency; record an extension patch Changeset without a release bump.
+
+The native popup pass is on Setup Test B. Other installed test profiles receive the same UI on their next extension reload. Existing background/relay behavior is unchanged, so this UI checkpoint does not rerun the preceding 44 Rust/16 integration results or pass the remaining recovery/endurance/scale/production gates. Ignored proof: `popup-native-connected.png` and `popup-preview-online.png` under `work/native-setup-profiles`; rollback: `work/native-user-profiles/extension-before-compact-popup`.

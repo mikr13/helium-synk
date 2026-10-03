@@ -22,7 +22,7 @@ For manual checks, record profile names, browser/build version, actions, pass/fa
 - [ ] **Retained-copy policy:** finish unresolved/shared history-capture copies, general quarantine, historical backup expiration/deletion lag and safe older-backup behavior.
 - [ ] **Complete relay recovery:** replay missing acknowledged operations after an older backup or server disk loss, reconcile deletion proofs/membership/key generations, and safely resume client/browser application. Current restore guards preserve state by refusing unsafe resume; they do not complete recovery.
 - [ ] **Scale and responsiveness:** measure representative large history/journal/session/restore workloads and publication/reconnect latency; optimize where measurements fail the targets.
-- [ ] **Compact popup:** status, pending changes, Sync now, collection shortcuts and clear setup/connection-error states using the existing dark square shadcn/Tailwind UI.
+- [x] **Compact popup:** implemented with shared dark square shadcn/Tailwind components; preview states/layout and native Setup Test B status, Sync now and navigation pass. Other test profiles receive it on their next extension reload.
 - [ ] **Release compatibility:** dependency/protocol review on the current Helium build, actual browser upgrades and production extension updates preserving storage/origin/identity; stable distribution/update procedure. Older Helium testing is excluded by Mihir's decision.
 
 ## Browser acceptance still pending

@@ -49,7 +49,7 @@ pnpm build
 
 The [first native smoke checklist](docs/native-smoke.md) covers the initial hands-on pass.
 
-In a **disposable Helium profile**, open `chrome://extensions`, enable developer mode, and load `extension/.output/chrome-mv3` as an unpacked extension. Click its toolbar action to open the dashboard. Use another disposable profile for the second client. Keep the unpacked extension path stable; changing identity/origin can strand local storage.
+In a **disposable Helium profile**, open `chrome://extensions`, enable developer mode, and load `extension/.output/chrome-mv3` as an unpacked extension. Click its toolbar action for sync status and shortcuts; choose Open Helium Synk for the full dashboard. Use another disposable profile for the second client. Keep the unpacked extension path stable; changing identity/origin can strand local storage.
 
 1. In profile A, choose **Set up my first device**, select `work/profile-a.credential.json`, then **Connect this device**. Keys are generated locally.
 2. Open **Settings → Recovery & backups** and save a private recovery file separately from server backups.
