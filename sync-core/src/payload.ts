@@ -1,10 +1,10 @@
 import { validateBookmarkOperation, type BookmarkOperation } from './bookmarks';
-import { validateSessionPart, type SessionPart } from './sessions';
+import { validateSessionOperation, type SessionOperation } from './sessions';
 import { validateHistoryOperation, type HistoryOperation } from './history';
 import { validateHistoryErasure, type HistoryErasure } from './history-erasure';
 import type { Diagnostic, Envelope } from './protocol';
 export type Payload =
-  Diagnostic | BookmarkOperation | SessionPart | HistoryOperation | HistoryErasure;
+  Diagnostic | BookmarkOperation | SessionOperation | HistoryOperation | HistoryErasure;
 export type EnvelopeHeader = Omit<Envelope, 'nonce' | 'ciphertext'>;
 export const MAX_PLAINTEXT_BYTES = 65_536 - 16;
 export function validatePayload(payload: Payload, header: EnvelopeHeader): void {
@@ -20,11 +20,11 @@ export function validatePayload(payload: Payload, header: EnvelopeHeader): void 
     )
       throw new Error('Invalid diagnostic payload.');
   } else if (payload.kind === 'session') {
-    validateSessionPart(payload);
+    validateSessionOperation(payload);
     if (
       payload.operation_id !== header.operation_id ||
       payload.source_id !== header.device_id ||
-      payload.source_revision + payload.part !== header.counter
+      payload.source_revision + (payload.schema_version === 1 ? payload.part : 0) !== header.counter
     )
       throw new Error('Session source/revision does not match its envelope.');
   } else {

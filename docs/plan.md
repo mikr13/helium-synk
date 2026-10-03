@@ -1,31 +1,32 @@
 # Helium Sync — Implementation Plan
 
-**Status:** Core capture, encrypted transport, key lifecycle, history ciphertext purge/expiry, local storage limits and requested UI are implemented. Session expiry, retained-copy policy, scale/recovery checks and joint Helium acceptance remain before section 10.
+**Status:** Core capture, encrypted transport, key lifecycle, history ciphertext purge/expiry, local storage limits, logical session archive expiry and requested UI are implemented. Session ciphertext/capture-copy cleanup and controls, retained-copy policy, scale/recovery checks and joint Helium acceptance remain before section 10.
 
 **Updated:** 2026-10-03
 
-**Checklist audit:** Implementation/native evidence is recorded through `d57bb80`, including routed setup/spacing, selected history removal, focused session details, 24-tab and three-window restoration, and empty-folder cross-root cut/paste with Undo. The 2026-10-03 checkpoint below adds fresh file enrollment/pairing and the user's completed checks/decisions; broader interruption/conflict/recovery gates remain open.
+**Checklist audit:** Native/UI evidence is recorded through `36ec31a`, including fresh file onboarding, the compact popup and the user's completed checks/decisions. The new session retention backend checkpoint below adds automated age/count/content-size expiry, durable proofs and restore/upload protection. Full session retention and the broader interruption/conflict/recovery gates remain open.
 
 ## Current goal status
 
 Continue disposable-profile testing and simplify the extension setup/navigation. The routed UI and spacing revision are implemented, preview-verified and loaded in both named Helium test profiles. The requested compact toolbar popup is implemented and verified natively in Setup Test B. Native navigation, saved identity/settings, two-way diagnostic messages and the approved single-visit removal pass. A fresh options tab recovered rendering without quitting Helium; the removed visit stays absent after manual sync/reload in both profiles, while native history and the neighboring fixture remain. Saved collections now offer Open even when capture is off; Test 2’s 98 saved snapshots remain browsable with capture paused. A native 24-tab window restore now passes exact order/count, active selection and automatic completion. Saved-session details have their own route, verified in Test 2 with reload and filtered Back. Fresh native connection-file enrollment and invitation-file pairing now pass in Setup Test A/B, with expired-invitation reload/retry/replacement and two-way acknowledged diagnostics. User setup review and full restart are recorded complete; fresh-author recovery and controlled interruption/endurance remain open. The native first pass has also verified pairing, bookmark creation/reverse rename, current/closed sessions, pinned/grouped window restoration, original-time history, a short outage and worker stop/revival. Every whole milestone exit gate remains open.
 
-| Checkpoint                                                         | Status                                                              | Commit / evidence                                                                      |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                               | `a0429bd` and earlier checkpoints; native gates open                                   |
-| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                  | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint                    |
-| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                  | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint                    |
-| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open                | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                                      |
-| Logo and favicon                                                   | Complete branding implementation checkpoint                         | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass                      |
-| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open                | `93bea2c`; 176 TS, 11 real-process tests, production build/UI                          |
-| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open     | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                                      |
-| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending  | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                                    |
-| Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open     | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md)      |
-| Native Helium APIs, worker lifecycle and hours-long outage         | Pairing/domains/removal/short outage/worker pass; restart gate open | `b753fce`, `483b08b`, `1d00114`, `448dd49`, `47567e4`; [native smoke](native-smoke.md) |
-| Guided setup, separate routes and consistent shadcn spacing        | Preview and native navigation/message pass; fresh onboarding open   | `1cee5fb`; 237 TS tests, production build and route/layout checks                      |
-| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                     | Section 10 onward                                                                      |
+| Checkpoint                                                         | Status                                                                 | Commit / evidence                                                                      |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Bookmarks, sessions, history capture/transport                     | Implemented and automated checks pass                                  | `a0429bd` and earlier checkpoints; native gates open                                   |
+| Relay quotas, resource bounds, durable cursor ACKs                 | Complete implementation checkpoint                                     | `890bad2`; 142 TS, 18 Rust, 8 real-process tests at that checkpoint                    |
+| Single-use private pairing and durable enrollment                  | Complete implementation checkpoint                                     | `4d34eed`; 151 TS, 23 Rust, 9 real-process tests at that checkpoint                    |
+| Future-data key rotation / fresh-profile recovery                  | Complete implementation checkpoint; native gate open                   | `3d1e9f3`; 176 TS, 31 Rust, 11 real-process tests                                      |
+| Logo and favicon                                                   | Complete branding implementation checkpoint                            | `9b2e6da`; PNG/ICO assets, typechecks/build and synthetic UI pass                      |
+| Dark square UI, Tailwind/shadcn and TypeScript aliases             | Complete implementation checkpoint; native gate open                   | `93bea2c`; 176 TS, 11 real-process tests, production build/UI                          |
+| History plaintext/ciphertext erasure                               | Client/relay purge implemented; retained-copy/backup gates open        | `3a6bedd`; 215 TS, 40 Rust, 12 real-process tests                                      |
+| Local budgets, retention, full-scale journal performance, recovery | Storage/history expiry implemented; session/scale/recovery pending     | `a28c1b1`, `abc7bea`; 236 TS, 14 real-process tests                                    |
+| Consistent relay snapshots and restore guards                      | Implemented; missing acknowledged-operation replay remains open        | `09bf1bd`; 44 Rust, 16 real-process tests; [recovery contract](relay-recovery.md)      |
+| Native Helium APIs, worker lifecycle and hours-long outage         | Basic pass and user restart complete; interruption/endurance open      | `b753fce`, `483b08b`, `1d00114`, `448dd49`, `47567e4`; [native smoke](native-smoke.md) |
+| Guided setup, separate routes and consistent shadcn spacing        | Routes and fresh file onboarding pass; recovery/interruption open      | `1cee5fb`, `8aaaed4`; 237 TS tests, production build and route/layout checks           |
+| Session archive expiry backend                                     | Logical policy/proofs/protection pass; ciphertext/controls/native open | 250 TS tests, 17 real-process integrations; [retention contract](retention.md)         |
+| Production hosting / Tailscale / launchd / backup deployment       | Deferred until implementation and joint testing                        | Section 10 onward                                                                      |
 
-Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrations**, typechecks, production WXT build, rustfmt/clippy, formatting, version consistency and Changeset status. Worker checkpoint: `47567e4`; closure fix: `1d00114`; backup/restore guards: `09bf1bd`. No release/version bump or production deployment has been performed. This UI checkpoint reruns TypeScript checks, 237 TS tests and the production WXT build. All 16 real-process integrations also passed during this work; the 44 Rust test result is from the preceding server checkpoint. Synthetic previews establish layout/setup behavior. Both native profiles now use the revised UI assets with the same approved background bytes, permissions, extension origin and relay.
+Latest recorded checks: **250 TS tests and 17 real-process integrations**, both TypeScript checks, production WXT build, changed-file formatting and version consistency. The **44 Rust tests** and rustfmt/clippy result belong to the preceding server checkpoint; relay sources are unchanged here. Worker checkpoint: `47567e4`; closure fix: `1d00114`; backup/restore guards: `09bf1bd`; popup: `36ec31a`. No release/version bump or production deployment has been performed. The session retention backend is built and tested in isolated databases/relay processes; it has not been loaded into the native test profiles. Their previously approved background, origin and stored data remain intact.
 
 ### Remaining before full acceptance
 
@@ -44,7 +45,8 @@ Latest recorded checks: **237 TS tests, 44 Rust tests, 16 real-process integrati
 - [x] Verify one empty native folder cut/paste across roots and two-step Undo propagated to the peer after reload.
 - [x] Restore one reviewed native three-window snapshot: verify 5/5 supported pages, 3/3 completed windows, internal-page skips and preserved source fixtures.
 - [ ] Complete the native bookmark drag/child/conflict/root/interruption matrix and interrupted large/multi-window restores; measure representative latency.
-- [ ] Implement session expiry/count/size policy and finish unresolved/shared capture, general quarantine and historical backup-copy policy.
+- [x] Implement and automatically verify source-owned logical session age/count/content-size expiry, durable proofs, pending/current/restore protection and journal plaintext cleanup.
+- [ ] Finish session ciphertext/capture-copy cleanup and controls/native acceptance, unresolved/shared capture, general quarantine and historical backup-copy policy.
 - [ ] Measure and complete full-scale history/journal/restore responsiveness.
 - [ ] Recover missing acknowledged operations after older-backup/server loss and verify safe reconciliation/resume.
 - [ ] Complete native key rotation/fresh-author recovery and minimum-version/release compatibility checks.
@@ -495,6 +497,20 @@ Ignored fixture proof: `setup-a-welcome.png`, `setup-a-collections.png`, `setup-
 
 The native popup pass is on Setup Test B. Other installed test profiles receive the same UI on their next extension reload. Existing background/relay behavior is unchanged, so this UI checkpoint does not rerun the preceding 44 Rust/16 integration results or pass the remaining recovery/endurance/scale/production gates. Ignored proof: `popup-native-connected.png` and `popup-preview-online.png` under `work/native-setup-profiles`; rollback: `work/native-user-profiles/extension-before-compact-popup`.
 
+## Session archive retention backend checkpoint — 2026-10-03
+
+- [x] Define opt-in defaults of 30 days, 100 combined closed/previous archives and 50 MiB of snapshot content per source; validate/persist policy and replica export/reopening.
+- [x] Expire by strict original capture time and evict oldest eligible archives for count/content-size caps. Include superseded current snapshots; preserve latest current and the last acknowledged current while its replacement uploads.
+- [x] Protect unencrypted drafts, every unacknowledged multipart fragment, incomplete assemblies and running/blocked restoration jobs. Protected archives can temporarily exceed the caps.
+- [x] Commit bounded batches of at most 100 source-owned encrypted expiry targets, counter reservation and projection cleanup atomically. Validate author/counter/target identity and overlapping source-counter references; exact late snapshot replay cannot restore expired lists.
+- [x] Remove expired journal plaintext into metadata receipts and remove terminal restoration copies at reconciliation. Keep original ciphertext immutable and active restoration data intact. Avoid rewriting unchanged journal rows.
+- [x] Reject a new restore atomically if expiry commits while browser incarnation is being read; preserve existing active jobs and their idempotent retries.
+- [x] Pass 12 new retention tests and one restore-race test: 250 TS tests total, both typechecks and production WXT build. All 17 real-process integrations pass, including pending-upload-first expiry, a discarded reply, client/relay restart, peer convergence and fresh bootstrap.
+- [ ] Finish authenticated session ciphertext purge, closed-capture retained-copy cleanup, shadcn controls and native acceptance; verify upgrade compatibility before enabling on test profiles.
+- [ ] Measure representative full-scale journal latency and finish older-backup/physical-copy policy. Logical content caps do not bound encrypted journal or disk use.
+
+This is a backend checkpoint, not full retention acceptance. Defaults remain off and no native installation is changed. New expiry records use encrypted session payload schema 2 under the existing session envelope domain; all clients must understand them before retention is enabled. [retention.md](retention.md) defines the remaining storage and compatibility gates.
+
 ## 1. Product requirements and boundaries
 
 ### Required behavior
@@ -552,7 +568,8 @@ Evidence: [local storage](local-storage.md), [relay progress](relay-protocol.md)
 - [ ] Define and verify the stable production distribution/update identity procedure.
 - [x] Never age out unacknowledged bookmark/history/deletion operations just because their normal retention period elapsed.
 - [x] Coalesce wholly unencrypted current-session drafts; preserve closed/saved snapshots and already encrypted fragments.
-- [ ] Implement the final closed/previous-session age/count/size retention policy.
+- [x] Implement/test the logical closed/previous-session age/count/content-size policy with pending/current/restore protection.
+- [ ] Finish session ciphertext/capture-copy cleanup, controls and native acceptance before the final retention gate.
 - [x] Make queue limits explicit; warn or pause affected collection before silently discarding required work.
 - [x] Provide an export that includes logical state, tombstones, and pending operations for recovery.
 - [x] Reconcile missed events on startup and after interruption; document that abrupt termination before capture can lose transient session details.
@@ -997,18 +1014,18 @@ Phase one only needs a clean separation between domain logic and transport; it d
 
 ## 14. Decision log and open choices
 
-| Decision                  | Current position                                                                               | Revisit when                                |
-| ------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Extension/server stack    | WXT + TypeScript; Rust/Axum + SQLite                                                           | Only if measured requirements invalidate it |
-| Hosting/network           | Native Mac Mini service; private Tailscale Serve                                               | Deployment verification                     |
-| Server outage behavior    | Durable local capture/cache; delayed cross-device propagation                                  | M2 outage tests                             |
-| Session behavior          | Source-owned snapshots; explicit remote restoration                                            | M4 user verification                        |
-| Content protection        | Client-side E2EE; separate API authentication                                                  | M2 key lifecycle design                     |
-| Conflict resolution       | Per-field causal merges and deterministic conflict resolution                                  | M3 executable spec                          |
-| Local unlock behavior     | Development auto-unlock; profile-local keys/decrypted cache, separate private recovery bundles | Before daily-use/release acceptance         |
-| History/session retention | Opt-in 90-day history expiry implemented; 30-day session policy pending                        | Before M5/M6 deployment                     |
-| History-page replacement  | Optional packaged release choice                                                               | M7                                          |
-| iCloud                    | Future research only                                                                           | After phase-one exit gates                  |
+| Decision                  | Current position                                                                                                        | Revisit when                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Extension/server stack    | WXT + TypeScript; Rust/Axum + SQLite                                                                                    | Only if measured requirements invalidate it |
+| Hosting/network           | Native Mac Mini service; private Tailscale Serve                                                                        | Deployment verification                     |
+| Server outage behavior    | Durable local capture/cache; delayed cross-device propagation                                                           | M2 outage tests                             |
+| Session behavior          | Source-owned snapshots; explicit remote restoration                                                                     | M4 user verification                        |
+| Content protection        | Client-side E2EE; separate API authentication                                                                           | M2 key lifecycle design                     |
+| Conflict resolution       | Per-field causal merges and deterministic conflict resolution                                                           | M3 executable spec                          |
+| Local unlock behavior     | Development auto-unlock; profile-local keys/decrypted cache, separate private recovery bundles                          | Before daily-use/release acceptance         |
+| History/session retention | History expiry implemented; session logical 30-day/100-archive/50-MiB backend passes, full cleanup/controls/native open | Before M5/M6 deployment                     |
+| History-page replacement  | Optional packaged release choice                                                                                        | M7                                          |
+| iCloud                    | Future research only                                                                                                    | After phase-one exit gates                  |
 
 ### Decisions to settle during implementation planning
 

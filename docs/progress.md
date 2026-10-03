@@ -391,3 +391,15 @@ Ignored fixture proof: `setup-a-welcome.png`, `setup-a-collections.png`, `setup-
 - [x] Pass both TypeScript checks, all 237 existing tests, production WXT build, changed-file formatting and version consistency; record an extension patch Changeset without a release bump.
 
 The native popup pass is on Setup Test B. Other installed test profiles receive the same UI on their next extension reload. Existing background/relay behavior is unchanged, so this UI checkpoint does not rerun the preceding 44 Rust/16 integration results or pass the remaining recovery/endurance/scale/production gates. Ignored proof: `popup-native-connected.png` and `popup-preview-online.png` under `work/native-setup-profiles`; rollback: `work/native-user-profiles/extension-before-compact-popup`.
+
+## Session archive retention backend checkpoint — 2026-10-03
+
+- [x] Add opt-in source-owned 30-day/100-archive/50-MiB content defaults with validated persistence/reopening/export. Include superseded current, closed and previous snapshots in the archive pool; strict original capture time controls age and oldest eligible captures relieve count/size pressure.
+- [x] Protect latest current, its last fully published predecessor during replacement upload, drafts/unacknowledged multipart/incomplete captures, and running/blocked restoration jobs. Caps may temporarily be exceeded by protected work.
+- [x] Reserve at most 100 expiry targets per encrypted schema-2 session operation. Commit proof/counter/projection/journal plaintext cleanup together; reject author/identity/counter overlap conflicts. Exact late full-fragment replay stays suppressed.
+- [x] Keep original ciphertext immutable and expired stored plaintext as metadata receipts. Remove expired terminal restoration copies on reconciliation; keep remote active jobs intact. Avoid rewriting unchanged journal rows.
+- [x] Add an atomic restore-start check for expiry committing during browser incarnation lookup; preserve existing active jobs and their retry identities.
+- [x] Pass 12 retention tests plus one restore-race case, all 250 TS tests, both typechecks, production WXT build, changed-file formatting and version consistency. All 17 real-process integrations pass, including pending-upload-first, lost committed reply, relay/client restart, policy reopening, peer convergence and fresh bootstrap.
+- [ ] Finish authenticated session ciphertext purge, closed-capture retained-copy cleanup, shadcn controls, native/upgrade acceptance, representative-scale latency and full older-backup/physical-copy policy.
+
+This checkpoint changes the backend only; the native kit/profiles are not reloaded or enabled. Encrypted session payload schema 2 requires updated clients before activation, while the relay envelope/domain/migrations remain unchanged. The integration explicitly confirms original SQL ciphertext is retained, so logical archive caps do not establish total disk-space or complete erasure guarantees. Earlier 44 Rust tests/rustfmt/clippy belong to the preceding server checkpoint. No release, push or production deployment is performed. [retention.md](retention.md) records the contract and remaining gate.

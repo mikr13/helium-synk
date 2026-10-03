@@ -19,6 +19,7 @@ import {
   historyUrlTag,
   envelopeDigest,
   base64,
+  DEFAULT_SESSION_RETENTION,
 } from '../sync-core/src/index';
 import { sessionWindow } from './session-fixtures';
 
@@ -320,6 +321,101 @@ it('encrypted multipart sessions and offline closed windows survive client and R
   expect(stored).not.toContain('https://example.com/');
   expect(stored).not.toContain(sharedKey);
   expect(stored.trim().split('\n').length).toBeGreaterThan(4);
+});
+
+it('source-owned session expiry uploads pending archives first and survives a lost reply, relay/client restart and fresh bootstrap', async () => {
+  const issue = (name: string): Credentials => {
+    const output = join(directory, `${name}.json`);
+    execFileSync(
+      binary,
+      [
+        '--database',
+        database,
+        'issue-device',
+        '--name',
+        name,
+        '--server-url',
+        `http://127.0.0.1:${port}`,
+        '--output',
+        output,
+      ],
+      { stdio: 'ignore' },
+    );
+    return JSON.parse(readFileSync(output, 'utf8'));
+  };
+  let owner = await local(issue('Session retention owner'), sharedKey);
+  const peer = await local(issue('Session retention peer'), sharedKey);
+  const time = Date.now(),
+    day = 86_400_000;
+  const capture = (kind: 'current' | 'closed' | 'previous', age: number) => ({
+    kind,
+    captured_at: new Date(time - age * day).toISOString(),
+    windows: [sessionWindow()],
+  });
+  const peerOld = await peer.stageSession(capture('closed', 60));
+  await new SyncCoordinator(peer).sync();
+  await owner.setSessionRetention({ ...DEFAULT_SESSION_RETENTION, enabled: true });
+  const current = await owner.stageSession(capture('current', 60)),
+    old = await owner.stageSession(capture('closed', 60)),
+    recent = await owner.stageSession(capture('previous', 2));
+  await owner.flushDrafts();
+  const original = (await owner.operations.toArray()).find(
+    (row) =>
+      row.payload.kind === 'session' &&
+      row.payload.schema_version === 1 &&
+      row.payload.snapshot_id === old,
+  )!;
+  await new SyncCoordinator(owner).sync();
+  expect((await owner.sessionProjection()).snapshots[old]).toBeDefined();
+  expect((await owner.operations.get(original.operation_id))!.sequence).toBeGreaterThan(0);
+  const base = new HttpTransport((await owner.state.get('local'))!);
+  await expect(
+    new SyncCoordinator(owner, () => ({
+      keys: base.keys,
+      purge: (request) => base.purge(request),
+      pull: (cursor) => base.pull(cursor),
+      acknowledge: (cursor, epoch) => base.acknowledge(cursor, epoch),
+      push: async (envelopes, epoch) => {
+        await base.push(envelopes, epoch);
+        throw new Error('Session expiry reply discarded');
+      },
+    })).sync(),
+  ).rejects.toThrow('reply discarded');
+  expect((await owner.sessionProjection()).snapshots[old]).toBeUndefined();
+  expect(await owner.pendingCount()).toBe(1);
+  const name = owner.name;
+  owner.close();
+  await stop();
+  await start();
+  owner = new SynkDatabase(name);
+  localDatabases.push(owner);
+  expect((await owner.state.get('local'))!.session_retention?.enabled).toBe(true);
+  await new SyncCoordinator(owner).sync();
+  await new SyncCoordinator(peer).sync();
+  const fresh = await local(issue('Session retention fresh'), sharedKey);
+  await new SyncCoordinator(fresh).sync();
+  for (const db of [owner, peer, fresh]) {
+    const projection = await db.sessionProjection();
+    expect(projection.snapshots[old]).toBeUndefined();
+    for (const id of [current, recent, peerOld]) expect(projection.snapshots[id]).toBeDefined();
+    expect((await db.operations.get(original.operation_id))!.payload).not.toHaveProperty('data');
+    expect((await db.operations.get(original.operation_id))!.envelope).toEqual(original.envelope);
+  }
+  expect(await owner.pendingCount()).toBe(0);
+  const proofs = (await owner.operations.toArray()).filter(
+    (row) =>
+      row.payload.kind === 'session' &&
+      row.payload.schema_version === 2 &&
+      row.envelope.device_id === original.envelope.device_id,
+  );
+  expect(proofs).toHaveLength(1);
+  const stored = execFileSync(
+    'sqlite3',
+    [database, `SELECT envelope FROM operations WHERE operation_id = '${original.operation_id}';`],
+    { encoding: 'utf8' },
+  );
+  expect(stored).toContain(original.envelope.ciphertext); // Authenticated ciphertext purge remains open.
+  expect(stored).not.toContain('https://example.com/');
 });
 
 it('history erases live ciphertext across lost purge replies, client/relay restarts and fresh bootstrap', async () => {

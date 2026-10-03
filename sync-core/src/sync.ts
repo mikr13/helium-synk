@@ -3,6 +3,7 @@ import { KeyManager, keySnapshot } from './key-manager';
 import type { KeyTransport } from './key-state';
 import { projectHistory } from './history';
 import { expireHistory } from './history-retention';
+import { expireSessions } from './session-retention';
 import { projectSessions } from './sessions';
 import { projectBookmarks } from './bookmarks';
 import { LocalCapacityError } from './local-storage';
@@ -262,6 +263,7 @@ export class SyncCoordinator {
             ...this.db.captureBudgetTables(),
             this.db.replicas,
             this.db.sessionReplicas,
+            this.db.sessionRestores,
           ],
           async () => {
             let newContent = 0,
@@ -279,6 +281,7 @@ export class SyncCoordinator {
                 ('redacted' in record && record.redacted) ||
                 erasedIds.has(record.operation_id) ||
                 payload.kind === 'history-erasure' ||
+                (payload.kind === 'session' && payload.schema_version === 2) ||
                 (payload.kind === 'history' && payload.action.type !== 'visit') ||
                 (payload.kind === 'bookmark' && payload.action.type === 'remove')
               )
@@ -323,12 +326,12 @@ export class SyncCoordinator {
               if (record.payload.kind === 'history-erasure')
                 await applyHistoryErasure(this.db, record, redactedSequences);
             const bookmarkOperations = await this.db.bookmarkOperations();
-            const sessionParts = await this.db.sessionParts();
+            const sessionOperations = await this.db.sessionOperations();
             const historyOperations = await this.db.historyOperations();
             let projection, sessions, history;
             try {
               projection = projectBookmarks(bookmarkOperations);
-              sessions = projectSessions(sessionParts);
+              sessions = projectSessions(sessionOperations);
               history = projectHistory(historyOperations);
               await validateAuthorCounters(this.db);
             } catch (cause) {
@@ -337,7 +340,7 @@ export class SyncCoordinator {
               throw validationFailure;
             }
             await this.db.replicas.put({ domain: 'bookmark', value: projection });
-            await this.db.sessionReplicas.put({ id: 'session', value: sessions });
+            await this.db.persistSessions(sessions);
             await this.db.persistHistory(history);
             await this.db.quarantine.bulkDelete(
               [...records, ...operations].map((r) => r.operation_id),
@@ -409,6 +412,7 @@ export class SyncCoordinator {
       if (!(cause instanceof LocalCapacityError)) throw cause;
     }
     await expireHistory(this.db);
+    await expireSessions(this.db);
     const purger = transport.purge ? new HistoryPurger(this.db, transport.keys) : undefined;
     if (purger) {
       const purge = (request: HistoryPurgeRequest) => transport.purge!(request);

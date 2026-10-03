@@ -8,6 +8,7 @@ import {
 import type { NativeSessionWindow, NativeSessionGroup } from './session-native';
 import type { SessionGroup } from './sessions';
 import { sessionSnapshot, sessionWindow } from '../../tests/session-fixtures';
+import { projectSessions, splitSession } from './sessions';
 const dbs: SynkDatabase[] = [];
 afterEach(async () => {
   for (const d of dbs.splice(0)) await d.delete();
@@ -142,6 +143,48 @@ async function finish(r: SessionRestorer, id: string) {
   throw new Error('Restore did not finish');
 }
 describe('journaled native session restoration', () => {
+  it('atomically rejects a new job if expiry commits while browser incarnation is being read', async () => {
+    const { db, native, restorer } = fixture();
+    const snapshot = { ...sessionSnapshot(), kind: 'closed' as const },
+      parts = splitSession(snapshot);
+    let release!: () => void, started!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    native.getIncarnation = async () => {
+      started();
+      await waiting;
+      return 'one';
+    };
+    const begin = restorer.begin(crypto.randomUUID(), snapshot, { mode: 'all' });
+    await reached;
+    const value = projectSessions([
+      ...parts,
+      {
+        kind: 'session',
+        schema_version: 2,
+        operation_id: crypto.randomUUID(),
+        source_id: snapshot.source_id,
+        source_revision: snapshot.source_revision + parts.length,
+        targets: [
+          {
+            snapshot_id: snapshot.id,
+            source_revision: snapshot.source_revision,
+            snapshot_kind: snapshot.kind,
+            total: parts.length,
+          },
+        ],
+      },
+    ]);
+    await db.sessionReplicas.put({ id: 'session', value });
+    release();
+    await expect(begin).rejects.toThrow('session expired');
+    expect(await db.sessionRestores.count()).toBe(0);
+    expect(native.windows).toHaveLength(0);
+  });
   it('restores multiple windows with pins, order, groups and active tabs while leaving the source snapshot intact', async () => {
     const { native, restorer } = fixture(),
       w = sessionWindow(4),

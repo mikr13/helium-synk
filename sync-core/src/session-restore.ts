@@ -169,8 +169,25 @@ export class SessionRestorer {
           });
       }
       if (!job.windows.length) job.status = 'complete';
-      await this.save(job);
-      return job;
+      return this.db.transaction(
+        'rw',
+        [this.db.sessionReplicas, this.db.sessionRestores],
+        async () => {
+          const existing = await this.db.sessionRestores.get(id);
+          if (existing) {
+            if (
+              existing.snapshot_id !== snapshot.id ||
+              JSON.stringify(existing.selection) !== JSON.stringify(selection)
+            )
+              throw new Error('Restoration identity was reused.');
+            return existing;
+          }
+          if ((await this.db.sessionProjection()).expired[snapshot.id])
+            throw new Error('This saved session expired. Choose another session.');
+          await this.save(job);
+          return job;
+        },
+      );
     });
   }
   cancel(id: string): Promise<void> {

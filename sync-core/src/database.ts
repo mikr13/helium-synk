@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import { sessionRetentionPolicy, type SessionRetentionPolicy } from './session-retention';
 import {
   historyRetentionPolicy,
   type HistoryRetentionPolicy,
@@ -72,8 +73,14 @@ import {
 import {
   splitSession,
   projectSessions,
+  eraseSessionPart,
+  isErasedSessionPart,
   type SessionContent,
   type SessionPart,
+  type SessionOperation,
+  type SessionJournalOperation,
+  type SessionExpiration,
+  type SessionExpirationTarget,
   type SessionProjection,
 } from './sessions';
 import { validatePayload, type EnvelopeHeader } from './payload';
@@ -110,6 +117,8 @@ export interface LocalState {
   history_retention?: HistoryRetentionPolicy;
   history_retention_cursor?: HistoryRetentionProgress;
   history_retention_last?: { at: number; examined: number; expired: number; protected: number };
+  session_retention?: SessionRetentionPolicy;
+  session_retention_last?: { at: number; examined: number; expired: number; protected: number };
 }
 export interface LocalRecord {
   operation_id: string;
@@ -120,7 +129,7 @@ export interface LocalRecord {
 export interface StoredOperation {
   operation_id: string;
   envelope: Envelope;
-  payload: BookmarkOperation | SessionPart | HistoryJournalOperation | HistoryErasure;
+  payload: BookmarkOperation | SessionJournalOperation | HistoryJournalOperation | HistoryErasure;
   sequence?: number;
   /** Original cipher is gone; envelope is its header with empty nonce/ciphertext. */
   redacted?: { digest: string; certificate_operation_id: string };
@@ -128,7 +137,7 @@ export interface StoredOperation {
 export interface DraftOperation {
   operation_id: string;
   header: EnvelopeHeader;
-  payload: BookmarkOperation | SessionPart | HistoryOperation | HistoryErasure;
+  payload: BookmarkOperation | SessionOperation | HistoryOperation | HistoryErasure;
   erasure_epoch?: string;
 }
 export interface ErasedHistoryDraft {
@@ -549,23 +558,95 @@ export class SynkDatabase extends Dexie {
         .filter((p): p is BookmarkOperation => p.kind === 'bookmark'),
     ]);
   }
-  async sessionParts(): Promise<SessionPart[]> {
+  async sessionOperations(): Promise<SessionJournalOperation[]> {
     return this.transaction('r', [this.operations, this.drafts], async () => [
       ...(await this.operations.where('envelope.domain').equals('session').toArray()).map(
-        (o) => o.payload as SessionPart,
+        (o) => o.payload as SessionJournalOperation,
       ),
       ...(await this.drafts.where('header.domain').equals('session').toArray()).map(
-        (d) => d.payload as SessionPart,
+        (d) => d.payload as SessionOperation,
       ),
     ]);
   }
   async sessionProjection(): Promise<SessionProjection> {
-    return (await this.sessionReplicas.get('session'))?.value ?? projectSessions([]);
+    const value = (await this.sessionReplicas.get('session'))?.value;
+    // Existing cached v1 projections predate expiry proofs. Their journal remains unchanged.
+    return value ? { ...value, expired: value.expired ?? {} } : projectSessions([]);
+  }
+  /** Keep immutable ciphertext for retries; expired journal plaintext becomes metadata only. */
+  async persistSessions(projection: SessionProjection): Promise<void> {
+    await this.transaction(
+      'rw',
+      [this.operations, this.sessionReplicas, this.sessionRestores],
+      async () => {
+        await this.sessionReplicas.put({ id: 'session', value: projection });
+        if (!Object.keys(projection.expired).length) return;
+        await this.operations
+          .where('envelope.domain')
+          .equals('session')
+          .modify((record) => {
+            if (
+              record.payload.kind === 'session' &&
+              record.payload.schema_version === 1 &&
+              !isErasedSessionPart(record.payload) &&
+              projection.expired[record.payload.snapshot_id]
+            )
+              record.payload = eraseSessionPart(record.payload);
+            else return false;
+          });
+        // Running and blocked jobs retain their own source data until completion/cancellation.
+        await this.sessionRestores
+          .filter(
+            (job) =>
+              (job.status === 'complete' || job.status === 'cancelled') &&
+              !!projection.expired[job.snapshot_id],
+          )
+          .delete();
+      },
+    );
+  }
+  async stageSessionExpiration(targets: SessionExpirationTarget[]): Promise<void> {
+    await this.transaction(
+      'rw',
+      [...this.captureBudgetTables(), this.sessionReplicas, this.sessionRestores],
+      async () => {
+        const local = await this.state.get('local');
+        if (!local) throw new Error('Connect this device first.');
+        if (local.next_counter >= Number.MAX_SAFE_INTEGER)
+          throw new Error('Device counter exhausted.');
+        const payload: SessionExpiration = {
+          kind: 'session',
+          schema_version: 2,
+          operation_id: crypto.randomUUID(),
+          source_id: local.credentials.device_id,
+          source_revision: local.next_counter,
+          targets: structuredClone(targets),
+        };
+        const header: EnvelopeHeader = {
+          protocol_version: 1,
+          operation_id: payload.operation_id,
+          account_id: local.credentials.account_id,
+          device_id: payload.source_id,
+          counter: payload.source_revision,
+          domain: 'session',
+          key_epoch: local.key_epoch ?? 1,
+        };
+        validatePayload(payload, header);
+        const current = await this.sessionProjection();
+        if (targets.some((target) => current.current[payload.source_id] === target.snapshot_id))
+          throw new Error('The latest current session cannot expire.');
+        const projection = projectSessions([...(await this.sessionOperations()), payload]);
+        // Expiration proofs must still commit when ordinary capture is paused by storage limits.
+        await this.drafts.add({ operation_id: payload.operation_id, payload, header });
+        await this.persistSessions(projection);
+        await this.state.update('local', { next_counter: local.next_counter + 1 });
+      },
+    );
   }
   async stageSession(content: SessionContent): Promise<string> {
     return this.transaction(
       'rw',
-      [...this.captureBudgetTables(), this.sessionReplicas],
+      [...this.captureBudgetTables(), this.sessionReplicas, this.sessionRestores],
       async () => {
         const local = await this.state.get('local');
         if (!local) throw new Error('Connect this device first.');
@@ -582,10 +663,18 @@ export class SynkDatabase extends Dexie {
         if (content.kind === 'current') {
           const drafts = (
             await this.drafts.where('header.domain').equals('session').toArray()
-          ).filter((d) => d.payload.kind === 'session' && d.payload.snapshot_kind === 'current');
+          ).filter(
+            (d) =>
+              d.payload.kind === 'session' &&
+              d.payload.schema_version === 1 &&
+              d.payload.snapshot_kind === 'current',
+          );
           const persisted = new Set(
-            (await this.operations.where('envelope.domain').equals('session').toArray()).map(
-              (o) => (o.payload as SessionPart).snapshot_id,
+            (await this.operations.where('envelope.domain').equals('session').toArray()).flatMap(
+              (o) =>
+                o.payload.kind === 'session' && o.payload.schema_version === 1
+                  ? [o.payload.snapshot_id]
+                  : [],
             ),
           );
           // Coalesce only wholly unencrypted current snapshots; never mutate ciphertext, closed or saved snapshots.
@@ -610,9 +699,9 @@ export class SynkDatabase extends Dexie {
           },
         }));
         for (const d of drafts) validatePayload(d.payload, d.header);
-        const projection = projectSessions([...(await this.sessionParts()), ...parts]);
+        const projection = projectSessions([...(await this.sessionOperations()), ...parts]);
         await this.drafts.bulkAdd(drafts);
-        await this.sessionReplicas.put({ id: 'session', value: projection });
+        await this.persistSessions(projection);
         await this.state.update('local', { next_counter: local.next_counter + parts.length });
         return snapshot.id;
       },
@@ -797,6 +886,11 @@ export class SynkDatabase extends Dexie {
         history_retention_cursor: undefined,
       }))
     )
+      throw new Error('Connect this device first.');
+  }
+  async setSessionRetention(value: SessionRetentionPolicy): Promise<void> {
+    const policy = sessionRetentionPolicy(value);
+    if (!(await this.state.update('local', { session_retention: policy })))
       throw new Error('Connect this device first.');
   }
   /** Caller includes budget tables; only new collection is admitted here, never retries/erasure. */

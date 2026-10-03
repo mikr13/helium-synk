@@ -65,12 +65,31 @@ export interface SessionPart {
   total: number;
   data: string;
 }
+export interface SessionExpirationTarget {
+  snapshot_id: string;
+  source_revision: number;
+  snapshot_kind: SessionSnapshot['kind'];
+  total: number;
+}
+/** Encrypted source-owned archive expiry. Original snapshot identities remain reserved. */
+export interface SessionExpiration {
+  kind: 'session';
+  schema_version: 2;
+  operation_id: string;
+  source_id: string;
+  source_revision: number;
+  targets: SessionExpirationTarget[];
+}
+export type SessionOperation = SessionPart | SessionExpiration;
+export type ErasedSessionPart = Omit<SessionPart, 'data'> & { erased: true };
+export type SessionJournalOperation = SessionOperation | ErasedSessionPart;
 export interface SessionProjection {
   snapshots: Record<string, SessionSnapshot>;
   current: Record<string, string>;
   previous: Record<string, string[]>;
   closed: Record<string, string[]>;
   incomplete: string[];
+  expired: Record<string, SessionExpirationTarget & { source_id: string }>;
 }
 const PART_BYTES = 45_000,
   MAX_PARTS = 256;
@@ -184,7 +203,7 @@ export function splitSession(snapshot: SessionSnapshot): SessionPart[] {
     data: base64(data.slice(part * PART_BYTES, (part + 1) * PART_BYTES)),
   }));
 }
-export function validateSessionPart(p: SessionPart): void {
+function validateSessionMetadata(p: SessionPart | ErasedSessionPart): void {
   if (
     !p ||
     p.kind !== 'session' ||
@@ -203,13 +222,75 @@ export function validateSessionPart(p: SessionPart): void {
     p.total > MAX_PARTS ||
     p.part < 0 ||
     p.part >= p.total ||
-    !text(p.data, (PART_BYTES * 4) / 3) ||
     !Number.isSafeInteger(p.source_revision + p.part)
   )
     throw new Error('Invalid session fragment.');
+}
+export function validateSessionPart(p: SessionPart): void {
+  validateSessionMetadata(p);
+  if ('erased' in p || !text(p.data, (PART_BYTES * 4) / 3))
+    throw new Error('Invalid session fragment bytes.');
   const bytes = unbase64(p.data);
   if (!bytes.length || bytes.length > PART_BYTES || base64(bytes) !== p.data)
     throw new Error('Invalid session fragment bytes.');
+}
+export function isErasedSessionPart(value: unknown): value is ErasedSessionPart {
+  const part = value as Partial<ErasedSessionPart> | null;
+  return part?.kind === 'session' && part.schema_version === 1 && part.erased === true;
+}
+export function eraseSessionPart(part: SessionPart): ErasedSessionPart {
+  validateSessionPart(part);
+  return {
+    kind: 'session',
+    schema_version: 1,
+    operation_id: part.operation_id,
+    source_id: part.source_id,
+    source_revision: part.source_revision,
+    snapshot_id: part.snapshot_id,
+    snapshot_kind: part.snapshot_kind,
+    source_name: part.source_name,
+    captured_at: part.captured_at,
+    part: part.part,
+    total: part.total,
+    erased: true,
+  };
+}
+export function validateSessionExpiration(p: SessionExpiration): void {
+  if (
+    !p ||
+    Object.keys(p).length !== 6 ||
+    p.kind !== 'session' ||
+    p.schema_version !== 2 ||
+    !canonicalUuid(p.operation_id) ||
+    !canonicalUuid(p.source_id) ||
+    !validCounter(p.source_revision) ||
+    !Array.isArray(p.targets) ||
+    !p.targets.length ||
+    p.targets.length > 100
+  )
+    throw new Error('Invalid session expiration.');
+  const ids = new Set<string>();
+  for (const target of p.targets) {
+    if (
+      !target ||
+      Object.keys(target).length !== 4 ||
+      !canonicalUuid(target.snapshot_id) ||
+      ids.has(target.snapshot_id) ||
+      !validCounter(target.source_revision) ||
+      !['current', 'closed', 'previous'].includes(target.snapshot_kind) ||
+      !Number.isSafeInteger(target.total) ||
+      target.total < 1 ||
+      target.total > MAX_PARTS ||
+      !Number.isSafeInteger(target.source_revision + target.total - 1) ||
+      target.source_revision + target.total - 1 >= p.source_revision
+    )
+      throw new Error('Invalid session expiration target.');
+    ids.add(target.snapshot_id);
+  }
+}
+export function validateSessionOperation(p: SessionOperation): void {
+  if (p?.schema_version === 2) validateSessionExpiration(p);
+  else validateSessionPart(p);
 }
 const FIELDS = [
   'source_id',
@@ -221,47 +302,106 @@ const FIELDS = [
   'total',
 ] as const;
 /** Incomplete snapshots never replace the last complete snapshot. Source revision wins, not receipt time. */
-export function projectSessions(input: readonly SessionPart[]): SessionProjection {
+export function projectSessions(input: readonly SessionJournalOperation[]): SessionProjection {
   const result: SessionProjection = {
     snapshots: {},
     current: {},
     previous: {},
     closed: {},
     incomplete: [],
+    expired: {},
   };
-  const byId = new Map<string, SessionPart>(),
-    bySnapshot = new Map<string, SessionPart[]>(),
+  const byId = new Map<string, SessionJournalOperation>(),
+    bySnapshot = new Map<string, (SessionPart | ErasedSessionPart)[]>(),
     byRevision = new Map<string, string>(),
     counters = new Map<string, string>();
   for (const p of input) {
-    validateSessionPart(p);
+    if (isErasedSessionPart(p)) {
+      validateSessionMetadata(p);
+      if ('data' in p || Object.keys(p).length !== 12)
+        throw new Error('An expired session receipt contains content.');
+    } else validateSessionOperation(p);
     const old = byId.get(p.operation_id);
     if (old && JSON.stringify(old) !== JSON.stringify(p))
       throw new Error('Session operation identity was reused.');
     if (old) continue;
     byId.set(p.operation_id, p);
-    const key = `${p.source_id}/${p.source_revision}`,
-      counter = `${p.source_id}/${p.source_revision + p.part}`;
-    if ((byRevision.has(key) && byRevision.get(key) !== p.snapshot_id) || counters.has(counter))
+    const counter = `${p.source_id}/${p.source_revision + (p.schema_version === 1 ? p.part : 0)}`;
+    if (counters.has(counter)) throw new Error('Session source revision/counter was reused.');
+    counters.set(counter, p.operation_id);
+    if (p.schema_version === 2) {
+      for (const target of p.targets) {
+        const next = { ...target, source_id: p.source_id },
+          old = result.expired[target.snapshot_id];
+        if (
+          old &&
+          Object.entries(next).some(([key, value]) => old[key as keyof typeof old] !== value)
+        )
+          throw new Error('Session expiration target identity was reused.');
+        result.expired[target.snapshot_id] = next;
+      }
+      continue;
+    }
+    const key = `${p.source_id}/${p.source_revision}`;
+    if (byRevision.has(key) && byRevision.get(key) !== p.snapshot_id)
       throw new Error('Session source revision/counter was reused.');
     byRevision.set(key, p.snapshot_id);
-    counters.set(counter, p.operation_id);
     const list = bySnapshot.get(p.snapshot_id) ?? [];
     list.push(p);
     bySnapshot.set(p.snapshot_id, list);
+  }
+  // Expiry references reserve the original multipart revision even when its content has
+  // not arrived yet. Two different snapshots cannot claim overlapping source counters.
+  const targets = Object.values(result.expired).sort(
+    (a, b) => a.source_id.localeCompare(b.source_id) || a.source_revision - b.source_revision,
+  );
+  for (let index = 0; index < targets.length; index++) {
+    const target = targets[index]!,
+      previous = targets[index - 1];
+    if (
+      previous &&
+      previous.source_id === target.source_id &&
+      previous.source_revision + previous.total > target.source_revision
+    )
+      throw new Error('Session expiration source counters overlap.');
+    for (let part = 0; part < target.total; part++) {
+      const operation = byId.get(
+        counters.get(`${target.source_id}/${target.source_revision + part}`) ?? '',
+      );
+      if (
+        operation &&
+        (operation.schema_version !== 1 || operation.snapshot_id !== target.snapshot_id)
+      )
+        throw new Error('Session expiration source counter was reused.');
+    }
   }
   for (const [id, list] of [...bySnapshot.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     list.sort((a, b) => a.part - b.part);
     const first = list[0]!;
     if (list.some((p) => FIELDS.some((field) => p[field] !== first[field])))
       throw new Error('Session fragments have inconsistent metadata.');
+    if (new Set(list.map((p) => p.part)).size !== list.length)
+      throw new Error('Session fragment indexes were reused.');
+    const expired = result.expired[id];
+    if (expired) {
+      if (
+        expired.source_id !== first.source_id ||
+        expired.source_revision !== first.source_revision ||
+        expired.total !== first.total ||
+        expired.snapshot_kind !== first.snapshot_kind
+      )
+        throw new Error('Session expiration does not match its source snapshot.');
+      continue;
+    }
+    if (list.some(isErasedSessionPart))
+      throw new Error('An expired session receipt has no expiration proof.');
     if (list.length !== first.total) {
       result.incomplete.push(id);
       continue;
     }
     if (list.some((p, index) => p.part !== index))
       throw new Error('Session fragment indexes were reused.');
-    const chunks = list.map((p) => unbase64(p.data)),
+    const chunks = list.map((p) => unbase64((p as SessionPart).data)),
       bytes = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
     let offset = 0;
     for (const chunk of chunks) {

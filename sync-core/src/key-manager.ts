@@ -1,6 +1,7 @@
 import { SynkDatabase, type LocalState } from './database';
 import { generateRecoveryKey, decryptPayload, encryptPayload } from './crypto';
 import { isErasedHistoryOperation } from './history';
+import { isErasedSessionPart } from './sessions';
 import {
   generateWrappingIdentity,
   validateWrappingIdentity,
@@ -447,7 +448,7 @@ export class KeyManager {
         await encryptPayload(
           local.recovery_key,
           { ...old, key_epoch: epoch },
-          isErasedHistoryOperation(record.payload)
+          isErasedHistoryOperation(record.payload) || isErasedSessionPart(record.payload)
             ? await decryptPayload(secrets.roots[old.key_epoch]!, old, local.history_index_key)
             : record.payload,
           local.history_index_key,

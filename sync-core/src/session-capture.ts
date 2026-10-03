@@ -29,6 +29,7 @@ export class SessionCapture {
       this.db.operations,
       this.db.drafts,
       this.db.sessionReplicas,
+      this.db.sessionRestores,
       this.db.sessionSetup,
       this.db.sessionIdentities,
       this.db.sessionWindows,

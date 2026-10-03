@@ -10,7 +10,7 @@ Sessions are owned by their source installation. Receiving or restoring a snapsh
 - Only a fully assembled and validated snapshot replaces that source's current snapshot. Higher source revision wins; capture/receipt clocks do not decide freshness ordering. Incomplete assemblies remain durable across cursor pages and restarts.
 - Snapshot fragments, logical projection and reserved counters commit together in IndexedDB v4. Encryption moves drafts into immutable operations/outbox entries transactionally. Only wholly unencrypted current drafts may coalesce; closed/saved snapshots and snapshots with any encrypted fragment remain retained.
 - Incoming records, projection and cursor commit together. Invalid complete assemblies and cross-domain author-counter reuse quarantine the failed page without advancing its cursor.
-- Every encrypted historical current snapshot remains available as previous history. Explicitly saving the current snapshot creates a separate previous record with its original capture time and `previous_of` link. Retention/erasure policies remain an implementation gate; no age-based removal of pending records is enabled.
+- Encrypted historical current snapshots remain available as previous history until their source expires them. Explicitly saving the current snapshot creates a separate previous record with its original capture time and `previous_of` link. The opt-in [retention backend](retention.md) defaults to 30 days, 100 combined archives and 50 MiB content per source; pending/current/active restoration work stays protected. Settings controls, ciphertext/capture-copy cleanup and native acceptance remain open; no native profile has enabled it.
 
 ## Browser capture
 

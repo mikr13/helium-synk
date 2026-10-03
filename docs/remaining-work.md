@@ -7,7 +7,7 @@ Updated 2026-10-03. This consolidates the current unchecked requirements in [pla
 - [x] **Review setup clarity.** User marked Home/Add device/Settings review complete on 2026-10-03. Setup Test A/B now have the approved build and fresh file-based enrollment/pairing evidence.
 - [x] **Perform a full Helium restart.** User marked the Test 1/Test 2 restart check complete on 2026-10-03. Agent subsequently observed Setup Test A's name, connection and paused collections intact. Abrupt shutdown and restart during a controlled hours-long outage remain separate tests.
 - [x] **Choose the support floor.** Mihir decided older Helium support/testing is unnecessary for V1; use the current Helium build. Browser-upgrade and extension-update preservation remain engineering checks.
-- [x] **Choose retention and backup preferences.** User marked this decision complete. Continue with the proposed 30-day session policy plus count/size caps and daily/weekly/monthly backups. Exact cap/rotation values and off-Mini destination have not been recorded; document concrete defaults during implementation/deployment. History already has opt-in configurable 90-day expiry.
+- [x] **Choose retention and backup preferences.** User marked this decision complete. The session backend now has opt-in defaults of 30 days, 100 archives and 50 MiB content per source; controls/ciphertext cleanup/native acceptance remain below. Continue with daily/weekly/monthly backups; rotation counts and off-Mini destination still need concrete deployment defaults. History already has opt-in configurable 90-day expiry.
 - [x] **Choose a compact popup.** Mihir requested it; implementation is tracked below.
 - [ ] **Settle distribution and History override.** Stable extension distribution/update method and any packaged native History replacement remain release choices.
 - [x] **Resolve repository push access.** User marked access resolved; the earlier failed push is historical evidence. Publishing/pushing still needs explicit authorization.
@@ -18,7 +18,8 @@ For manual checks, record profile names, browser/build version, actions, pass/fa
 
 ## Implementation and engineering work
 
-- [ ] **Session retention:** implement/test closed/previous age, count and size limits; protect pending essential work, latest current sessions and active restorations.
+- [x] **Session retention backend:** logical age/count/content-size limits, source-owned expiry proofs, journal plaintext cleanup and current/upload/restore protection pass automated checks and real-relay restart/bootstrap.
+- [ ] **Finish session retention:** authenticated client/relay ciphertext purge, retained closed-capture copies, shadcn settings and native/upgrade acceptance. Logical content caps do not bound retained ciphertext, journal receipts or disk use.
 - [ ] **Retained-copy policy:** finish unresolved/shared history-capture copies, general quarantine, historical backup expiration/deletion lag and safe older-backup behavior.
 - [ ] **Complete relay recovery:** replay missing acknowledged operations after an older backup or server disk loss, reconcile deletion proofs/membership/key generations, and safely resume client/browser application. Current restore guards preserve state by refusing unsafe resume; they do not complete recovery.
 - [ ] **Scale and responsiveness:** measure representative large history/journal/session/restore workloads and publication/reconnect latency; optimize where measurements fail the targets.
