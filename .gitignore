@@ -7,6 +7,8 @@ data/
 .env
 .env.*
 !.env.example
+deployment.local.json
+*.deployment.local.json
 *.sqlite*
 *.db*
 *.credential.json
@@ -18,3 +20,4 @@ helium-synk-recovery.json
 .vitest/
 release/
 .vite-plus/
+__pycache__/

@@ -2,11 +2,11 @@
 
 <img src="extension/public/icons/128.png" alt="Helium Synk" width="80" height="80" />
 
-Private encrypted browser sync for Helium: opt-in bookmarks, current/closed/saved sessions with explicit restoration, and searchable history with original timestamps. A WXT extension stores durable offline work in IndexedDB; a Rust/Axum/SQLite relay runs privately on a Mac Mini behind Tailscale. Passwords, cookies and native profile files are excluded.
+Private encrypted browser sync for Helium: opt-in bookmarks, current/closed/saved sessions with explicit restoration, and searchable history with original timestamps. A WXT extension stores durable offline work in IndexedDB; a Rust/Axum/SQLite relay runs privately on a server you control behind Tailscale. Passwords, cookies and native profile files are excluded.
 
 The dashboard and compact popup share dark navy/blue/mint Tailwind/shadcn controls with square corners and bundled local fonts. Collections start off. Receiving or restoring another device’s session does not close its windows.
 
-The [single release checklist](docs/plan.md) records current tests, native evidence, decisions and follow-ups. Read [architecture and security contracts](docs/architecture.md) and the [deployment/publishing runbook](docs/deployment.md). Release preparation does not install a production service or publish artifacts.
+The [single release checklist](docs/plan.md) records current tests, native evidence, decisions and follow-ups. For everyday setup, read [setting up profiles and connecting another computer](docs/setup-guide.md). Technical references are [architecture and security contracts](docs/architecture.md) and the [deployment/publishing runbook](docs/deployment.md). Release preparation does not install a production service or publish artifacts.
 
 ## Development
 
@@ -66,4 +66,4 @@ Server epoch/account mismatch fails closed and preserves local queues/data. Auto
 pnpm exec vp run release:prepare
 ```
 
-This runs validation and builds an extension ZIP, native Rust release binary, `SHA256SUMS` and `build.json` in ignored `release/`. Build metadata identifies the source commit and uncommitted state. A candidate is not a published tagged release. Deployment, deliberate versioning, intended-device acceptance and publication are the next phase in the checklist.
+This runs validation and builds an extension ZIP, native Rust release binary, `SHA256SUMS` and `build.json` in ignored `release/`. Build metadata identifies the source commit and uncommitted state. A candidate is not a published tagged release. For macOS hosting, copy `config/macos.example.json` to ignored `deployment.local.json`, configure your profiles/endpoints, then follow the [installation runbook](docs/deployment.md#install-on-macos). Additional independent profiles use `--add-profiles`; additional installations of an existing account use invitations. Deployment acceptance and publication are tracked in the checklist.

@@ -8,15 +8,89 @@ import json
 import logging.handlers
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import sqlite3
 import subprocess
 import sys
 import urllib.request
+from urllib.parse import urlsplit
 
-ACCOUNTS = {"abi": 4318, "syngenta": 4319}
-KEEP = {"daily": 7, "weekly": 4, "monthly": 3}
+CONFIG_NAME = "deployment.json"
+DEFAULT_RETENTION = {"daily": 7, "weekly": 4, "monthly": 3}
+
+
+def validate_config(value):
+    """Reject ambiguous endpoints, unsafe path names and accidental port sharing."""
+    if not isinstance(value, dict) or set(value) - {"version", "profiles", "retention"}:
+        raise ValueError("Configuration must contain version, profiles and optional retention")
+    if type(value.get("version")) is not int or value["version"] != 1:
+        raise ValueError("Unsupported deployment configuration version; expected 1")
+    profiles = value.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        raise ValueError("Configure at least one independent profile")
+    ports, endpoints = set(), set()
+    normalized = {}
+    for name, profile in profiles.items():
+        if not isinstance(name, str) or len(name) > 48 or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", name):
+            raise ValueError("Profile identifiers must use lowercase letters, digits and hyphens")
+        if not isinstance(profile, dict) or set(profile) != {"port", "server_url", "device_name", "backup_time"}:
+            raise ValueError(f"{name}: provide port, server_url, device_name and backup_time")
+        port = profile["port"]
+        if type(port) is not int or not 1024 <= port <= 65535 or port in ports:
+            raise ValueError(f"{name}: choose a unique loopback port from 1024 to 65535")
+        ports.add(port)
+        device_name = profile["device_name"]
+        if not isinstance(device_name, str) or not device_name.strip() or len(device_name.strip().encode("utf-8")) > 100 or any(ord(c) < 32 for c in device_name):
+            raise ValueError(f"{name}: device_name must be printable and fit within 100 UTF-8 bytes")
+        schedule = profile["backup_time"]
+        if not isinstance(schedule, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule):
+            raise ValueError(f"{name}: backup_time must be local HH:MM")
+        server_url = profile["server_url"]
+        if not isinstance(server_url, str) or any(c.isspace() for c in server_url):
+            raise ValueError(f"{name}: provide an HTTPS tailnet origin or loopback HTTP origin")
+        endpoint = urlsplit(server_url)
+        try:
+            endpoint_port = endpoint.port
+        except ValueError as error:
+            raise ValueError(f"{name}: invalid endpoint port") from error
+        if endpoint.username or endpoint.password or endpoint.path not in ("", "/") or endpoint.query or endpoint.fragment:
+            raise ValueError(f"{name}: server_url must be an origin without credentials, path, query or fragment")
+        host = endpoint.hostname or ""
+        if endpoint.scheme == "https" and host.endswith(".ts.net"):
+            endpoint_port = 443 if endpoint_port is None else endpoint_port
+        elif endpoint.scheme == "http" and host in ("127.0.0.1", "localhost"):
+            endpoint_port = 80 if endpoint_port is None else endpoint_port
+            if endpoint_port != port:
+                raise ValueError(f"{name}: a loopback server_url must use the configured relay port")
+        else:
+            raise ValueError(f"{name}: use HTTPS on a .ts.net host or HTTP on loopback")
+        if not 1 <= endpoint_port <= 65535:
+            raise ValueError(f"{name}: invalid endpoint port")
+        identity = (endpoint.scheme, host, endpoint_port)
+        if identity in endpoints:
+            raise ValueError(f"{name}: independent profiles must use different relay endpoints")
+        endpoints.add(identity)
+        normalized[name] = {**profile, "device_name": device_name.strip(), "server_url": server_url.rstrip("/")}
+    retention = value.get("retention", DEFAULT_RETENTION)
+    if not isinstance(retention, dict) or set(retention) != set(DEFAULT_RETENTION) or any(type(n) is not int or not 1 <= n <= 1000 for n in retention.values()):
+        raise ValueError("retention must provide daily, weekly and monthly counts from 1 to 1000")
+    return {"version": 1, "profiles": normalized, "retention": dict(retention)}
+
+
+def load_config(root):
+    path = root / CONFIG_NAME
+    if not path.is_file():
+        raise ValueError(f"Missing {path}; install with an explicit deployment configuration")
+    return validate_config(json.loads(path.read_text()))
+
+
+def configured_profile(root, account):
+    config = load_config(root)
+    if account not in config["profiles"]:
+        raise ValueError(f"Unknown profile: {account}")
+    return config, config["profiles"][account]
 
 
 def save_json(path, value):
@@ -33,14 +107,15 @@ def integrity(path):
         raise RuntimeError("Backup integrity check failed")
 
 
-def rotate(directory, kind):
+def rotate(directory, kind, keep):
     # Only our verified, fixed-format snapshots are eligible for rotation.
     candidates = sorted(directory.glob(f"{kind}-????-??-??.sqlite"), reverse=True)
-    for path in candidates[KEEP[kind]:]:
+    for path in candidates[keep:]:
         path.unlink()
 
 
 def backup(root, account, today=None):
+    config, _ = configured_profile(root, account)
     today = today or dt.datetime.now().astimezone().date()
     directory = root / "accounts" / account / "backups"
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -67,8 +142,8 @@ def backup(root, account, today=None):
             temporary.chmod(0o600)
             integrity(temporary)
             temporary.replace(destination)
-    for kind in KEEP:
-        rotate(directory, kind)
+    for kind, keep in config["retention"].items():
+        rotate(directory, kind, keep)
     save_json(root / "accounts" / account / "backup-status.json", {
         "ok": True, "checked_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "snapshot": snapshot.name,
@@ -77,11 +152,12 @@ def backup(root, account, today=None):
 
 
 def monitor(root, account):
+    _, profile = configured_profile(root, account)
     account_dir = root / "accounts" / account
     problems = []
     status = {"checked_at": dt.datetime.now(dt.timezone.utc).isoformat()}
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{ACCOUNTS[account]}/health/ready", timeout=5) as response:
+        with urllib.request.urlopen(f"http://127.0.0.1:{profile['port']}/health/ready", timeout=5) as response:
             status["readiness"] = json.load(response)
     except Exception as error:
         problems.append(f"Readiness unavailable: {type(error).__name__}")
@@ -118,6 +194,7 @@ def monitor(root, account):
 
 
 def serve(root, account):
+    _, profile = configured_profile(root, account)
     logger = logging.getLogger(account)
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.handlers.RotatingFileHandler(
@@ -125,7 +202,7 @@ def serve(root, account):
     ))
     child = subprocess.Popen(
         [str(root / "bin" / "synk-server"), "--database",
-         str(root / "accounts" / account / "relay.sqlite"), "serve", "--port", str(ACCOUNTS[account])],
+         str(root / "accounts" / account / "relay.sqlite"), "serve", "--port", str(profile["port"])],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env={**os.environ, "RUST_LOG": "info"},
     )
     def stop(_signal, _frame):
@@ -151,9 +228,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("command", choices=["serve", "backup", "monitor"])
-    parser.add_argument("account", choices=list(ACCOUNTS))
+    parser.add_argument("account", help="Profile identifier from deployment.json")
     args = parser.parse_args()
     root = args.root.resolve(strict=True)
+    try:
+        configured_profile(root, args.account)
+    except (ValueError, OSError) as error:
+        parser.error(str(error))
     if args.command == "serve":
         return serve(root, args.account)
     if args.command == "monitor":

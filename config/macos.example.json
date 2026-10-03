@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "profiles": {
+    "personal": {
+      "port": 4318,
+      "server_url": "https://sync-host.your-tailnet.ts.net",
+      "device_name": "Desktop · Personal",
+      "backup_time": "03:10"
+    },
+    "work": {
+      "port": 4319,
+      "server_url": "https://sync-host.your-tailnet.ts.net:8443",
+      "device_name": "Desktop · Work",
+      "backup_time": "03:20"
+    }
+  },
+  "retention": { "daily": 7, "weekly": 4, "monthly": 3 }
+}
