@@ -1,0 +1,91 @@
+name: Chrome Web Store
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag; optional only for dry-run
+        required: false
+        type: string
+      action:
+        description: Authenticate only, upload draft, or submit staged review
+        type: choice
+        default: dry-run
+        options: [dry-run, upload-draft, submit-review]
+permissions:
+  contents: read
+concurrency:
+  group: chrome-web-store
+  cancel-in-progress: false
+jobs:
+  submit:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Resolve release source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          if [[ -z "$TAG" ]]; then
+            [[ "$ACTION" == dry-run ]] || { echo "Uploads and review require an existing release tag"; exit 1; }
+            exit 0
+          fi
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Use a release tag vX.Y.Z"; exit 1; }
+          mkdir release
+          gh release download "$TAG" --dir release \
+            --pattern "helium-synk-extension-${TAG#v}.zip" --pattern extension-build.json
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify release tag and ZIP
+        if: inputs.tag != ''
+        working-directory: source
+        run: |
+          mv ../release release
+          node scripts/package-release.mjs --verify-extension
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          package_json_file: source/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: source/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: source
+      - name: Build authentication-only candidate
+        if: inputs.tag == ''
+        working-directory: source
+        run: |
+          pnpm exec vp run build
+          node scripts/package-release.mjs --extension-only
+      - name: WXT submit to Chrome API v2
+        working-directory: source
+        env:
+          ACTION: ${{ inputs.action }}
+          TAG: ${{ inputs.tag }}
+          CHROME_API_VERSION: v2
+          CHROME_EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
+          CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
+          CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY }}
+          CHROME_PUBLISH_TYPE: STAGED_PUBLISH
+        run: |
+          for name in CHROME_EXTENSION_ID CHROME_PUBLISHER_ID CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL CHROME_SERVICE_ACCOUNT_PRIVATE_KEY; do
+            [[ -n "${!name}" ]] || { echo "Missing $name"; exit 1; }
+          done
+          version=$(node -p "JSON.parse(require('fs').readFileSync('extension/package.json', 'utf8')).version")
+          args=(--chrome-api-version v2 --chrome-zip "$PWD/release/helium-synk-extension-${version}.zip")
+          case "$ACTION" in
+            dry-run) args+=(--dry-run) ;;
+            upload-draft) args+=(--chrome-skip-submit-review) ;;
+            submit-review) ;;
+            *) echo "Unknown action"; exit 1 ;;
+          esac
+          pnpm --filter @helium-synk/extension exec wxt submit "${args[@]}"
+          echo "Chrome action $ACTION succeeded for ${TAG:-authentication-only candidate}. Staged review requires Publish in the store after approval." >> "$GITHUB_STEP_SUMMARY"

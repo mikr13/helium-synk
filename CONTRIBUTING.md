@@ -31,7 +31,8 @@ Use the shared dark-only Tailwind theme and shadcn/ui components for every inter
 2. On a release branch, run `pnpm version-packages`. It generates per-package CHANGELOG.md files, updates package versions, synchronizes the Rust crate version, and refreshes lockfiles.
 3. Run all checks and inspect generated changelogs/version diffs.
 4. Commit with `chore(release): version packages` and review the release PR.
-5. Tag/build a GitHub release only after that change is merged. This repository has no automatic publishing job; private packages are never published to npm.
+5. On main, run **Build release** in GitHub Actions. It reruns checks and creates a draft `vX.Y.Z` release with extension ZIP, four relay bundles and checksums. An existing tag fails rather than replacing a release.
+6. Review the draft's assets/notes, then publish it deliberately. Use **Chrome Web Store** separately after its listing and API v2 credentials are configured. Start with `dry-run`; staged review still needs a final Publish in the store. Private packages are never published to npm.
 
 Changesets are the source for unreleased notes. Do not manufacture a released version/changelog until there is an intentional release. Deployment and protocol recovery steps belong in the relevant release notes.
 

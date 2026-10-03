@@ -31,6 +31,21 @@ Version 0.2.0 has recorded automated and native acceptance evidence. A reference
 - [x] Provide `config/macos.example.json`, ignore local deployment configs, and document fresh installation plus `--add-profiles` without replacing existing accounts. Consolidate duplicate setup instructions into `setup-guide.md`.
 - [x] Validate config failures, custom profiles, independent credentials, backup/monitor/log behavior, release checks, read-only preflight and preservation during account addition in 15 isolated deployment tests. Runtime files and launchd jobs on the reference host were not changed by these tests.
 - [x] Finish public-reuse checks: `pnpm exec vp check` passes format/lint/type checks; `pnpm exec vp test` passes all 252 tests; `python3 scripts/macos-ops.test.py` passes 15 tests. The public-file audit finds zero personal-detail matches across 163 text files, all 34 local documentation links resolve, and `git diff --check` passes.
+- [x] Configure public repository description, setup-guide homepage and browser-sync/Helium/WXT/Rust/privacy topics. Repository remains public; metadata was verified through GitHub.
+- [x] Write and lint manual release workflows for macOS/Linux ARM64 and x64, reusable CI gates, draft GitHub releases and WXT Chrome API v2 staged submission. Upload only generated release artifacts; never private runtime/evidence files.
+- [x] Diagnose remote CI run `37115964700`: one session-retention test exceeded 5 seconds under parallel load; 251 others passed. Limit unit workers to two in CI. `CI=true pnpm exec vp test` passes the same 252 tests without changed assertions/timeouts/skips.
+- [x] Validate the macOS ARM64 release against static SQLite 3.53.4: all 44 Rust tests pass, no host SQLite linkage, readiness/SIGTERM/reopening pass. Keep build-time proc macros unstripped to avoid macOS LINKEDIT failures; distributed relay symbols still strip.
+- [x] Validate packaging with four isolated tests: canonical ZIP reuse, private-file preservation, corrupted artifact/source rejection and manifest/entrypoint validation. `actionlint`, format/lint/type checks, version alignment and WXT production build pass.
+- [x] Rerun all 17 real-relay integrations and 15 isolated deployment tests; all pass. Verify the public installer preflight against the static release in an empty temporary root. The existing daily-use installation remains untouched. Local candidate metadata correctly records uncommitted source and is not eligible for tagged/store submission.
+- [x] Create a Chrome Web Store draft with the 0.2.0 candidate, Tools/English listing and project/support links. Save extension/publisher IDs as GitHub Actions variables. Verify both API v2 service-account secret names exist after the maintainer added them; secret values are not read back.
+- [x] Prepare a public privacy policy and reusable store copy, all permission justifications, conservative data disclosures and disposable loopback reviewer instructions in `assets/store/listing.md`. The policy URL becomes live only after the maintainer commits/pushes `PRIVACY.md`.
+- [x] Allow an empty release tag for authentication-only Chrome dry-runs. Actual draft upload/review still requires a verified tagged release ZIP. All workflow files pass `actionlint`.
+- [x] Verify the added workflow/store files locally: `vp check` passes formatting for 140 files and lint/types for 107 files; all four packaging tests and `git diff --check` pass. No authentication attempt or remote workflow run is claimed.
+- [x] Capture/upload four 1280×800 demo screenshots and a 440×280 promo tile, save the expanded listing and Privacy fields, and verify persistence after reload. Browser access works in the continuation chat. The isolated preview uses real UI components and synthetic records, with no personal browser/relay access. Save a 439-character reviewer summary linking to the full disposable loopback instructions; the dashboard confirms it was saved. Public assets are in `assets/store/`; private dashboard evidence is in ignored `release/store-evidence/`.
+- [x] Verify the dedicated publishing service account is linked to the intended Chrome publisher and both GitHub IDs/secret names remain configured. Authentication, API enablement and private-key formatting still require the remote dry-run; secret values were not read back.
+- [x] Rerun `CI=true pnpm exec vp run check`: formatting, lint, package TypeScript checks, all 252 unit tests and the WXT production build pass. All three workflows pass `actionlint`, four packaging tests pass, versions align and `git diff --check` passes.
+- [ ] Push `PRIVACY.md` and the linked reviewer instructions before store submission. The dashboard's only reported submission blocker is an unreachable privacy-policy URL; GitHub confirms the policy is not yet on main.
+- [ ] Commit/push the workflows when requested and run the four-target GitHub build. Linux/Intel releases and actual store authentication/submission remain unverified.
 
 ## Recorded verification
 
@@ -52,7 +67,8 @@ Version 0.2.0 has recorded automated and native acceptance evidence. A reference
 - `36ec31a`: compact popup and native status/navigation.
 - `5fb9842`: logical session archive expiry, protection for current/upload/restoration work, atomic receipts and lost-reply/restart/bootstrap checks.
 - `837020a`: session retention controls and macOS installation scripts, with the preceding Vite+ migration/release preparation included in the checkpoint.
-- Current uncommitted change: generic configurable deployment and public setup documentation. No commit, push, tag or publication is part of this change.
+- `72d013e`: public configurable deployment/docs and shorter documentation, pushed by the maintainer.
+- Current uncommitted change: manual GitHub release/store workflows, portable relay packaging, CI worker limit, privacy policy, store/reviewer copy and public demo graphics. The Chrome listing, screenshots/promo, Privacy fields and reviewer instructions are saved and verified; the publishing service account is linked. No commit, push, tag, release, authentication dry-run or store review submission has been performed for this change.
 
 Build-specific hashes and private native screenshots belong in ignored `release/` metadata/evidence, rather than hardcoded deployment instructions. Host-specific operating notes are retained privately under ignored `work/` and are not release artifacts.
 
@@ -60,7 +76,7 @@ Build-specific hashes and private native screenshots belong in ignored `release/
 
 Use the [runbook](deployment.md) for concrete commands. Deployment checks must be repeated for the intended installation.
 
-- [x] Define V1 distribution: release artifacts with manual unpacked-extension updates from a stable directory. Native History stays unchanged; a browser store/updater is later work.
+- [x] Define distribution: reviewed GitHub release artifacts, stable unpacked installations, and optional Chrome Web Store installation with separate enrollment. Native History stays unchanged.
 - [x] Produce a verified 0.2.0 candidate and record the automated baseline.
 - [x] Verify two independent reference accounts, permanent extension installation, opt-in collection enrollment and separate current recovery/replica exports.
 - [x] Verify reference private filesystem permissions, patched SQLite linkage, per-user launchd jobs, bounded logs, readiness/usage monitoring and consistent local backups with default 7 daily / 4 weekly / 3 monthly retention.
@@ -68,7 +84,12 @@ Use the [runbook](deployment.md) for concrete commands. Deployment checks must b
 - [ ] Verify a second physical client, intended tailnet access and reconnect/queue drain after relay/Tailscale restart on the target hardware.
 - [ ] Verify server sleep/display-sleep behavior, FileVault unlock/login, logout, reboot, cold start and power restoration. Per-user jobs do not promise pre-login availability.
 - [ ] Choose encrypted off-host backup storage, test copy/rotation/failure reporting/integrity, and store current private content-key recovery separately. Same-host exports do not satisfy this item.
-- [ ] Review the final clean worktree, package versions, candidate source metadata and tagged artifacts, then push/tag/publish with explicit release authorization. Remote CI and actual publication have not run.
+- [ ] Commit/push reviewed workflow changes and verify the remote checks plus all four relay targets. The previous remote run failed its unit-test timeout; local rerun passes.
+- [x] Create the Chrome listing draft and configure its IDs and API v2 secret names in GitHub. The maintainer created the credentials manually; authentication and publisher linkage are not yet verified.
+- [x] Finish screenshots/promo, Privacy declarations and reviewer instructions in the dashboard, with saved/reloaded evidence. Local plaintext caches/keys are disclosed; encrypted transport is not presented as encryption of all local data.
+- [ ] Publish the policy and full reviewer-instructions URLs, publish matching relay downloads before review, and review local-storage security against Chrome's handling requirements. The draft currently reports only the unreachable policy URL as a submission blocker; that is not a store compliance approval.
+- [ ] Run the Chrome authentication-only dry-run after the workflow is pushed. Secret presence does not prove valid PEM formatting, API enablement or publisher linkage.
+- [ ] Review tagged source/artifacts and publish the GitHub release; authenticate/upload/submit Chrome staged review and publish after approval. These publication actions have not run.
 
 ## Deferred improvements and acceptance gaps
 
@@ -81,7 +102,7 @@ These remain unverified or unimplemented. They are follow-ups, not passed releas
 - [ ] Native history source/global/URL clears, delayed replay, exclusions/private/permission/clock edges and enabled expiry.
 - [ ] Forced interruption of large restores, abrupt browser shutdown, DevTools-closed alarms, termination between native mutation and journal commit, and hours-long concurrent outages/reconnects.
 - [ ] Large-journal/history/session performance, quota/eviction/physical disk-full and backup-failure exercises.
-- [ ] Automatic/store updates, actual browser-upgrade preservation, older-browser validation and supported journal compaction/stale-client rebootstrap.
+- [ ] Store/unpacked migration and actual browser-upgrade preservation, older-browser validation and supported journal compaction/stale-client rebootstrap. Workflow implementation does not establish store acceptance.
 - [ ] Optional iCloud/CloudKit/alternate transport research, outside phase one.
 
 Update this checklist at each checkpoint with commands, results and material limits. Record a future requested commit's hash after its checks pass. Keep unknowns unchecked and use this single progress checklist.

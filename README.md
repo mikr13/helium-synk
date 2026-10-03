@@ -8,6 +8,8 @@ The dashboard and compact popup share dark navy/blue/mint Tailwind/shadcn contro
 
 The [single release checklist](docs/plan.md) records current tests, native evidence, decisions and follow-ups. For everyday setup, read [setting up profiles and connecting another computer](docs/setup-guide.md). Technical references are [architecture and security contracts](docs/architecture.md) and the [deployment/publishing runbook](docs/deployment.md). Release preparation does not install a production service or publish artifacts.
 
+Data handling and retention: [Privacy policy](PRIVACY.md).
+
 ## Development
 
 Use Node 24.11+ (24.x) or 26+, pnpm 12.8.1, Rust 1.87+ and patched Homebrew SQLite. `scripts/cargo.sh` selects its headers/library on macOS; the relay refuses SQLite versions affected by the WAL-reset corruption issue. See [SQLite WAL guidance](https://sqlite.org/wal.html#wal_reset_bug).
@@ -24,7 +26,7 @@ Vite+ 1.0.0 is pinned in the workspace catalog, following its [migration rules](
 
 **WXT owns the browser-extension build:** use `pnpm exec vp run dev` and `pnpm exec vp run build`. Built-in `vp dev`/`vp build` run ordinary Vite and do not invoke WXT; use the task commands here so the MV3 manifest/background/pages stay intact. Core is an internal source workspace, not a separately packed npm library.
 
-The local commit hook can be installed with `pnpm exec vp run hooks:install`; see [CONTRIBUTING.md](CONTRIBUTING.md) for reviewed Changesets releases. No automatic publishing job is configured.
+The local commit hook can be installed with `pnpm exec vp run hooks:install`; see [CONTRIBUTING.md](CONTRIBUTING.md) for reviewed Changesets releases. CI checks main and pull requests. Manual workflows build releases and submit the extension to Chrome Web Store.
 
 ## Local relay and first setup
 
@@ -66,4 +68,8 @@ Server epoch/account mismatch fails closed and preserves local queues/data. Auto
 pnpm exec vp run release:prepare
 ```
 
-This runs validation and builds an extension ZIP, native Rust release binary, `SHA256SUMS` and `build.json` in ignored `release/`. Build metadata identifies the source commit and uncommitted state. A candidate is not a published tagged release. For macOS hosting, copy `config/macos.example.json` to ignored `deployment.local.json`, configure your profiles/endpoints, then follow the [installation runbook](docs/deployment.md#install-on-macos). Additional independent profiles use `--add-profiles`; additional installations of an existing account use invitations. Deployment acceptance and publication are tracked in the checklist.
+This validates and builds an extension ZIP, native Rust relay with checksum-pinned static SQLite 3.53.4, `SHA256SUMS` and `build.json` in ignored `release/`. Building needs Python 3, `curl`, `cc`, `ar`, `zip` and `unzip`. Metadata records source commit and uncommitted state.
+
+In GitHub Actions, **Build release** checks main, builds macOS/Linux ARM64 and x64 bundles, then creates a draft tagged release. Review assets and notes before publishing. **Chrome Web Store** uses WXT/API v2: authenticate only, upload a draft, or submit staged review. Configure its IDs/secrets first; see [publishing](docs/deployment.md#github-releases-and-chrome-web-store).
+
+For macOS hosting, copy `config/macos.example.json` to ignored `deployment.local.json`, configure profiles/endpoints, then follow the [installation runbook](docs/deployment.md#install-on-macos). Additional independent profiles use `--add-profiles`; additional installations of an existing account use invitations. Deployment acceptance and publication stay in the checklist.

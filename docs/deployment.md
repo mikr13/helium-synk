@@ -4,7 +4,7 @@ Browser steps: [setup-guide.md](setup-guide.md). Progress/limits: [plan.md](plan
 
 ## Install on macOS
 
-Server needs Python 3.9+, [Tailscale](https://tailscale.com/docs/install/mac) and a release matching its architecture. Building also needs the [development tools](../README.md#development) and patched Homebrew SQLite.
+Server needs macOS 13+, Python 3.9+, [Tailscale](https://tailscale.com/docs/install/mac) and its matching release bundle. Extract it, then pass that directory with `--release-dir`. Release relays include patched static SQLite; development builds use Homebrew SQLite.
 
 ```sh
 pnpm exec vp run release:prepare
@@ -69,11 +69,28 @@ Replace `personal` and the root with yours.
 
 ## Updates and publishing
 
-Back up relay and clients first. Upgrade relay before extensions; stop its serve job before replacing binaries/helpers. Preserve config, credentials, accounts and agent identities. Check SQLite linkage with `otool -L` and `brew --prefix sqlite`, including after Homebrew upgrades.
+Back up relay and clients first. Upgrade relay before extensions; stop its serve job before replacing binaries/helpers. Preserve config, credentials, accounts and agent identities. Release binaries include SQLite; local development binaries may depend on Homebrew SQLite.
 
 Replace extension files in the same folder, then **Reload** each installation. Preserve ID/storage/enrollment. Never remove/reinstall or clear storage to update. Update all clients before session expiry; older clients pause on its payloads.
 
-Follow [Changesets](../CONTRIBUTING.md), then publish reviewed tagged artifacts only: extension ZIP, matching native binary, `SHA256SUMS`, `build.json`. No credentials/runtime data. No automatic/store updater.
+Unpacked and store installations have different extension identities/storage. Switching channels needs invitation/recovery enrollment; do not uninstall an enrolled profile with pending work. Existing unpacked installs keep manual updates.
+
+## GitHub releases and Chrome Web Store
+
+1. Merge reviewed [Changesets/version changes](../CONTRIBUTING.md#release-procedure). Run **Build release** on main.
+2. Review its draft `vX.Y.Z` release and checksums. Bundles: macOS ARM64/x64 and Linux ARM64/x64. Each contains relay, identical extension ZIP, `build.json` and `SHA256SUMS`. Only generated artifacts are uploaded.
+3. Publish the GitHub draft when ready. Linux binaries target glibc 2.35+; configure your service/backups separately. The macOS installer does not apply to Linux.
+4. Upload the extension ZIP once through the Chrome dashboard to create its listing. Finish listing/privacy/screenshots, then save its extension ID. Choose the intended publisher.
+5. Enable Chrome Web Store API in Google Cloud and link a service account to that publisher. Follow [Google's setup](https://developer.chrome.com/docs/webstore/service-accounts). Store credentials in GitHub, never source/chat.
+
+Repository Actions variables: `CHROME_EXTENSION_ID`, `CHROME_PUBLISHER_ID`.
+Actions secrets: `CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL`, `CHROME_SERVICE_ACCOUNT_PRIVATE_KEY` (complete PEM value from its private key).
+
+Run **Chrome Web Store** on main. `dry-run` authenticates only and may leave the tag empty to test credentials before a release. `upload-draft` and `submit-review` require an existing release tag, verify its source/version/ZIP hashes and submit that ZIP without rebuilding. Upload leaves a draft; staged review requires Publish in the dashboard after approval. Failures fail the job.
+
+Store copy, permission explanations and reviewer steps: [listing.md](../assets/store/listing.md). Publish [PRIVACY.md](../PRIVACY.md) before submitting its URL.
+
+WXT uses API v2. Existing API v1 OAuth workflows need migration; [Google ends v1 support October 15, 2026](https://developer.chrome.com/docs/webstore/api/v1).
 
 ## Backup and recovery
 

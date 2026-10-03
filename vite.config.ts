@@ -7,6 +7,7 @@ export default defineConfig({
     include: ['sync-core/**/*.test.ts', 'extension/**/*.test.ts'],
     environment: 'node',
     setupFiles: ['tests/setup.ts'],
+    maxWorkers: process.env.CI ? 2 : undefined,
   },
   lint: {
     ignorePatterns: ['work/**', 'target/**', '**/.wxt/**', '**/.output/**', 'release/**'],

@@ -10,3 +10,8 @@ version = "0.2.0"
 [profile.release]
 lto = "thin"
 strip = true
+
+# Stripped proc-macro dylibs can fail macOS dyld's LINKEDIT alignment check.
+# Keep build tools unstripped; the distributed relay still strips symbols.
+[profile.release.build-override]
+strip = false
