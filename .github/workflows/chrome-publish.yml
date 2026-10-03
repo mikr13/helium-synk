@@ -58,6 +58,12 @@ jobs:
           mkdir release
           gh release download "$TAG" --dir release \
             --pattern "helium-synk-extension-${TAG#v}.zip" --pattern extension-build.json
+      - name: Checkout publishing tools from the workflow revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ inputs.tag || github.sha }}
@@ -109,5 +115,5 @@ jobs:
             submit-review) ;;
             *) echo "Unknown action"; exit 1 ;;
           esac
-          pnpm --filter @helium-synk/extension exec wxt submit "${args[@]}"
+          node ../automation/scripts/submit-chrome.mjs "${args[@]}"
           echo "Chrome action $ACTION succeeded for ${TAG:-authentication-only candidate} using $CHROME_PUBLISH_TYPE. DEFAULT_PUBLISH goes live after approval; STAGED_PUBLISH needs a final dashboard Publish." >> "$GITHUB_STEP_SUMMARY"

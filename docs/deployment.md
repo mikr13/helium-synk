@@ -86,6 +86,8 @@ Unpacked and store installations have different extension identities/storage. Sw
 Repository Actions variables: `CHROME_EXTENSION_ID`, `CHROME_PUBLISHER_ID`.
 Actions secrets: `CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL`, `CHROME_SERVICE_ACCOUNT_PRIVATE_KEY` (complete PEM value from its private key).
 
+The publishing helper accepts the complete RSA PEM, a JSON-quoted PEM, escaped newlines, or the service-account JSON's `private_key`. It validates and normalizes the key in memory without printing or saving it. Invalid keys fail with the GitHub secret name to correct. Publishing tools are checked out from the workflow revision separately from the verified tagged app, so store retries can use fixed tooling without replacing release assets.
+
 For retries or diagnostics, run **Chrome Web Store** manually on main. `dry-run` authenticates only and may leave the tag empty to test credentials before a release. `upload-draft` and `submit-review` require an existing release tag, verify its source/version/ZIP hashes and submit that ZIP without rebuilding. `DEFAULT_PUBLISH` goes live after approval; `STAGED_PUBLISH` waits for Publish in the dashboard. Manual runs default to staging; the automatic release chain selects `submit-review` and `DEFAULT_PUBLISH`. Store failures fail the release workflow and leave the GitHub release/assets intact. Retry the store workflow with the same tag instead of rebuilding or replacing the release. Manual **Build release** on main reruns checks and follows the same publication chain.
 
 Store copy, permission explanations and reviewer steps: [listing.md](../assets/store/listing.md). Publish [PRIVACY.md](../PRIVACY.md) before submitting its URL.
