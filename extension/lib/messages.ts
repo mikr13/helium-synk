@@ -15,12 +15,14 @@ import type {
   LocalStoragePolicy,
   LocalStorageStatus,
   HistoryRetentionPolicy,
+  SessionRetentionPolicy,
 } from '@helium-synk/core';
 
 export type Request =
   | { type: 'status' }
   | { type: 'storage-set'; policy: LocalStoragePolicy }
   | { type: 'history-retention-set'; policy: HistoryRetentionPolicy }
+  | { type: 'session-retention-set'; policy: SessionRetentionPolicy }
   | { type: 'pairing-create' }
   | { type: 'pairing-start'; bundle: PairingBundle; name: string }
   | { type: 'pairing-retry' }
@@ -83,6 +85,10 @@ export interface Status {
     error?: string;
   };
   sessions: {
+    retention: {
+      policy: SessionRetentionPolicy;
+      last?: { at: number; examined: number; expired: number; protected: number };
+    };
     enabled: boolean;
     snapshots: number;
     incomplete: number;

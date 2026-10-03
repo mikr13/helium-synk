@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vite-plus/test';
 import { SynkDatabase } from './database';
 import { generateRecoveryKey } from './crypto';
 import {
@@ -38,7 +38,7 @@ afterEach(async () => {
 });
 function accepted() {
   return vi.fn(async (_url: string, options: RequestInit) => {
-    const body = JSON.parse(String(options.body));
+    const body = JSON.parse(typeof options.body === 'string' ? options.body : '');
     return new Response(
       JSON.stringify({
         account_id: body.account_id,

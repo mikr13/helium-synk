@@ -1,13 +1,14 @@
+import Dexie from 'dexie';
 import { SynkDatabase } from './database';
 import { validateSessionSnapshot, type SessionWindow } from './sessions';
 import {
   windowContentFingerprint,
+  sessionFingerprintDigest,
   type SessionBrowser,
   type NativeSessionTab,
   type NativeSessionWindow,
   type NativeSessionGroup,
   type SessionSetup,
-  type SessionWindowCache,
 } from './session-native';
 
 /** Native caches are independent of network availability. Browser runtime IDs never leave this adapter. */
@@ -328,7 +329,9 @@ export class SessionCapture {
       await this.db.sessionClosedSeen.put({
         id: `live/${setup.incarnation}/${id}`,
         snapshot_id,
-        fingerprint: windowContentFingerprint(window),
+        fingerprint: await Dexie.waitFor(
+          sessionFingerprintDigest(windowContentFingerprint(window)),
+        ),
         captured_at,
       });
     }
@@ -393,9 +396,13 @@ export class SessionCapture {
             [],
             `closed/${key}`,
           ),
-          fingerprint = windowContentFingerprint(window);
+          legacyFingerprint = windowContentFingerprint(window),
+          fingerprint = await Dexie.waitFor(sessionFingerprintDigest(legacyFingerprint));
         const matches = (
-          await this.db.sessionClosedSeen.where('fingerprint').equals(fingerprint).toArray()
+          await this.db.sessionClosedSeen
+            .where('fingerprint')
+            .anyOf(fingerprint, legacyFingerprint)
+            .toArray()
         )
           .filter(
             (m) =>
@@ -409,8 +416,13 @@ export class SessionCapture {
           );
         const match = matches[0];
         if (match) {
-          await this.db.sessionClosedSeen.put({ ...match, native_session: key });
-          await this.db.sessionClosedSeen.put({ ...match, id: key, native_session: key });
+          await this.db.sessionClosedSeen.put({ ...match, fingerprint, native_session: key });
+          await this.db.sessionClosedSeen.put({
+            ...match,
+            fingerprint,
+            id: key,
+            native_session: key,
+          });
           return;
         }
         const snapshot_id = await this.db.stageSession({

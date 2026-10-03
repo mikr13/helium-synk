@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
-import { expect, it } from 'vitest';
+import { expect, it } from 'vite-plus/test';
 import {
   SynkDatabase,
   SyncCoordinator,
@@ -67,7 +67,8 @@ it('durable clients rotate across offline work, lost replies/reopens, late pairi
       }, 5000);
       child.once('exit', (code) => {
         clearTimeout(deadline);
-        code === 0 ? resolve() : reject(new Error('Unclean exit'));
+        if (code === 0) resolve();
+        else reject(new Error('Unclean exit'));
       });
       child.kill('SIGTERM');
     });
@@ -172,8 +173,8 @@ it('durable clients rotate across offline work, lost replies/reopens, late pairi
     let lostRotation = true;
     globalThis.fetch = async (input, options) => {
       const response = await nativeFetch(input, options);
-      if (String(input).endsWith('/v1/keys/rotate')) {
-        sent.push(String(options?.body));
+      if ((input instanceof Request ? input.url : input.toString()).endsWith('/v1/keys/rotate')) {
+        sent.push(typeof options?.body === 'string' ? options.body : '');
         if (lostRotation && response.ok) {
           lostRotation = false;
           await response.arrayBuffer();
@@ -240,8 +241,10 @@ it('durable clients rotate across offline work, lost replies/reopens, late pairi
     const claims: string[] = [];
     globalThis.fetch = async (input, options) => {
       const response = await nativeFetch(input, options);
-      if (String(input).endsWith('/v1/pairing/register')) {
-        claims.push(String(options?.body));
+      if (
+        (input instanceof Request ? input.url : input.toString()).endsWith('/v1/pairing/register')
+      ) {
+        claims.push(typeof options?.body === 'string' ? options.body : '');
         if (lostClaim && response.ok) {
           lostClaim = false;
           await response.arrayBuffer();

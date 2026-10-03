@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { sessionSnapshot, sessionWindow } from '../../tests/session-fixtures';
 import { projectSessions, restoreUrl, splitSession, validateSessionSnapshot } from './sessions';
 import { base64, unbase64 } from './crypto';

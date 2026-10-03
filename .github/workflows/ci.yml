@@ -29,11 +29,12 @@ jobs:
       - name: Install patched SQLite
         run: brew install sqlite
       - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
-      - run: pnpm check:versions
-      - run: pnpm check
-      - run: pnpm check:server
-      - run: pnpm test:integration
+      - run: pnpm exec vp install --frozen-lockfile
+      - run: pnpm exec vp run check:versions
+      - run: pnpm exec vp run check
+      - run: pnpm exec vp run check:server
+      - run: pnpm exec vp run test:integration
+      - run: pnpm exec vp run check:deployment
       - name: Check Conventional Commits
         if: github.event_name == 'pull_request'
         env:

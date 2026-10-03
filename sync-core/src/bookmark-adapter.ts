@@ -1,10 +1,5 @@
 import { SynkDatabase } from './database';
-import {
-  BOOKMARK_ROOTS,
-  type BookmarkAction,
-  type BookmarkNode,
-  type BookmarkProjection,
-} from './bookmarks';
+import { BOOKMARK_ROOTS, type BookmarkAction, type BookmarkProjection } from './bookmarks';
 import { balancedPositions, comparePositions, positionBetween } from './position';
 import {
   baseline,

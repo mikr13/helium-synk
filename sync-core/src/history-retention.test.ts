@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vite-plus/test';
 import { SynkDatabase } from './database';
 import { encryptPayload, generateRecoveryKey, historyUrlTag } from './crypto';
 import { expireHistory, historyRetentionPolicy } from './history-retention';

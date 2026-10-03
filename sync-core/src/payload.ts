@@ -4,7 +4,11 @@ import { validateHistoryOperation, type HistoryOperation } from './history';
 import { validateHistoryErasure, type HistoryErasure } from './history-erasure';
 import type { Diagnostic, Envelope } from './protocol';
 export type Payload =
-  Diagnostic | BookmarkOperation | SessionOperation | HistoryOperation | HistoryErasure;
+  | Diagnostic
+  | BookmarkOperation
+  | SessionOperation
+  | HistoryOperation
+  | HistoryErasure;
 export type EnvelopeHeader = Omit<Envelope, 'nonce' | 'ciphertext'>;
 export const MAX_PLAINTEXT_BYTES = 65_536 - 16;
 export function validatePayload(payload: Payload, header: EnvelopeHeader): void {

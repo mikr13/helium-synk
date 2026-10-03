@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { SynkDatabase } from './database';
 import { BookmarkAdapter } from './bookmark-adapter';
 import { BOOKMARK_ROOTS } from './bookmarks';
@@ -382,7 +382,7 @@ describe('native bookmark integration', () => {
   it('reconciles missed native changes after worker/database reopen', async () => {
     const browser = new FakeBrowser(),
       original = await browser.add('Before', 'https://before.example');
-    const { db, adapter } = await enabled(browser);
+    const { db } = await enabled(browser);
     const name = db.name;
     browser.events = undefined;
     await browser.update(original.id, { title: 'While worker stopped' });

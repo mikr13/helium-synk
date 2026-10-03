@@ -155,7 +155,7 @@ function AppShell() {
           <Outlet />
         </div>
         <footer className="workspace-footer">
-          <span>DEVELOPMENT BUILD</span>
+          <span>PRIVATE SYNC</span>
           <p>Collection starts only when you enable it.</p>
         </footer>
       </main>

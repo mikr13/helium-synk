@@ -113,8 +113,8 @@ export function RecoveryPage() {
             Save recovery file
           </Button>
           <p className="fine">
-            This file contains private keys. This development build unlocks automatically using keys
-            stored in your browser profile.
+            This file contains private keys. Synk unlocks automatically using keys stored in your
+            browser profile.
           </p>
         </CardContent>
       </Card>

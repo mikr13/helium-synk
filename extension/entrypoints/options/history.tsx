@@ -20,7 +20,8 @@ type Props = {
 };
 type Page = NonNullable<(Reply & { ok: true })['history_page']>;
 type Removal =
-  { type: 'selected'; ids: string[] } | { type: 'scope'; source?: { id: string; name: string } };
+  | { type: 'selected'; ids: string[] }
+  | { type: 'scope'; source?: { id: string; name: string } };
 function dayStart(value: string): number | undefined {
   return value ? new Date(value + 'T00:00:00').getTime() : undefined;
 }

@@ -264,6 +264,7 @@ export class SyncCoordinator {
             this.db.replicas,
             this.db.sessionReplicas,
             this.db.sessionRestores,
+            this.db.sessionClosedSeen,
           ],
           async () => {
             let newContent = 0,

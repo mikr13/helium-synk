@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { envelopeDigest, type Envelope } from './protocol';
 
 describe('immutable envelope digest', () => {

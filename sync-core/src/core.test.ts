@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { decryptDiagnostic, generateRecoveryKey, encryptDiagnostic } from './crypto';
 import { SynkDatabase } from './database';
 import { SyncCoordinator, type Transport } from './sync';

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { sessionWindow, sessionSnapshot } from '../../tests/session-fixtures';
 import { SynkDatabase } from './database';
 import { generateRecoveryKey, encryptPayload } from './crypto';
@@ -18,10 +18,10 @@ import {
   validateSessionExpiration,
   type SessionContent,
   type SessionExpiration,
-  type SessionPart,
   type SessionSnapshot,
 } from './sessions';
 import type { SessionRestoreJob } from './session-restore';
+import { sessionFingerprintDigest } from './session-native';
 
 const databases: SynkDatabase[] = [];
 afterEach(async () => {
@@ -165,6 +165,62 @@ describe('source-owned session archive retention', () => {
         .session_retention,
     ).toEqual(policy);
     expect(await expireSessions(reopened, NOW)).toMatchObject({ expired: 1 });
+  });
+
+  it('redacts legacy closed-capture content atomically while keeping duplicate-detection identities', async () => {
+    const db = await local();
+    const id = await db.stageSession(content());
+    const pending = await db.stageSession(content());
+    const fingerprint = JSON.stringify([
+      ['https://private.example/reset?token=secret', 'Private title', false],
+    ]);
+    const receipt = {
+      id: 'live/fixture/10',
+      snapshot_id: id,
+      fingerprint,
+      captured_at: new Date(NOW - 31 * DAY).toISOString(),
+    };
+    await db.sessionClosedSeen.add(receipt);
+    await db.sessionClosedSeen.add({
+      ...receipt,
+      id: 'native/fixture',
+      native_session: 'native/fixture',
+    });
+    await db.sessionClosedSeen.add({ ...receipt, id: 'pending', snapshot_id: pending });
+    // Only the first archive is acknowledged; queued capture copies must remain intact.
+    await db.flushDrafts();
+    for (const record of await db.operations.toArray()) {
+      if (
+        record.payload.kind === 'session' &&
+        record.payload.schema_version === 1 &&
+        record.payload.snapshot_id === id
+      ) {
+        await db.operations.update(record.operation_id, { sequence: record.envelope.counter });
+        await db.outbox.delete(record.operation_id);
+      }
+    }
+    await db.setSessionRetention(policy);
+    vi.spyOn(db.sessionClosedSeen, 'put').mockRejectedValueOnce(new Error('Receipt write failed'));
+    await expect(expireSessions(db, NOW)).rejects.toThrow('Receipt write failed');
+    expect((await db.sessionProjection()).snapshots[id]).toBeDefined();
+    expect(await db.sessionClosedSeen.get(receipt.id)).toEqual(receipt);
+    vi.restoreAllMocks();
+    expect(await expireSessions(db, NOW)).toMatchObject({ expired: 1 });
+    const digest = await sessionFingerprintDigest(fingerprint);
+    expect(digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(await sessionFingerprintDigest(digest)).toBe(digest);
+    expect(await db.sessionClosedSeen.get(receipt.id)).toEqual({ ...receipt, fingerprint: digest });
+    expect((await db.sessionClosedSeen.get('native/fixture'))?.fingerprint).toBe(digest);
+    expect((await db.sessionClosedSeen.get('pending'))?.fingerprint).toBe(fingerprint);
+    const put = vi.spyOn(db.sessionClosedSeen, 'put');
+    await db.persistSessions(await db.sessionProjection());
+    expect(put).not.toHaveBeenCalled(); // Subsequent captures must not rewrite every expired receipt.
+
+    db.close();
+    const reopened = new SynkDatabase(db.name);
+    databases.push(reopened);
+    expect(await expireSessions(reopened, NOW)).toMatchObject({ expired: 0 });
+    expect((await reopened.sessionClosedSeen.get(receipt.id))?.fingerprint).toBe(digest);
   });
 
   it('uses strict original-time age, retains boundary/future captures and never selects another source or latest current', async () => {
@@ -399,7 +455,7 @@ describe('source-owned session archive retention', () => {
     const second = new SynkDatabase(db.name);
     databases.push(second);
     const results = await Promise.all([expireSessions(db, NOW), expireSessions(second, NOW)]);
-    expect(results.map((result) => result.expired).sort()).toEqual([0, 1]);
+    expect(results.map((result) => result.expired).sort((a, b) => a - b)).toEqual([0, 1]);
     expect(await db.pendingCount()).toBe(101);
   });
 

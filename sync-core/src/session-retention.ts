@@ -105,7 +105,7 @@ export async function expireSessions(db: SynkDatabase, now = Date.now()) {
   validTime(now);
   return db.transaction(
     'rw',
-    [...db.captureBudgetTables(), db.sessionReplicas, db.sessionRestores],
+    [...db.captureBudgetTables(), db.sessionReplicas, db.sessionRestores, db.sessionClosedSeen],
     async () => {
       const local = await db.state.get('local'),
         policy = sessionRetentionPolicy(local?.session_retention ?? DEFAULT_SESSION_RETENTION);

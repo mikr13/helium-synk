@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createServer } from 'node:net';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vite-plus/test';
 import {
   generateRecoveryKey,
   BOOKMARK_ROOTS,
@@ -594,7 +594,7 @@ it('retries a real lost cursor ACK after graceful SIGTERM and durable client reo
     pull: (cursor) => native.pull(cursor),
     push: (envelopes, epoch) => native.push(envelopes, epoch),
     acknowledge: async (cursor, epoch) => {
-      const reply = await native.acknowledge(cursor, epoch);
+      await native.acknowledge(cursor, epoch);
       expect((await target.state.get('local'))?.cursor).toBe(cursor);
       acknowledged = cursor;
       throw new Error('Real committed ACK reply deliberately lost');
@@ -751,8 +751,10 @@ it('pairs a new installation across a real lost enrollment reply and relay/clien
   let dropped = false;
   const sent: string[] = [];
   globalThis.fetch = async (input, init) => {
-    if (String(input).endsWith('/v1/pairing/register')) {
-      sent.push(String(init?.body));
+    if (
+      (input instanceof Request ? input.url : input.toString()).endsWith('/v1/pairing/register')
+    ) {
+      sent.push(typeof init?.body === 'string' ? init.body : '');
       const reply = await nativeFetch(input, init);
       expect(reply.ok).toBe(true);
       if (!dropped) {

@@ -1,18 +1,12 @@
 import Dexie from 'dexie';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vite-plus/test';
 import { SynkDatabase } from './database';
 import { KeyManager, keySnapshot } from './key-manager';
 import { SyncCoordinator, type Transport } from './sync';
 import { generateRecoveryKey, decryptDiagnostic, decryptPayload, historyUrlTag } from './crypto';
 import { historyVisitId } from './history';
 import { sameEnvelope, type Credentials, type Envelope } from './protocol';
-import type {
-  KeyState,
-  KeyDevice,
-  KeyTransport,
-  RotationRequest,
-  RotationReply,
-} from './key-state';
+import type { KeyDevice, KeyTransport, RotationRequest } from './key-state';
 import { exportRecovery, enrollRecovery, parseRecoveryBundle } from './recovery';
 import { BOOKMARK_ROOTS } from './bookmarks';
 

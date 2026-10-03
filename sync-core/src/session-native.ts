@@ -1,4 +1,4 @@
-import type { SessionColor, SessionSnapshot, SessionWindow } from './sessions';
+import type { SessionColor, SessionWindow } from './sessions';
 export interface NativeSessionTab {
   id: number;
   windowId: number;
@@ -68,4 +68,11 @@ export interface SessionClosedSeen {
 }
 export function windowContentFingerprint(w: SessionWindow): string {
   return JSON.stringify(w.tabs.map((t) => [t.url, t.title, t.pinned]));
+}
+
+/** A duplicate-detection receipt must not retain closed URLs or titles. */
+export async function sessionFingerprintDigest(fingerprint: string): Promise<string> {
+  if (/^sha256:[a-f0-9]{64}$/.test(fingerprint)) return fingerprint;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fingerprint));
+  return `sha256:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }

@@ -7,6 +7,7 @@ import { Field, FieldLabel, FieldGroup } from '@/components/ui/field';
 import { Disclosure } from '@/components/disclosure';
 import type { Reply, Request, Status } from '@/lib/messages';
 import { HistoryRetentionControls } from './history-retention';
+import { SessionRetentionControls } from './session-retention';
 const MiB = 1024 * 1024;
 export function StoragePanel({
   status,
@@ -132,6 +133,7 @@ export function StoragePanel({
           </form>
         </Disclosure>
         <HistoryRetentionControls status={status} request={request} onStatus={onStatus} />
+        <SessionRetentionControls status={status} request={request} onStatus={onStatus} />
       </CardContent>
     </Card>
   );

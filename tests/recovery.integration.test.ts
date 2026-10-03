@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync }
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
-import { expect, it } from 'vitest';
+import { expect, it } from 'vite-plus/test';
 import {
   SynkDatabase,
   SyncCoordinator,
@@ -78,7 +78,8 @@ async function harness() {
       }, 5000);
       process.once('exit', (code) => {
         clearTimeout(timeout);
-        code === 0 ? resolve() : reject(new Error('Recovery relay exited uncleanly'));
+        if (code === 0) resolve();
+        else reject(new Error('Recovery relay exited uncleanly'));
       });
       process.kill('SIGTERM');
     });

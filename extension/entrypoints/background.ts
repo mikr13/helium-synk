@@ -16,6 +16,7 @@ import {
   SessionCapture,
   HistoryCapture,
   DEFAULT_HISTORY_RETENTION,
+  DEFAULT_SESSION_RETENTION,
   type HistoryInbox,
   SessionRestorer,
   restoreSummary,
@@ -157,6 +158,10 @@ export default defineBackground(() => {
         error: historyError ?? historySetup?.error,
       },
       sessions: {
+        retention: {
+          policy: local?.session_retention ?? DEFAULT_SESSION_RETENTION,
+          last: local?.session_retention_last,
+        },
         enabled: !!sessionSetup?.enabled,
         snapshots: Object.keys(sessionProjection.snapshots).length,
         incomplete: sessionProjection.incomplete.length,
@@ -205,6 +210,11 @@ export default defineBackground(() => {
   }
   async function handle(request: Request): Promise<Reply> {
     try {
+      if (request.type === 'session-retention-set') {
+        await db.setSessionRetention(request.policy);
+        void sync(true);
+        return { ok: true, status: await status() };
+      }
       if (request.type === 'history-retention-set') {
         await db.setHistoryRetention(request.policy);
         void sync(true);

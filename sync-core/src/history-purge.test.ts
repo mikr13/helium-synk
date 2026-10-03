@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vite-plus/test';
 import { SynkDatabase } from './database';
 import { SyncCoordinator, type Transport } from './sync';
 import { HistoryPurger } from './history-purge';

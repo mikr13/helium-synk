@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { SynkDatabase } from './database';
 import { generateRecoveryKey } from './crypto';
 import { SessionCapture } from './session-capture';
@@ -192,6 +192,47 @@ describe('durable native session capture', () => {
     await capture.reconcile();
     expect((await db.sessionProjection()).closed[source]).toHaveLength(2);
   });
+  it('keeps expired live-close receipts content-free and prevents native recent-close resurrection after reopen', async () => {
+    const { db, native, capture, source } = await fixture();
+    const original = structuredClone(native.windows[0]!);
+    native.windows = [];
+    await capture.closeWindow(10);
+    const closed = (await db.sessionProjection()).closed[source]![0]!;
+    const projection = await db.sessionProjection();
+    const snapshot = projection.snapshots[closed]!;
+    // Represent an upgrade from old plaintext duplicate fingerprints.
+    await db.sessionClosedSeen.toCollection().modify((row) => {
+      row.fingerprint = JSON.stringify(original.tabs.map((t) => [t.url, t.title, t.pinned]));
+    });
+    await db.stageSessionExpiration([
+      {
+        snapshot_id: closed,
+        source_revision: snapshot.source_revision,
+        snapshot_kind: 'closed',
+        total: 1,
+      },
+    ]);
+    const receipts = await db.sessionClosedSeen.toArray();
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]!.fingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+    native.recent = [
+      { id: 'expired-recent', closed_at: new Date().toISOString(), window: original },
+    ];
+    db.close();
+    const reopened = new SynkDatabase(db.name);
+    dbs.push(reopened);
+    await new SessionCapture(reopened, native).reconcile();
+    await new SessionCapture(reopened, native).reconcile();
+    const after = await reopened.sessionProjection();
+    expect(after.closed[source] ?? []).toHaveLength(0);
+    expect(after.expired[closed]).toBeDefined();
+    expect(
+      (await reopened.sessionClosedSeen.toArray()).every((r) =>
+        /^sha256:[a-f0-9]{64}$/.test(r.fingerprint),
+      ),
+    ).toBe(true);
+  });
+
   it('archives the last good session across browser incarnation changes and ignores startup emptiness until windows appear', async () => {
     const { db, native, capture, current, source } = await fixture(),
       before = await current();

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { SynkDatabase } from './database';
 import Dexie from 'dexie';
 import { historyVisitId } from './history';

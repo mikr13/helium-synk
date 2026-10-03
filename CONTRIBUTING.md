@@ -11,20 +11,19 @@ Run `pnpm changeset` for user-visible changes. Select the affected private packa
 ## Checks
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm prepare
-pnpm check
-pnpm check:server
-pnpm check:versions
-pnpm test:integration
-pnpm format:check
+pnpm exec vp install --frozen-lockfile
+pnpm exec vp run check
+pnpm exec vp run check:server
+pnpm exec vp run check:versions
+pnpm exec vp run test:integration
+pnpm exec vp run check:deployment
 ```
 
 Do browser compatibility tests in disposable profiles. Never point test adapters at the user's normal bookmarks/history. Mark plan gates complete only with recorded evidence.
 
 ## Interface conventions
 
-Use the shared dark-only Tailwind theme and shadcn/ui components for every interface. Keep all corners square and use the logo's navy/blue/mint tokens. Import extension source with `@/…`; use `@helium-synk/core` for the shared workspace package. Keep TypeScript, WXT and Vitest alias mappings aligned. See [the design system](docs/design-system.md) for component, font and accessibility conventions.
+Use the shared dark-only Tailwind theme and shadcn/ui components for every interface. Keep all corners square and use the logo's navy/blue/mint tokens. Import extension source with `@/…`; use `@helium-synk/core` for the shared workspace package. Keep TypeScript, WXT and Vite+ test alias mappings aligned. See [the design system](docs/architecture.md#interface) for component, font and accessibility conventions.
 
 ## Release procedure
 
@@ -35,3 +34,5 @@ Use the shared dark-only Tailwind theme and shadcn/ui components for every inter
 5. Tag/build a GitHub release only after that change is merged. This repository has no automatic publishing job; private packages are never published to npm.
 
 Changesets are the source for unreleased notes. Do not manufacture a released version/changelog until there is an intentional release. Deployment and protocol recovery steps belong in the relevant release notes.
+
+`pnpm exec vp run release:prepare` validates and creates inspectable artifacts in ignored `release/`. It does not bump versions, commit, tag or publish. Vite+ built-in checks/tests and WXT task commands are distinguished in the README.

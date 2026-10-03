@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { BOOKMARK_ROOTS, type BookmarkOperation } from './bookmarks';
 import { generateRecoveryKey, encryptDiagnostic, encryptPayload } from './crypto';
 import { SynkDatabase } from './database';

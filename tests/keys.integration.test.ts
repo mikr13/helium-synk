@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
-import { expect, it } from 'vitest';
+import { expect, it } from 'vite-plus/test';
 import {
   generateRecoveryKey,
   generateWrappingIdentity,
@@ -58,7 +58,8 @@ it('real relay persists an identical lost-reply rotation, excludes a removed ins
       }, 5000);
       child.once('exit', (code) => {
         clearTimeout(deadline);
-        code === 0 ? resolve() : reject(new Error('Unclean relay exit'));
+        if (code === 0) resolve();
+        else reject(new Error('Unclean relay exit'));
       });
       child.kill('SIGTERM');
     });
@@ -132,7 +133,7 @@ it('real relay persists an identical lost-reply rotation, excludes a removed ins
       keyEpoch: number,
       root: string,
       note: string,
-      operationId = crypto.randomUUID(),
+      operationId: string = crypto.randomUUID(),
     ) =>
       encryptDiagnostic(
         root,

@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vite-plus/test';
 import Dexie from 'dexie';
 import { sessionWindow } from '../../tests/session-fixtures';
 import { SynkDatabase } from './database';
 import { generateRecoveryKey, encryptPayload, base64, unbase64 } from './crypto';
 import { SyncCoordinator, type Transport } from './sync';
-import type { Credentials, Envelope, PullPage } from './protocol';
+import type { Envelope, PullPage } from './protocol';
 import type { SessionPart } from './sessions';
 const databases: SynkDatabase[] = [];
 afterEach(async () => {

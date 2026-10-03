@@ -2,26 +2,29 @@
   "name": "helium-synk",
   "private": true,
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "packageManager": "pnpm@12.8.1",
   "engines": {
-    "node": ">=24"
+    "node": "^24.11.0 || >=26.0.0"
   },
   "scripts": {
     "dev": "pnpm --filter @helium-synk/extension dev",
     "prepare": "pnpm --filter @helium-synk/extension wxt:prepare",
     "build": "pnpm --filter @helium-synk/extension build",
     "typecheck": "pnpm -r typecheck",
-    "test": "vitest run",
-    "test:integration": "./scripts/cargo.sh build --locked && vitest run --config vitest.integration.config.ts",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "test": "vp test run",
+    "test:integration": "./scripts/cargo.sh build --locked && vp test run --config vite.integration.config.ts",
+    "check": "vp check && pnpm typecheck && vp test && vp run build",
     "check:server": "./scripts/cargo.sh fmt --all -- --check && ./scripts/cargo.sh clippy --workspace --all-targets -- -D warnings && ./scripts/cargo.sh test --workspace",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-rust-version.mjs && pnpm install --lockfile-only && ./scripts/cargo.sh update --workspace",
     "check:versions": "node scripts/sync-rust-version.mjs --check",
+    "check:deployment": "python3 scripts/macos-ops.test.py",
     "hooks:install": "git config core.hooksPath .githooks",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format": "vp fmt .",
+    "format:check": "vp fmt --check .",
+    "release:bundle": "./scripts/cargo.sh build --release --locked && vp run build && node scripts/package-release.mjs",
+    "release:prepare": "vp run check && vp run check:server && vp run test:integration && vp run check:deployment && vp run check:versions && vp run release:bundle"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
@@ -29,8 +32,7 @@
     "@commitlint/config-conventional": "^20.0.0",
     "@types/node": "^24.0.0",
     "fake-indexeddb": "^6.2.0",
-    "prettier": "^3.9.9",
     "typescript": "^5.9.3",
-    "vitest": "^5.0.3"
+    "vite-plus": "catalog:"
   }
 }

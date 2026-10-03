@@ -65,7 +65,7 @@ export function parsePairingBundle(value: unknown): PairingBundle {
     expires_at: bundle.expires_at,
     recovery_key: bundle.recovery_key,
     history_index_key: bundle.history_index_key,
-    ...(keys ?? {}),
+    ...keys,
   };
 }
 function apiError(status: number): Error {

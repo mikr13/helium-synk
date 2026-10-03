@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import { sessionFingerprintDigest } from './session-native';
 import { sessionRetentionPolicy, type SessionRetentionPolicy } from './session-retention';
 import {
   historyRetentionPolicy,
@@ -577,7 +578,7 @@ export class SynkDatabase extends Dexie {
   async persistSessions(projection: SessionProjection): Promise<void> {
     await this.transaction(
       'rw',
-      [this.operations, this.sessionReplicas, this.sessionRestores],
+      [this.operations, this.sessionReplicas, this.sessionRestores, this.sessionClosedSeen],
       async () => {
         await this.sessionReplicas.put({ id: 'session', value: projection });
         if (!Object.keys(projection.expired).length) return;
@@ -594,6 +595,24 @@ export class SynkDatabase extends Dexie {
               record.payload = eraseSessionPart(record.payload);
             else return false;
           });
+        for (const receipt of await this.sessionClosedSeen.toArray()) {
+          if (!projection.expired[receipt.snapshot_id]) continue;
+          if (
+            /^sha256:[a-f0-9]{64}$/.test(receipt.fingerprint) &&
+            Object.keys(receipt).every((key) =>
+              ['id', 'snapshot_id', 'fingerprint', 'captured_at', 'native_session'].includes(key),
+            )
+          )
+            continue;
+          // Preserve native identity to prevent resurrection; whitelist metadata and hash legacy content.
+          await this.sessionClosedSeen.put({
+            id: receipt.id,
+            snapshot_id: receipt.snapshot_id,
+            fingerprint: await Dexie.waitFor(sessionFingerprintDigest(receipt.fingerprint)),
+            captured_at: receipt.captured_at,
+            ...(receipt.native_session ? { native_session: receipt.native_session } : {}),
+          });
+        }
         // Running and blocked jobs retain their own source data until completion/cancellation.
         await this.sessionRestores
           .filter(
@@ -608,7 +627,12 @@ export class SynkDatabase extends Dexie {
   async stageSessionExpiration(targets: SessionExpirationTarget[]): Promise<void> {
     await this.transaction(
       'rw',
-      [...this.captureBudgetTables(), this.sessionReplicas, this.sessionRestores],
+      [
+        ...this.captureBudgetTables(),
+        this.sessionReplicas,
+        this.sessionRestores,
+        this.sessionClosedSeen,
+      ],
       async () => {
         const local = await this.state.get('local');
         if (!local) throw new Error('Connect this device first.');
@@ -646,7 +670,12 @@ export class SynkDatabase extends Dexie {
   async stageSession(content: SessionContent): Promise<string> {
     return this.transaction(
       'rw',
-      [...this.captureBudgetTables(), this.sessionReplicas, this.sessionRestores],
+      [
+        ...this.captureBudgetTables(),
+        this.sessionReplicas,
+        this.sessionRestores,
+        this.sessionClosedSeen,
+      ],
       async () => {
         const local = await this.state.get('local');
         if (!local) throw new Error('Connect this device first.');
