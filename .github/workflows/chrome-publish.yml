@@ -1,5 +1,21 @@
 name: Chrome Web Store
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      action:
+        type: string
+        default: submit-review
+      publish_type:
+        type: string
+        default: DEFAULT_PUBLISH
+    secrets:
+      CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL:
+        required: true
+      CHROME_SERVICE_ACCOUNT_PRIVATE_KEY:
+        required: true
   workflow_dispatch:
     inputs:
       tag:
@@ -11,6 +27,11 @@ on:
         type: choice
         default: dry-run
         options: [dry-run, upload-draft, submit-review]
+      publish_type:
+        description: Publish automatically after approval, or stage for a final dashboard Publish
+        type: choice
+        default: STAGED_PUBLISH
+        options: [DEFAULT_PUBLISH, STAGED_PUBLISH]
 permissions:
   contents: read
 concurrency:
@@ -74,11 +95,12 @@ jobs:
           CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
           CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
           CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY }}
-          CHROME_PUBLISH_TYPE: STAGED_PUBLISH
+          CHROME_PUBLISH_TYPE: ${{ inputs.publish_type }}
         run: |
           for name in CHROME_EXTENSION_ID CHROME_PUBLISHER_ID CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL CHROME_SERVICE_ACCOUNT_PRIVATE_KEY; do
             [[ -n "${!name}" ]] || { echo "Missing $name"; exit 1; }
           done
+          [[ "$CHROME_PUBLISH_TYPE" == DEFAULT_PUBLISH || "$CHROME_PUBLISH_TYPE" == STAGED_PUBLISH ]] || { echo "Unknown publish type"; exit 1; }
           version=$(node -p "JSON.parse(require('fs').readFileSync('extension/package.json', 'utf8')).version")
           args=(--chrome-api-version v2 --chrome-zip "$PWD/release/helium-synk-extension-${version}.zip")
           case "$ACTION" in
@@ -88,4 +110,4 @@ jobs:
             *) echo "Unknown action"; exit 1 ;;
           esac
           pnpm --filter @helium-synk/extension exec wxt submit "${args[@]}"
-          echo "Chrome action $ACTION succeeded for ${TAG:-authentication-only candidate}. Staged review requires Publish in the store after approval." >> "$GITHUB_STEP_SUMMARY"
+          echo "Chrome action $ACTION succeeded for ${TAG:-authentication-only candidate} using $CHROME_PUBLISH_TYPE. DEFAULT_PUBLISH goes live after approval; STAGED_PUBLISH needs a final dashboard Publish." >> "$GITHUB_STEP_SUMMARY"

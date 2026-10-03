@@ -33,6 +33,8 @@ Version 0.2.0 has recorded automated and native acceptance evidence. A reference
 - [x] Finish public-reuse checks: `pnpm exec vp check` passes format/lint/type checks; `pnpm exec vp test` passes all 252 tests; `python3 scripts/macos-ops.test.py` passes 15 tests. The public-file audit finds zero personal-detail matches across 163 text files, all 34 local documentation links resolve, and `git diff --check` passes.
 - [x] Configure public repository description, setup-guide homepage and browser-sync/Helium/WXT/Rust/privacy topics. Repository remains public; metadata was verified through GitHub.
 - [x] Write and lint manual release workflows for macOS/Linux ARM64 and x64, reusable CI gates, draft GitHub releases and WXT Chrome API v2 staged submission. Upload only generated release artifacts; never private runtime/evidence files.
+- [x] Connect successful main push checks to an automatic release/store chain. Pin every build to the checked SHA, use the Changesets-managed extension version with matching server version, attach the ZIP/four relay bundles/metadata/checksums to a published GitHub release, and submit that same verified ZIP for automatic Chrome publication after approval. Preserve manual build/authentication/upload/staged-review options. Skip published/older versions and reject draft/orphan-tag conflicts without overwriting assets.
+- [x] Validate the automatic chain locally: all three workflows pass `actionlint`; eight packaging/release-plan tests cover canonical ZIP reuse, tampering/source rejection, version alignment, duplicate/stale releases and tag/draft conflicts. `vp check` passes formatting for 141 files and lint/type checks for 109 files; Rust/package versions align. The read-only release planner against GitHub selects the first `v0.2.0` release. Remote build/store acceptance remains open.
 - [x] Diagnose remote CI run `37115964700`: one session-retention test exceeded 5 seconds under parallel load; 251 others passed. Limit unit workers to two in CI. `CI=true pnpm exec vp test` passes the same 252 tests without changed assertions/timeouts/skips.
 - [x] Diagnose the repeated 5-second timeout in remote run `37121505791` after the worker limit was pushed. Profiling the 205-archive test attributes 2.77 of 3.24 seconds to serial fixture staging, which rebuilds the growing projection each time. Seed the same validated drafts/projection/counters in one transaction, retaining real encryption/acknowledgement and the 100/100/5 expiry/reopen assertions. Add preconditions for 205 snapshots and an empty pending queue. The test now takes 0.47 seconds locally; all 13 retention tests pass. `CI=true pnpm exec vp run check` passes all 252 tests, lint/format/package type checks and the production build. The 5-second timeout is unchanged; remote acceptance awaits the next pushed fix.
 - [x] Validate the macOS ARM64 release against static SQLite 3.53.4: all 44 Rust tests pass, no host SQLite linkage, readiness/SIGTERM/reopening pass. Keep build-time proc macros unstripped to avoid macOS LINKEDIT failures; distributed relay symbols still strip.
@@ -46,7 +48,7 @@ Version 0.2.0 has recorded automated and native acceptance evidence. A reference
 - [x] Verify the dedicated publishing service account is linked to the intended Chrome publisher and both GitHub IDs/secret names remain configured. Authentication, API enablement and private-key formatting still require the remote dry-run; secret values were not read back.
 - [x] Rerun `CI=true pnpm exec vp run check`: formatting, lint, package TypeScript checks, all 252 unit tests and the WXT production build pass. All three workflows pass `actionlint`, four packaging tests pass, versions align and `git diff --check` passes.
 - [ ] Push `PRIVACY.md` and the linked reviewer instructions before store submission. The dashboard's only reported submission blocker is an unreachable privacy-policy URL; GitHub confirms the policy is not yet on main.
-- [ ] Commit/push the workflows when requested and run the four-target GitHub build. Linux/Intel releases and actual store authentication/submission remain unverified.
+- [ ] Verify the automatic release chain remotely, including all four relay targets, release assets and actual store authentication/submission. Local workflow validation does not establish remote publication.
 
 ## Recorded verification
 
@@ -70,7 +72,8 @@ Version 0.2.0 has recorded automated and native acceptance evidence. A reference
 - `837020a`: session retention controls and macOS installation scripts, with the preceding Vite+ migration/release preparation included in the checkpoint.
 - `72d013e`: public configurable deployment/docs and shorter documentation, pushed by the maintainer.
 - `5076c6c`: release/store workflows, portable packaging, CI worker limit, privacy policy and public demo graphics, pushed by the maintainer. Its remote CI run `37121505791` passed 251 tests but failed the archive-batch fixture's 5-second timeout; subsequent gates did not run.
-- Current uncommitted change: optimize only the archive-batch test fixture and record its local verification above. Runtime behavior and the existing timeout remain unchanged. The fix still needs commit/push and a successful remote CI run.
+- `17d793f`: optimized archive-batch fixture, committed/pushed with unchanged runtime behavior and timeout. Remote run `37122358379` passes unit/build/server/integration/deployment/packaging checks.
+- Current uncommitted change: automatic main CI/release/Chrome chain and its version/retry behavior, tests and publishing documentation.
 
 Build-specific hashes and private native screenshots belong in ignored `release/` metadata/evidence, rather than hardcoded deployment instructions. Host-specific operating notes are retained privately under ignored `work/` and are not release artifacts.
 
@@ -86,12 +89,12 @@ Use the [runbook](deployment.md) for concrete commands. Deployment checks must b
 - [ ] Verify a second physical client, intended tailnet access and reconnect/queue drain after relay/Tailscale restart on the target hardware.
 - [ ] Verify server sleep/display-sleep behavior, FileVault unlock/login, logout, reboot, cold start and power restoration. Per-user jobs do not promise pre-login availability.
 - [ ] Choose encrypted off-host backup storage, test copy/rotation/failure reporting/integrity, and store current private content-key recovery separately. Same-host exports do not satisfy this item.
-- [ ] Commit/push the reviewed archive-batch fixture fix and verify remote checks plus all four relay targets. Workflow changes are pushed; their latest remote run failed the unit-test timeout. The optimized fixture passes the full check locally; the next remote run remains pending.
+- [x] Commit/push the archive-batch fixture fix and verify remote checks. Run `37122358379` passes after `17d793f`; all four release relay targets remain part of the separate automatic release acceptance above.
 - [x] Create the Chrome listing draft and configure its IDs and API v2 secret names in GitHub. The maintainer created the credentials manually; authentication and publisher linkage are not yet verified.
 - [x] Finish screenshots/promo, Privacy declarations and reviewer instructions in the dashboard, with saved/reloaded evidence. Local plaintext caches/keys are disclosed; encrypted transport is not presented as encryption of all local data.
 - [ ] Publish the policy and full reviewer-instructions URLs, publish matching relay downloads before review, and review local-storage security against Chrome's handling requirements. The draft currently reports only the unreachable policy URL as a submission blocker; that is not a store compliance approval.
 - [ ] Run the Chrome authentication-only dry-run after the workflow is pushed. Secret presence does not prove valid PEM formatting, API enablement or publisher linkage.
-- [ ] Review tagged source/artifacts and publish the GitHub release; authenticate/upload/submit Chrome staged review and publish after approval. These publication actions have not run.
+- [ ] Verify tagged source/assets and automatic GitHub publication, then store authentication/upload/review submission. The automatic chain selects publication after Google approval; no remote publication is claimed until it succeeds.
 
 ## Deferred improvements and acceptance gaps
 

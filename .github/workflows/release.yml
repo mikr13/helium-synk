@@ -1,17 +1,62 @@
 name: Build release
 on:
+  workflow_run:
+    workflows: [Checks]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 jobs:
+  plan:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-22.04
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - name: Pin the commit that passed checks
+        id: source
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - run: node scripts/sync-rust-version.mjs --check
+      - name: Plan the Changesets version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/plan-release.mjs
   checks:
-    if: github.ref == 'refs/heads/main'
+    needs: plan
+    if: github.event_name == 'workflow_dispatch' && needs.plan.outputs.release == 'true'
     uses: ./.github/workflows/ci.yml
+    with:
+      source_sha: ${{ needs.plan.outputs.source_sha }}
   extension:
-    needs: checks
+    needs: [plan, checks]
+    if: >-
+      always() && needs.plan.result == 'success' && needs.plan.outputs.release == 'true' &&
+      (needs.checks.result == 'success' ||
+      (github.event_name == 'workflow_run' && needs.checks.result == 'skipped'))
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     outputs:
@@ -19,6 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -41,7 +87,7 @@ jobs:
             release/extension-build.json
             release/extension-SHA256SUMS
   relay:
-    needs: extension
+    needs: [plan, extension]
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -91,8 +138,8 @@ jobs:
           name: relay-${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: error
           path: release/helium-synk-${{ needs.extension.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
-  draft:
-    needs: [extension, relay]
+  publish:
+    needs: [plan, extension, relay]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -102,12 +149,12 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      - name: Create draft GitHub release
+      - name: Publish GitHub release and assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.extension.outputs.version }}
-          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
         run: |
           cd artifacts
           tags=$(gh api --paginate "repos/$GH_REPO/tags" --jq '.[].name')
@@ -117,8 +164,18 @@ jobs:
           fi
           sha256sum --check extension-SHA256SUMS
           sha256sum "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz > SHA256SUMS
-          gh release create "v$VERSION" --target "$SOURCE_SHA" --draft \
+          gh release create "v$VERSION" --target "$SOURCE_SHA" \
             --title "Helium Synk $VERSION" --generate-notes \
             "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz \
             extension-build.json SHA256SUMS
-          echo "Draft v$VERSION created. Review assets/notes before publishing." >> "$GITHUB_STEP_SUMMARY"
+          echo "Published v$VERSION from $SOURCE_SHA with extension, four relay bundles and checksums." >> "$GITHUB_STEP_SUMMARY"
+  chrome:
+    needs: [plan, publish]
+    uses: ./.github/workflows/chrome-publish.yml
+    with:
+      tag: ${{ needs.plan.outputs.tag }}
+      action: submit-review
+      publish_type: DEFAULT_PUBLISH
+    secrets:
+      CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
+      CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY }}

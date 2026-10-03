@@ -77,16 +77,16 @@ Unpacked and store installations have different extension identities/storage. Sw
 
 ## GitHub releases and Chrome Web Store
 
-1. Merge reviewed [Changesets/version changes](../CONTRIBUTING.md#release-procedure). Run **Build release** on main.
-2. Review its draft `vX.Y.Z` release and checksums. Bundles: macOS ARM64/x64 and Linux ARM64/x64. Each contains relay, identical extension ZIP, `build.json` and `SHA256SUMS`. Only generated artifacts are uploaded.
-3. Publish the GitHub draft when ready. Linux binaries target glibc 2.35+; configure your service/backups separately. The macOS installer does not apply to Linux.
+1. Merge reviewed [Changesets/version changes](../CONTRIBUTING.md#release-procedure). Successful **Checks** for a main push automatically starts **Build release**, pinned to that checked commit. Failed, cancelled, PR and foreign-repository checks cannot publish.
+2. The workflow publishes `vX.Y.Z` using the extension's Changesets-managed package version, with matching server version required. Assets include the extension ZIP, macOS ARM64/x64 and Linux ARM64/x64 bundles, extension build metadata and checksums. Each bundle contains relay, identical extension ZIP, `build.json` and `SHA256SUMS`. Only generated artifacts are uploaded. Already published versions and older delayed builds are skipped; an existing draft or orphan tag requires resolution. Merge a reviewed version bump to create another release.
+3. Chrome submission follows successful GitHub publication and verifies that release's source/version/ZIP hash before submitting the same ZIP. Google publishes it after approval. Linux binaries target glibc 2.35+; configure your service/backups separately. The macOS installer does not apply to Linux.
 4. Upload the extension ZIP once through the Chrome dashboard to create its listing. Finish listing/privacy/screenshots, then save its extension ID. Choose the intended publisher.
 5. Enable Chrome Web Store API in Google Cloud and link a service account to that publisher. Follow [Google's setup](https://developer.chrome.com/docs/webstore/service-accounts). Store credentials in GitHub, never source/chat.
 
 Repository Actions variables: `CHROME_EXTENSION_ID`, `CHROME_PUBLISHER_ID`.
 Actions secrets: `CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL`, `CHROME_SERVICE_ACCOUNT_PRIVATE_KEY` (complete PEM value from its private key).
 
-Run **Chrome Web Store** on main. `dry-run` authenticates only and may leave the tag empty to test credentials before a release. `upload-draft` and `submit-review` require an existing release tag, verify its source/version/ZIP hashes and submit that ZIP without rebuilding. Upload leaves a draft; staged review requires Publish in the dashboard after approval. Failures fail the job.
+For retries or diagnostics, run **Chrome Web Store** manually on main. `dry-run` authenticates only and may leave the tag empty to test credentials before a release. `upload-draft` and `submit-review` require an existing release tag, verify its source/version/ZIP hashes and submit that ZIP without rebuilding. `DEFAULT_PUBLISH` goes live after approval; `STAGED_PUBLISH` waits for Publish in the dashboard. Manual runs default to staging; the automatic release chain selects `submit-review` and `DEFAULT_PUBLISH`. Store failures fail the release workflow and leave the GitHub release/assets intact. Retry the store workflow with the same tag instead of rebuilding or replacing the release. Manual **Build release** on main reruns checks and follows the same publication chain.
 
 Store copy, permission explanations and reviewer steps: [listing.md](../assets/store/listing.md). Publish [PRIVACY.md](../PRIVACY.md) before submitting its URL.
 

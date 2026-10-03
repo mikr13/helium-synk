@@ -26,7 +26,7 @@ Vite+ 1.0.0 is pinned in the workspace catalog, following its [migration rules](
 
 **WXT owns the browser-extension build:** use `pnpm exec vp run dev` and `pnpm exec vp run build`. Built-in `vp dev`/`vp build` run ordinary Vite and do not invoke WXT; use the task commands here so the MV3 manifest/background/pages stay intact. Core is an internal source workspace, not a separately packed npm library.
 
-The local commit hook can be installed with `pnpm exec vp run hooks:install`; see [CONTRIBUTING.md](CONTRIBUTING.md) for reviewed Changesets releases. CI checks main and pull requests. Manual workflows build releases and submit the extension to Chrome Web Store.
+The local commit hook can be installed with `pnpm exec vp run hooks:install`; see [CONTRIBUTING.md](CONTRIBUTING.md) for reviewed Changesets releases. CI checks main and pull requests. Successful main push checks automatically build and publish each new app version, then submit its release ZIP to Chrome Web Store.
 
 ## Local relay and first setup
 
@@ -70,6 +70,6 @@ pnpm exec vp run release:prepare
 
 This validates and builds an extension ZIP, native Rust relay with checksum-pinned static SQLite 3.53.4, `SHA256SUMS` and `build.json` in ignored `release/`. Building needs Python 3, `curl`, `cc`, `ar`, `zip` and `unzip`. Metadata records source commit and uncommitted state.
 
-In GitHub Actions, **Build release** checks main, builds macOS/Linux ARM64 and x64 bundles, then creates a draft tagged release. Review assets and notes before publishing. **Chrome Web Store** uses WXT/API v2: authenticate only, upload a draft, or submit staged review. Configure its IDs/secrets first; see [publishing](docs/deployment.md#github-releases-and-chrome-web-store).
+In GitHub Actions, **Build release** follows successful main push checks, builds the exact checked commit for macOS/Linux ARM64 and x64, then publishes a release tagged with the Changesets-managed app version. Already published versions are skipped. **Chrome Web Store** then submits that release's verified ZIP using WXT/API v2 and publishes after Google approval. Manual build and store authentication/upload/staged-review options remain available. Configure its IDs/secrets first; see [publishing](docs/deployment.md#github-releases-and-chrome-web-store).
 
 For macOS hosting, copy `config/macos.example.json` to ignored `deployment.local.json`, configure profiles/endpoints, then follow the [installation runbook](docs/deployment.md#install-on-macos). Additional independent profiles use `--add-profiles`; additional installations of an existing account use invitations. Deployment acceptance and publication stay in the checklist.
