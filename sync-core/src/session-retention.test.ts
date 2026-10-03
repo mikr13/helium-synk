@@ -460,9 +460,44 @@ describe('source-owned session archive retention', () => {
   });
 
   it('bounds each proof to 100 archives and resumes after reopening without starving eligible archives', async () => {
-    const db = await local();
-    for (let index = 0; index < 205; index++) await db.stageSession(content());
+    const db = await local(),
+      enrollment = (await db.state.get('local'))!;
+    let counter = enrollment.next_counter;
+    // Seed validated archive drafts once instead of rebuilding the growing projection 205 times.
+    const drafts = Array.from({ length: 205 }, () => {
+      const parts = splitSession({
+        ...content(),
+        id: crypto.randomUUID(),
+        source_id: enrollment.credentials.device_id,
+        source_name: enrollment.credentials.name,
+        source_revision: counter,
+      });
+      counter += parts.length;
+      return parts.map((payload) => ({
+        operation_id: payload.operation_id,
+        payload,
+        header: {
+          protocol_version: 1 as const,
+          operation_id: payload.operation_id,
+          account_id: enrollment.credentials.account_id,
+          device_id: enrollment.credentials.device_id,
+          counter: payload.source_revision + payload.part,
+          domain: 'session' as const,
+          key_epoch: enrollment.key_epoch ?? 1,
+        },
+      }));
+    }).flat();
+    await db.transaction('rw', [db.state, db.drafts, db.sessionReplicas], async () => {
+      await db.drafts.bulkAdd(drafts);
+      await db.sessionReplicas.put({
+        id: 'session',
+        value: projectSessions(drafts.map((draft) => draft.payload)),
+      });
+      await db.state.update('local', { next_counter: counter });
+    });
     await acknowledge(db);
+    expect(Object.keys((await db.sessionProjection()).snapshots)).toHaveLength(205);
+    expect(await db.pendingCount()).toBe(0);
     await db.setSessionRetention(policy);
     expect(await expireSessions(db, NOW)).toMatchObject({ expired: 100, more: true });
     db.close();
