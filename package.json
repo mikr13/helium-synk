@@ -24,7 +24,9 @@
     "format": "vp fmt .",
     "format:check": "vp fmt --check .",
     "release:bundle": "sh scripts/build-release-relay.sh && vp run build && node scripts/package-release.mjs",
-    "release:prepare": "vp run check && vp run check:server && vp run test:integration && vp run check:deployment && vp run check:versions && vp run release:bundle"
+    "release:prepare": "vp run check && vp run check:server && vp run test:integration && vp run check:deployment && vp run check:versions && vp run release:bundle",
+    "check:macos": "sh scripts/check-macos.sh",
+    "build:macos": "python3 scripts/build-macos-app.py"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",

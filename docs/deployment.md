@@ -4,6 +4,8 @@ Browser steps: [setup-guide.md](setup-guide.md). Progress/limits: [plan.md](plan
 
 ## Install on macOS
 
+The new [native server app](macos-server.md) provides a setup wizard, background operation and backup/status controls without a user-installed Python runtime. Its first notarized public release is pending the [morning checklist](macos-morning-checklist.md). The commands below remain the supported legacy/script deployment path; the app preserves existing script-managed servers.
+
 Server needs macOS 13+, Python 3.9+, [Tailscale](https://tailscale.com/docs/install/mac) and its matching release bundle. Extract it, then pass that directory with `--release-dir`. Release relays include patched static SQLite; development builds use Homebrew SQLite.
 
 ```sh

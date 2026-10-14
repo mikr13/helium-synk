@@ -221,3 +221,35 @@ fn lease_refuses_competing_server_or_restore_and_releases_on_drop() {
     drop(held);
     assert!(RelayLease::acquire(&path).is_ok());
 }
+
+#[tokio::test]
+async fn native_operations_verify_snapshot_read_only_and_report_no_credentials() {
+    use synk_server::recovery::{operations_report, verify_backup};
+    let dir = tempfile::tempdir().unwrap();
+    let app = App::open(&dir.path().join("live.sqlite")).await.unwrap();
+    let credential = app
+        .issue_device("Native app", "http://127.0.0.1:4318")
+        .await
+        .unwrap();
+    let snapshot = dir.path().join("snapshot.sqlite");
+    backup(&app, &snapshot).await.unwrap();
+    let bytes = std::fs::read(&snapshot).unwrap();
+    verify_backup(&snapshot).await.unwrap();
+    assert_eq!(std::fs::read(&snapshot).unwrap(), bytes);
+    assert!(!dir.path().join("snapshot.sqlite-wal").exists());
+    let report = operations_report(&app).await.unwrap();
+    assert_eq!(report["journal_bytes"], 0);
+    assert_eq!(report["unprocessed_deliveries"], 0);
+    assert!(!report.to_string().contains(&credential.token));
+    assert!(!report.to_string().contains("account_id"));
+    assert!(
+        verify_backup(&dir.path().join("missing.sqlite"))
+            .await
+            .is_err()
+    );
+    assert!(!dir.path().join("missing.sqlite").exists());
+    let corrupt = dir.path().join("corrupt.sqlite");
+    std::fs::write(&corrupt, b"not a database").unwrap();
+    assert!(verify_backup(&corrupt).await.is_err());
+    assert_eq!(std::fs::read(&corrupt).unwrap(), b"not a database");
+}

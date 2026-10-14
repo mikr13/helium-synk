@@ -42,6 +42,10 @@ jobs:
       - run: pnpm exec vp run check:server
       - run: pnpm exec vp run test:integration
       - run: pnpm exec vp run check:deployment
+      - name: Verify native server app and operations
+        env:
+          SYNK_TEST_RELAY: ${{ github.workspace }}/target/debug/synk-server
+        run: scripts/check-macos.sh
       - run: node --test scripts/package-release.test.mjs scripts/plan-release.test.mjs scripts/release-workflow.test.mjs scripts/submit-chrome.test.mjs
       - name: Check Conventional Commits
         if: github.event_name == 'pull_request'
