@@ -52,3 +52,24 @@ test('failed planning, already-released versions and cancellation cannot publish
     false,
   );
 });
+
+test('Mac releases require signing and notarization before packaging and clean up keys on failure', () => {
+  const block = workflow.split('\n  relay:\n')[1].split('\n  publish:\n')[0];
+  assert.ok(
+    block.indexOf('python3 scripts/macos-signing.py') <
+      block.indexOf('python3 scripts/build-macos-app.py --notarize'),
+  );
+  assert.ok(
+    block.indexOf('python3 scripts/build-macos-app.py --notarize') <
+      block.indexOf('node scripts/package-release.mjs --relay-only'),
+  );
+  assert.match(
+    block,
+    /if: always\(\) && matrix\.platform == 'darwin'\n        run: python3 scripts\/macos-signing\.py cleanup/,
+  );
+  assert.match(workflow, /sha256sum[^\n]+\.dmg > SHA256SUMS/);
+  assert.match(
+    workflow,
+    /"helium-synk-server-\$VERSION-"\*\.dmg "helium-synk-server-\$VERSION-"\*-build\.json/,
+  );
+});

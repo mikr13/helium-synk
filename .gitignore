@@ -21,3 +21,5 @@ helium-synk-recovery.json
 release/
 .vite-plus/
 __pycache__/
+macos/.build/
+macos/.swiftpm/

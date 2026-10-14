@@ -1,5 +1,11 @@
 # @helium-synk/server
 
+## 0.3.0
+
+### Minor Changes
+
+- Add a native macOS server companion with private-network setup, independent accounts, connection-file export, background supervision, verified backups and health controls. Package Developer ID signed and Apple-notarized Mac apps alongside the existing relay downloads. Keep existing script-managed installations and browser enrollment intact.
+
 ## 0.2.0
 
 ### Minor Changes
