@@ -121,7 +121,7 @@ Update this checklist at each checkpoint with commands, results and material lim
 
 ## Native macOS server app
 
-Implementation checkpoint: 2026-10-14. The installed notarized 0.3.0 app now supervises the maintainer's three existing accounts after an explicitly requested handover. Public release assets were not changed. Setup and packaging details are in [macos-server.md](macos-server.md); maintainer actions are in [macos-morning-checklist.md](macos-morning-checklist.md).
+Implementation checkpoint: 2026-10-14. The installed notarized 0.3.0 app now supervises the maintainer's three existing accounts after an explicitly requested handover. Public release assets were not changed. Setup and packaging details are in [macos-server.md](macos-server.md).
 
 - [x] Implement a macOS 13+ SwiftUI setup wizard and overview with the extension's 11 palette tokens, Manrope/IBM Plex Mono, bundled icon, square controls, concise copy, keyboard actions and reduced-motion support. Native renders of every wizard screen are available in ignored `release/native-preview/`.
 - [x] Bundle the Rust relay and a native supervisor; remove Python/Homebrew requirements from the end-user app. Keep the script deployment path and existing data/job structure available.

@@ -2,7 +2,7 @@
 
 Helium Synk Server is a macOS 13+ companion app. It bundles the Rust relay, patched static SQLite and a native background supervisor. End users need the app and Tailscale; they do not need Python, Homebrew, Rust or this repository. The browser extension remains a separate installation.
 
-The native app is implemented in this checkout. Its first public signed/notarized release is pending the [morning checklist](macos-morning-checklist.md).
+The native app is implemented in this checkout. Its first public signed/notarized release is pending the [release checks](plan.md#native-macos-server-app).
 
 ## Setup
 
