@@ -64,7 +64,7 @@ Server epoch/account mismatch fails closed and preserves local queues/data. Auto
 
 ## Release candidate
 
-Run the full local release checks on macOS with the Xcode command-line tools installed:
+Run the full local release checks on Apple silicon macOS with the Xcode command-line tools installed:
 
 ```sh
 pnpm exec vp run release:prepare
@@ -72,7 +72,7 @@ pnpm exec vp run release:prepare
 
 This runs the native macOS app checks and validates/builds an extension ZIP, native Rust relay with checksum-pinned static SQLite 3.53.4, `SHA256SUMS` and `build.json` in ignored `release/`. Building also needs Python 3, `curl`, `cc`, `ar`, `zip` and `unzip`. Metadata records source commit and uncommitted state.
 
-In GitHub Actions, **Build release** follows successful main push checks, builds the exact checked commit for macOS/Linux ARM64 and x64, then publishes a release tagged with the Changesets-managed app version. Already published versions are skipped. **Chrome Web Store** then submits that release's verified ZIP using WXT/API v2 and publishes after Google approval. Manual build and store authentication/upload/staged-review options remain available. Configure its IDs/secrets first; see [publishing](docs/deployment.md#github-releases-and-chrome-web-store).
+In GitHub Actions, **Build release** follows successful main push checks, builds the exact checked commit for Apple silicon macOS and Linux ARM64/x64, then publishes a release tagged with the Changesets-managed app version. Already published versions are skipped. **Chrome Web Store** then submits that release's verified ZIP using WXT/API v2 and publishes after Google approval. Manual build and store authentication/upload/staged-review options remain available. Configure its IDs/secrets first; see [publishing](docs/deployment.md#github-releases-and-chrome-web-store).
 
 The new [native Mac server app](docs/macos-server.md) bundles the relay and provides private-network setup, background operation and backup controls. Its signed and notarized local candidate is implemented; public distribution acceptance remains in the [project checklist](docs/plan.md#native-macos-server-app).
 

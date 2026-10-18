@@ -98,9 +98,6 @@ jobs:
           - runner: macos-15
             platform: darwin
             arch: arm64
-          - runner: macos-15-intel
-            platform: darwin
-            arch: x64
           - runner: ubuntu-22.04
             platform: linux
             arch: x64
@@ -204,7 +201,7 @@ jobs:
             "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz \
             "helium-synk-server-$VERSION-"*.dmg "helium-synk-server-$VERSION-"*-build.json \
             extension-build.json SHA256SUMS
-          echo "Published v$VERSION from $SOURCE_SHA with extension, four relay bundles, two signed notarized Mac installers and checksums." >> "$GITHUB_STEP_SUMMARY"
+          echo "Published v$VERSION from $SOURCE_SHA with extension, three relay bundles, a signed notarized Apple silicon installer and checksums." >> "$GITHUB_STEP_SUMMARY"
   chrome:
     needs: [plan, publish]
     if: >-

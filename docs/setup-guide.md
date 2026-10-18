@@ -4,7 +4,7 @@ One account per context, such as Personal or Work. Same context across computers
 
 ## 1. Prepare the server
 
-Install [Helium Synk Server](macos-server.md#setup), connect Tailscale and create your first account in the app. The wizard configures the private HTTPS endpoint and requests background operation.
+On an Apple silicon Mac, install [Helium Synk Server](macos-server.md#setup), connect Tailscale and create your first account in the app. The wizard configures the private HTTPS endpoint and requests background operation.
 
 Use **Save connection file** to export the account's first-device credentials. Keep this file private and use it for one browser installation.
 

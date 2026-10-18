@@ -16,6 +16,12 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const mode = process.argv[2] ?? '--all';
 if (!['--all', '--extension-only', '--relay-only', '--verify-extension'].includes(mode))
   throw new Error(`Unknown packaging mode: ${mode}`);
+if (
+  process.platform === 'darwin' &&
+  process.arch !== 'arm64' &&
+  !['--extension-only', '--verify-extension'].includes(mode)
+)
+  throw new Error('Mac relay releases require Apple silicon (arm64).');
 const extensionDir = join(root, 'extension/.output/chrome-mv3');
 const extension = JSON.parse(readFileSync(join(root, 'extension/package.json'), 'utf8'));
 const server = JSON.parse(readFileSync(join(root, 'server/package.json'), 'utf8'));

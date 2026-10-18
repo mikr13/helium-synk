@@ -1,12 +1,12 @@
 # Native Mac server
 
-Helium Synk Server is a macOS 13+ companion app. It bundles the Rust relay, patched static SQLite and a native background supervisor. End users need the app and Tailscale; they do not need Python, Homebrew, Rust or this repository. The browser extension remains a separate installation.
+Helium Synk Server is a companion app for Apple silicon Macs running macOS 13 or later. It bundles the Rust relay, patched static SQLite and a native background supervisor. End users need the app and Tailscale; they do not need Python, Homebrew, Rust or this repository. The browser extension remains a separate installation.
 
 The native app is implemented in this checkout. Its first public signed/notarized release is pending the [release checks](plan.md#native-macos-server-app).
 
 ## Setup
 
-1. Download the DMG for Apple silicon or Intel once the native release is published. Drag **Helium Synk Server** into Applications and open it.
+1. Download the Apple silicon DMG once the native release is published. Drag **Helium Synk Server** into Applications and open it.
 2. Connect Tailscale. The wizard detects its private hostname and chooses an unused local port and HTTPS endpoint. Existing Serve routes are checked before changes; public Funnel routes are not reused.
 3. Name an independent account and its first browser device. The app creates private credentials, a database and a verified initial backup, then requests background operation.
 4. If macOS requests approval, enable **Helium Synk Server** in **System Settings → General → Login Items**. The app exposes an Open Settings action when approval is pending.
@@ -47,7 +47,7 @@ SwiftPM's output location varies by Xcode version; use `swift build --show-bin-p
 
 ## Signed release pipeline
 
-The existing checked-source release matrix builds macOS ARM64/Intel and Linux ARM64/x64. Mac jobs create an ephemeral signing keychain, import the release identity, validate the native flow, sign the relay before its checksums are calculated, then build/sign the app and DMG. The app and DMG are notarized and stapled; signature, staple and Gatekeeper assessment failures prevent publication. CI restores its prior keychain search list and deletes temporary signing material even when a step fails.
+The existing checked-source release matrix builds Apple silicon macOS and Linux ARM64/x64. The Mac job creates an ephemeral signing keychain, imports the release identity, validates the native flow, signs the relay before its checksums are calculated, then builds/signs the app and DMG. The app and DMG are notarized and stapled; signature, staple and Gatekeeper assessment failures prevent publication. CI restores its prior keychain search list and deletes temporary signing material even when a step fails.
 
 The app bundle, agent and embedded relay use **Developer ID Application**, Hardened Runtime and secure timestamps. A separate Developer ID Installer certificate is not needed for this app/DMG distribution. Apple documents the [certificate types](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/) and [notarization/stapling workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
 

@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 synk_sqlite_dir="$PWD/target/release-deps/sqlite-3.53.4"
 mkdir -p "$synk_sqlite_dir"
 if [ "$(uname -s)" = Darwin ]; then
+  [ "$(uname -m)" = arm64 ] || { echo "Mac relay releases require Apple silicon (arm64)." >&2; exit 1; }
   export MACOSX_DEPLOYMENT_TARGET=13.0
 fi
 curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
