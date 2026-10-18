@@ -12,6 +12,13 @@ const successfulNeeds = {
   publish: { result: 'success' },
 };
 
+test('release targets are Apple silicon and both Linux architectures', () => {
+  const targets = [
+    ...workflow.matchAll(/- runner: (\S+)\n\s+platform: (\S+)\n\s+arch: (\S+)/g),
+  ].map(([, , platform, arch]) => `${platform}-${arch}`);
+  assert.deepEqual(targets, ['darwin-arm64', 'linux-x64', 'linux-arm64']);
+});
+
 function eligible(job, needs, cancelled = false) {
   const block = workflow.split(`\n  ${job}:\n`)[1]?.split(/\n  [\w-]+:\n/)[0];
   const expression = block?.match(/^    if: >-\n((?:      .+\n)+)/m)?.[1].trim();

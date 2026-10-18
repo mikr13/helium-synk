@@ -19,7 +19,7 @@ pnpm exec vp run test:integration
 pnpm exec vp run check:macos
 ```
 
-The native app check requires macOS with the Xcode command-line tools and builds its test relay automatically unless `SYNK_TEST_RELAY` supplies one.
+The native app check requires Apple silicon macOS with the Xcode command-line tools and builds its test relay automatically unless `SYNK_TEST_RELAY` supplies one.
 
 Do browser compatibility tests in disposable profiles. Never point test adapters at the user's normal bookmarks/history. Mark plan gates complete only with recorded evidence.
 
@@ -33,7 +33,7 @@ Use the shared dark-only Tailwind theme and shadcn/ui components for every inter
 2. On a release branch, run `pnpm version-packages`. It generates per-package CHANGELOG.md files, updates package versions, synchronizes the Rust crate version, and refreshes lockfiles.
 3. Run all checks and inspect generated changelogs/version diffs.
 4. Commit with `chore(release): version packages` and review the release PR.
-5. Merge to main. Once **Checks** passes for that push, **Build release** automatically builds the exact checked commit and publishes `vX.Y.Z` using `extension/package.json`'s Changesets-managed version. The release includes the extension ZIP, four relay bundles, build metadata and checksums. Matching extension/server versions are required. Already published versions and delayed older versions are skipped; drafts and orphan tags fail rather than replacing assets. Apply and merge a reviewed Changesets version bump for the next release.
+5. Merge to main. Once **Checks** passes for that push, **Build release** automatically builds the exact checked commit and publishes `vX.Y.Z` using `extension/package.json`'s Changesets-managed version. The release includes the extension ZIP, three relay bundles, a signed/notarized Apple silicon DMG, build metadata and checksums. Matching extension/server versions are required. Already published versions and delayed older versions are skipped; drafts and orphan tags fail rather than replacing assets. Apply and merge a reviewed Changesets version bump for the next release.
 6. After the GitHub release succeeds, the reusable **Chrome Web Store** workflow verifies and submits the same tagged ZIP. Google publishes it automatically after approval. Listing and API v2 credentials must be configured. Store failure leaves the GitHub release available and fails the release workflow; retry **Chrome Web Store** manually with the same tag and `submit-review`/`DEFAULT_PUBLISH`. Manual `dry-run`, `upload-draft` and staged submission remain available. Private packages are never published to npm.
 
 Manual **Build release** remains available on main and reruns checks before building. Automatic runs accept only successful main push checks from this repository, including merged PRs; PR checks and failed/cancelled checks cannot release.

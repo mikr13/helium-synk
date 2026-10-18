@@ -29,12 +29,12 @@ def sign(path, identity, keychain=None):
 
 
 def build(args):
-    if platform.system() != "Darwin":
-        raise SystemExit("Build the Mac app on macOS.")
+    if platform.system() != "Darwin" or platform.machine() != "arm64":
+        raise SystemExit("Build the Mac app on Apple silicon (arm64) macOS.")
     if args.notarize and (not args.identity or args.identity == "-" or not args.notary_profile):
         raise SystemExit("Notarization needs Developer ID signing and --notary-profile.")
     version = json.loads((ROOT / "server/package.json").read_text())["version"]
-    architecture = {"arm64": "arm64", "x86_64": "x64"}[platform.machine()]
+    architecture = "arm64"
     relay = Path(args.relay).resolve()
     if not relay.is_file():
         raise SystemExit("Build the release relay first: sh scripts/build-release-relay.sh")
@@ -91,7 +91,7 @@ def build(args):
         "AssociatedBundleIdentifiers": [BUNDLE_ID],
     }))
     if args.identity:
-        # Intel helpers are unsigned: seal nested code before signing the outer app.
+        # Seal nested code before signing the outer app.
         sign(macos / "synk-agent", args.identity, args.keychain)
         sign(app, args.identity, args.keychain)
         run("codesign", "--verify", "--deep", "--strict", app)

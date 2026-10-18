@@ -89,6 +89,31 @@ test('publishing refuses a tampered ZIP', (t) => {
   assert.match(result.stderr, /source\/checksum/);
 });
 
+test('Mac relay packaging requires Apple silicon while extension ZIPs remain portable', (t) => {
+  const f = fixture(t);
+  const run = (mode) =>
+    spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '--eval',
+        `Object.defineProperty(process, 'platform', { value: 'darwin' });
+         Object.defineProperty(process, 'arch', { value: 'x64' });
+         await import((await import('node:url')).pathToFileURL(process.argv[1]).href);`,
+        join(f.root, 'scripts/package-release.mjs'),
+        mode,
+      ],
+      { cwd: f.root, encoding: 'utf8' },
+    );
+  for (const mode of ['--all', '--relay-only']) {
+    const result = run(mode);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /require Apple silicon/);
+  }
+  assert.equal(run('--extension-only').status, 0);
+  assert.equal(run('--verify-extension').status, 0);
+});
+
 test('publishing refuses a different source commit or dirty build', (t) => {
   const f = fixture(t);
   assert.equal(f.run('--extension-only').status, 0);

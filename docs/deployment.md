@@ -4,9 +4,9 @@ Browser steps: [setup-guide.md](setup-guide.md). Progress/limits: [plan.md](plan
 
 ## Install on macOS
 
-Use the [Helium Synk Server app](macos-server.md#setup) on macOS 13 or later. It bundles the relay and background supervisor; end users need the app, Tailscale and the browser extension.
+Use the [Helium Synk Server app](macos-server.md#setup) on an Apple silicon Mac running macOS 13 or later. It bundles the relay and background supervisor; end users need the app, Tailscale and the browser extension.
 
-1. Download the Apple silicon or Intel DMG once the native release is published, drag the app into Applications and open it.
+1. Download the Apple silicon DMG once the native release is published, drag the app into Applications and open it.
 2. Connect Tailscale and follow the account setup. The app checks existing routes, selects an unused local port and private HTTPS endpoint, and creates a verified initial backup.
 3. Enable background operation if macOS requests approval. Save the connection file and [connect the first browser device](setup-guide.md#3-connect-the-first-device-of-a-new-account).
 
@@ -31,7 +31,7 @@ Unpacked and store installations have different extension identities/storage. Sw
 ## GitHub releases and Chrome Web Store
 
 1. Merge reviewed [Changesets/version changes](../CONTRIBUTING.md#release-procedure). Successful **Checks** for a main push automatically starts **Build release**, pinned to that checked commit. Failed, cancelled, PR and foreign-repository checks cannot publish.
-2. The workflow publishes `vX.Y.Z` using the extension's Changesets-managed package version, with matching server version required. Assets include the extension ZIP, signed/notarized macOS ARM64/x64 app DMGs, macOS/Linux ARM64/x64 relay bundles, build metadata and checksums. Each bundle contains relay, identical extension ZIP, `build.json` and `SHA256SUMS`. Only generated artifacts are uploaded. Already published versions and older delayed builds are skipped; an existing draft or orphan tag requires resolution. Merge a reviewed version bump to create another release.
+2. The workflow publishes `vX.Y.Z` using the extension's Changesets-managed package version, with matching server version required. Assets include the extension ZIP, the signed/notarized Apple silicon app DMG, macOS ARM64 and Linux ARM64/x64 relay bundles, build metadata and checksums. Each bundle contains relay, identical extension ZIP, `build.json` and `SHA256SUMS`. Only generated artifacts are uploaded. Already published versions and older delayed builds are skipped; an existing draft or orphan tag requires resolution. Merge a reviewed version bump to create another release.
 3. Chrome submission follows successful GitHub publication and verifies that release's source/version/ZIP hash before submitting the same ZIP. Google publishes it after approval. Linux binaries target glibc 2.35+; configure your service/backups separately. The native Mac app does not apply to Linux.
 4. Upload the extension ZIP once through the Chrome dashboard to create its listing. Finish listing/privacy/screenshots, then save its extension ID. Choose the intended publisher.
 5. Enable Chrome Web Store API in Google Cloud and link a service account to that publisher. Follow [Google's setup](https://developer.chrome.com/docs/webstore/service-accounts). Store credentials in GitHub, never source/chat.
