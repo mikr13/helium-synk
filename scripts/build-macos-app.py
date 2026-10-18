@@ -91,8 +91,8 @@ def build(args):
         "AssociatedBundleIdentifiers": [BUNDLE_ID],
     }))
     if args.identity:
-        for name in ("HeliumSynkServer", "synk-agent"):
-            sign(macos / name, args.identity, args.keychain)
+        # Intel helpers are unsigned: seal nested code before signing the outer app.
+        sign(macos / "synk-agent", args.identity, args.keychain)
         sign(app, args.identity, args.keychain)
         run("codesign", "--verify", "--deep", "--strict", app)
     if args.notarize:
