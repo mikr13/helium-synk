@@ -74,6 +74,7 @@ def build(args):
     # SwiftPM links the binary framework; the distributable must embed its versioned symlinks.
     framework = contents / "Frameworks/Sparkle.framework"
     shutil.copytree(binaries / "Sparkle.framework", framework, symlinks=True)
+    shutil.copyfile(ROOT / "target/swift/artifacts/sparkle/Sparkle/LICENSE", resources / "Sparkle-LICENSE.txt")
     # Start every app-icon representation from the original artwork, never an upscaled toolbar PNG.
     shutil.copyfile(ROOT / "assets/branding/helium-synk-master.png", resources / "Synk.png")
     iconset = output / "Synk.iconset"
