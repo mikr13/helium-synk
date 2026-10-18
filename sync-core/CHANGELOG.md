@@ -1,5 +1,11 @@
 # @helium-synk/core
 
+## 0.4.0
+
+### Minor Changes
+
+- 78d76ba: Add signed in-app updates to the Apple silicon server companion, with quiet menu-bar checks, update preferences, verified pre-update backups and a coordinated background-helper restart. Preserve account credentials, paused accounts and existing background approval; publish signed update feeds alongside notarized installers.
+
 ## 0.3.0
 
 ### Minor Changes
