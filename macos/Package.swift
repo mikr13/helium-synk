@@ -23,5 +23,8 @@ let package = Package(
     .executableTarget(name: "SynkPreview", dependencies: ["SynkUI"]),
     .testTarget(name: "SynkCoreTests", dependencies: ["SynkCore"]),
     .testTarget(name: "SynkUITests", dependencies: ["SynkUI", "SynkCore"]),
+    .testTarget(
+      name: "SynkUpdateTests",
+      dependencies: ["SynkServerApp", "SynkCore", .product(name: "Sparkle", package: "Sparkle")]),
   ]
 )

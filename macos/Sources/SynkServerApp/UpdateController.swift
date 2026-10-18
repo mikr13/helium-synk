@@ -20,10 +20,20 @@ import SynkUI
   private var preparedForInstall = false
   private var started = false
   private var preparationTask: Task<Void, Never>?
+  private let applicationURL: URL
+  private let dataRoot: () -> URL
+  init(
+    applicationURL: URL = Bundle.main.bundleURL,
+    dataRoot: @escaping () -> URL = { DataLocation().root }
+  ) {
+    self.applicationURL = applicationURL
+    self.dataRoot = dataRoot
+    super.init()
+  }
   private var maintenance: UpdateMaintenance {
     UpdateMaintenance(
-      root: DataLocation().root,
-      relay: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/synk-server"))
+      root: dataRoot(),
+      relay: applicationURL.appendingPathComponent("Contents/MacOS/synk-server"))
   }
   private lazy var driver: CoordinatedUpdateDriver = {
     let driver = CoordinatedUpdateDriver(hostBundle: .main, delegate: self)
@@ -40,7 +50,7 @@ import SynkUI
     do { try updater.start() } catch { self.error = error.localizedDescription }
     Task {
       do {
-        let generation = try AppGeneration(app: Bundle.main.bundleURL)
+        let generation = try AppGeneration(app: applicationURL)
         _ = try await maintenance.verifyRestart(
           generation: generation,
           helperExpected: SMAppService.agent(plistName: "com.heliumsynk.server.agent.plist").status
@@ -69,9 +79,13 @@ import SynkUI
   }
   var mayQuit: Bool {
     preparedForInstall
-      || (!preparing && !installerActive && (!started || !updater.sessionInProgress))
+      || (!updating && (!started || !updater.sessionInProgress))
   }
   var updating: Bool { preparing || installerActive || handover != nil }
+  func offer(version: String, displayVersion: String) {
+    installedTarget = version
+    availableVersion = displayVersion
+  }
   func noteInstaller() { installerActive = true }
   func select(
     _ choice: SPUUserUpdateChoice, requiresHandover: Bool, finalStage: Bool = true,
@@ -92,7 +106,7 @@ import SynkUI
     preparationTask = Task {
       defer { preparing = false }
       do {
-        let generation = try AppGeneration(app: Bundle.main.bundleURL)
+        let generation = try AppGeneration(app: applicationURL)
         if let handover, let request = try maintenance.request(),
           let status = try maintenance.status(),
           request.id == handover, status.id == handover, status.phase == .ready,
@@ -135,16 +149,14 @@ extension UpdateController: SPUUpdaterDelegate, @preconcurrency SPUStandardUserD
     finished()
   }
   func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
-    installedTarget = item.versionString
-    availableVersion = item.displayVersionString
+    offer(version: item.versionString, displayVersion: item.displayVersionString)
   }
   func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) { noteInstaller() }
   func updater(
     _ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
     immediateInstallationBlock: @escaping () -> Void
   ) -> Bool {
-    installedTarget = item.versionString
-    availableVersion = item.displayVersionString
+    offer(version: item.versionString, displayVersion: item.displayVersionString)
     noteInstaller()
     return true  // Explicit Install is required; ordinary Quit is guarded by the app delegate.
   }
