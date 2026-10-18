@@ -4,11 +4,11 @@ One account per context, such as Personal or Work. Same context across computers
 
 ## 1. Prepare the server
 
-Follow [deployment.md](deployment.md#install-on-macos). Configure your accounts, install relays and enable private Tailscale HTTPS.
+Install [Helium Synk Server](macos-server.md#setup), connect Tailscale and create your first account in the app. The wizard configures the private HTTPS endpoint and requests background operation.
 
-Default files: `~/Library/Application Support/Helium Synk`. Each account gets `accounts/PROFILE/connection.json` for one first installation.
+Use **Save connection file** to export the account's first-device credentials. Keep this file private and use it for one browser installation.
 
-New independent context: use [add-profile setup](deployment.md#add-an-independent-profile). Another installation of an existing account: use an invitation.
+New independent context: choose **Add independent account** in the server overview. Another installation of an existing account: use an invitation.
 
 ## 2. Install the extension
 
@@ -21,7 +21,7 @@ Clients need no relay or development tools. Synk does not copy extensions, setti
 
 ## 3. Connect the first device of a new account
 
-Choose **Set up my first device**, select that account's unused `connection.json`, then **Connect this device**. Allow the expected private host.
+Choose **Set up my first device**, select the unused connection file saved from the server app, then **Connect this device**. Allow the expected private host.
 
 Wait for **Connected**. Save recovery keys and local data separately under **Settings → Recovery & backups**.
 

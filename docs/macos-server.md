@@ -16,9 +16,9 @@ The overview reports local readiness and private HTTPS reachability. It provides
 
 ## Existing installations
 
-The app recognizes an existing Python/script-managed deployment and does not take over its launchd jobs, replace its helper or mutate its accounts. Choose an empty data folder to try the app alongside it. The app refuses occupied folders, duplicated account identifiers, overlapping endpoints and symlink redirects. Migrating a production legacy installation requires a separate reviewed handover; it is not performed by first launch.
+The app preserves data folders owned by another server installation and does not take over their jobs or mutate their accounts. Choose an empty folder for a separate installation. The app refuses occupied folders, duplicated account identifiers, overlapping endpoints and symlink redirects. Moving existing accounts into the app requires a reviewed handover with verified backups; it is not performed by first launch.
 
-Native installations use the same `deployment.json`/account structure as the existing tools. The app adds `native-installation.json` and `runtime.json` and uses the `com.heliumsynk.server.agent` background service. The selected data folder is shared with the helper through the app's preferences domain. By default, data stays in `~/Library/Application Support/Helium Synk`; binaries stay inside the app bundle.
+The selected data folder contains `deployment.json`, `native-installation.json`, `runtime.json`, account databases and private backups. The `com.heliumsynk.server.agent` background service reads the selected folder through the app's preferences domain. By default, data stays in `~/Library/Application Support/Helium Synk`; binaries stay inside the app bundle.
 
 ## Backups and updates
 
