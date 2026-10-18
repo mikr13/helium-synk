@@ -140,6 +140,8 @@ jobs:
         run: scripts/check-macos.sh
       - name: Build signed and notarized native app
         if: matrix.platform == 'darwin'
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: python3 scripts/build-macos-app.py --notarize
       - name: Smoke test signed app bundle
         if: matrix.platform == 'darwin'
@@ -164,6 +166,7 @@ jobs:
             release/helium-synk-${{ needs.extension.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
             release/helium-synk-server-${{ needs.extension.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.dmg
             release/helium-synk-server-${{ needs.extension.outputs.version }}-darwin-${{ matrix.arch }}-build.json
+            release/appcast.xml
       - name: Clean up macOS signing material
         if: always() && matrix.platform == 'darwin'
         run: python3 scripts/macos-signing.py cleanup
@@ -177,10 +180,17 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
           merge-multiple: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
       - name: Publish GitHub release and assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -188,6 +198,7 @@ jobs:
           VERSION: ${{ needs.extension.outputs.version }}
           SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
         run: |
+          python3 scripts/macos-update.py --verify artifacts --version "$VERSION" --source-sha "$SOURCE_SHA"
           cd artifacts
           tags=$(gh api --paginate "repos/$GH_REPO/tags" --jq '.[].name')
           if grep -Fxq "v$VERSION" <<< "$tags"; then
@@ -195,12 +206,13 @@ jobs:
             exit 1
           fi
           sha256sum --check extension-SHA256SUMS
-          sha256sum "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz "helium-synk-server-$VERSION-"*.dmg > SHA256SUMS
-          gh release create "v$VERSION" --target "$SOURCE_SHA" \
+          sha256sum "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz "helium-synk-server-$VERSION-"*.dmg appcast.xml > SHA256SUMS
+          gh release create "v$VERSION" --draft --target "$SOURCE_SHA" \
             --title "Helium Synk $VERSION" --generate-notes \
             "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz \
             "helium-synk-server-$VERSION-"*.dmg "helium-synk-server-$VERSION-"*-build.json \
-            extension-build.json SHA256SUMS
+            appcast.xml extension-build.json SHA256SUMS
+          gh release edit "v$VERSION" --draft=false --latest
           echo "Published v$VERSION from $SOURCE_SHA with extension, three relay bundles, a signed notarized Apple silicon installer and checksums." >> "$GITHUB_STEP_SUMMARY"
   chrome:
     needs: [plan, publish]

@@ -20,8 +20,10 @@ def run(*args, **kwargs):
     return subprocess.run([str(a) for a in args], check=True, **kwargs)
 
 
-def sign(path, identity, keychain=None):
+def sign(path, identity, keychain=None, preserve=False):
     args = ["/usr/bin/codesign", "--force", "--timestamp", "--options", "runtime", "--sign", identity]
+    if preserve:
+        args += ["--preserve-metadata=identifier,entitlements"]
     if keychain:
         args += ["--keychain", keychain]
     run(*args, path, timeout=45)
@@ -33,6 +35,8 @@ def build(args):
         raise SystemExit("Build the Mac app on Apple silicon (arm64) macOS.")
     if args.notarize and (not args.identity or args.identity == "-" or not args.notary_profile):
         raise SystemExit("Notarization needs Developer ID signing and --notary-profile.")
+    if args.notarize and os.environ.get("GITHUB_ACTIONS") == "true" and not os.environ.get("SPARKLE_ED_PRIVATE_KEY"):
+        raise SystemExit("Configure the Helium SPARKLE_ED_PRIVATE_KEY Actions secret before building a release.")
     version = json.loads((ROOT / "server/package.json").read_text())["version"]
     architecture = "arm64"
     relay = Path(args.relay).resolve()
@@ -67,6 +71,10 @@ def build(args):
         (macos / name).chmod(0o755)
     for source in (ROOT / "macos/Resources").iterdir():
         shutil.copyfile(source, resources / source.name)
+    # SwiftPM links the binary framework; the distributable must embed its versioned symlinks.
+    framework = contents / "Frameworks/Sparkle.framework"
+    shutil.copytree(binaries / "Sparkle.framework", framework, symlinks=True)
+    shutil.copyfile(ROOT / "target/swift/artifacts/sparkle/Sparkle/LICENSE", resources / "Sparkle-LICENSE.txt")
     # Start every app-icon representation from the original artwork, never an upscaled toolbar PNG.
     shutil.copyfile(ROOT / "assets/branding/helium-synk-master.png", resources / "Synk.png")
     iconset = output / "Synk.iconset"
@@ -81,6 +89,10 @@ def build(args):
         "CFBundleExecutable": "HeliumSynkServer", "CFBundlePackageType": "APPL", "CFBundleIconFile": "Synk.icns",
         "CFBundleShortVersionString": version, "CFBundleVersion": version, "LSMinimumSystemVersion": "13.0",
         "LSUIElement": True,
+        "SUFeedURL": "https://github.com/mikr13/helium-synk/releases/latest/download/appcast.xml",
+        "SUPublicEDKey": (ROOT / "macos/update-public-key.txt").read_text().strip(),
+        "SURequireSignedFeed": True, "SUVerifyUpdateBeforeExtraction": True,
+        "SUAllowsAutomaticUpdates": False,
         "NSHighResolutionCapable": True, "NSHumanReadableCopyright": "Helium Synk contributors",
     }))
     (agents / f"{BUNDLE_ID}.agent.plist").write_bytes(plistlib.dumps({
@@ -91,6 +103,13 @@ def build(args):
         "AssociatedBundleIdentifiers": [BUNDLE_ID],
     }))
     if args.identity:
+        # Sparkle's XPC services retain their sandbox entitlements; all nested code uses our identity.
+        versioned = framework / "Versions/B"
+        for service in sorted((versioned / "XPCServices").glob("*.xpc")):
+            sign(service, args.identity, args.keychain, preserve=True)
+        sign(versioned / "Updater.app", args.identity, args.keychain, preserve=True)
+        sign(versioned / "Autoupdate", args.identity, args.keychain, preserve=True)
+        sign(framework, args.identity, args.keychain, preserve=True)
         # Seal nested code before signing the outer app.
         sign(macos / "synk-agent", args.identity, args.keychain)
         sign(app, args.identity, args.keychain)
@@ -105,7 +124,7 @@ def build(args):
     dmg = ROOT / "release" / f"helium-synk-server-{version}-darwin-{architecture}.dmg"
     dmg.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="synk-dmg-", dir=output) as stage:
-        shutil.copytree(app, Path(stage) / app.name)
+        run("ditto", "--rsrc", "--extattr", app, Path(stage) / app.name)
         (Path(stage) / "Applications").symlink_to("/Applications")
         run("hdiutil", "create", "-volname", APP_NAME, "-srcfolder", stage, "-format", "UDZO", dmg, stdout=subprocess.DEVNULL)
     if args.identity:
@@ -124,6 +143,8 @@ def build(args):
         "artifact": dmg.name, "sha256": hashlib.sha256(dmg.read_bytes()).hexdigest(),
     }
     (ROOT / "release" / f"helium-synk-server-{version}-darwin-{architecture}-build.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    if args.notarize:
+        run("python3", ROOT / "scripts/macos-update.py", "--app", app, "--dmg", dmg, "--output", ROOT / "release/appcast.xml")
     print(f"App: {app}\nDMG: {dmg}\nSigned: {metadata['signed']}; notarized: {metadata['notarized']}")
 
 

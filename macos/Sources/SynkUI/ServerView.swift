@@ -5,7 +5,11 @@ public struct ServerView: View {
   @ObservedObject private var model: ServerModel
   @State private var showDisableBackground = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  public init(model: ServerModel) { self.model = model }
+  private let showUpdates: (() -> Void)?
+  public init(model: ServerModel, showUpdates: (() -> Void)? = nil) {
+    self.model = model
+    self.showUpdates = showUpdates
+  }
   public var body: some View {
     HStack(spacing: 0) {
       sidebar.frame(width: 224)
@@ -141,6 +145,11 @@ public struct ServerView: View {
       Text("Encrypted browser sync. No shared hosting.").font(SynkTheme.font(10)).foregroundStyle(
         SynkTheme.muted)
       Spacer()
+      if let showUpdates {
+        Button("Updates…", action: showUpdates).buttonStyle(.plain).foregroundStyle(
+          SynkTheme.primary
+        ).font(SynkTheme.font(10))
+      }
       Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "DEV").font(
         SynkTheme.mono(9)
       ).foregroundStyle(SynkTheme.muted)
