@@ -9,7 +9,9 @@ import platform
 import plistlib
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_NAME = "Helium Synk Server"
@@ -18,6 +20,23 @@ BUNDLE_ID = "com.heliumsynk.server"
 
 def run(*args, **kwargs):
     return subprocess.run([str(a) for a in args], check=True, **kwargs)
+
+
+def stapler(action, path):
+    command = ["xcrun", "stapler", action, str(path)]
+    for attempt in range(5):
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+        print(result.stdout, end="", flush=True)
+        print(result.stderr, end="", file=sys.stderr, flush=True)
+        if result.returncode == 0:
+            return
+        # Error 68 also covers invalid tickets: retry only the observed network loss.
+        network_lost = "NSURLErrorDomain Code=-1005" in result.stdout + result.stderr
+        if result.returncode != 68 or not network_lost or attempt == 4:
+            result.check_returncode()
+        delay = 5 * 2 ** attempt
+        print(f"Apple ticket service lost its connection; retrying {action} in {delay}s.", flush=True)
+        time.sleep(delay)
 
 
 def sign(path, identity, keychain=None, preserve=False):
@@ -118,8 +137,8 @@ def build(args):
         archive = output / "notarization.zip"
         run("ditto", "-c", "-k", "--keepParent", app, archive)
         notarize(archive, args, output / "app-notary-result.json")
-        run("xcrun", "stapler", "staple", app)
-        run("xcrun", "stapler", "validate", app)
+        stapler("staple", app)
+        stapler("validate", app)
         archive.unlink()
     dmg = ROOT / "release" / f"helium-synk-server-{version}-darwin-{architecture}.dmg"
     dmg.unlink(missing_ok=True)
@@ -131,8 +150,8 @@ def build(args):
         sign(dmg, args.identity, args.keychain)
     if args.notarize:
         notarize(dmg, args, output / "dmg-notary-result.json")
-        run("xcrun", "stapler", "staple", dmg)
-        run("xcrun", "stapler", "validate", dmg)
+        stapler("staple", dmg)
+        stapler("validate", dmg)
         run("spctl", "--assess", "--type", "execute", "--verbose=2", app)
     # Digests always describe the final signed/stapled bytes.
     metadata = {
