@@ -16,14 +16,16 @@ pnpm exec vp run check
 pnpm exec vp run check:server
 pnpm exec vp run check:versions
 pnpm exec vp run test:integration
-pnpm exec vp run check:deployment
+pnpm exec vp run check:macos
 ```
+
+The native app check requires macOS with the Xcode command-line tools and builds its test relay automatically unless `SYNK_TEST_RELAY` supplies one.
 
 Do browser compatibility tests in disposable profiles. Never point test adapters at the user's normal bookmarks/history. Mark plan gates complete only with recorded evidence.
 
 ## Interface conventions
 
-Use the shared dark-only Tailwind theme and shadcn/ui components for every interface. Keep all corners square and use the logo's navy/blue/mint tokens. Import extension source with `@/…`; use `@helium-synk/core` for the shared workspace package. Keep TypeScript, WXT and Vite+ test alias mappings aligned. See [the design system](docs/architecture.md#interface) for component, font and accessibility conventions.
+Use the shared dark-only Tailwind theme and shadcn/ui components for every interface. Keep all corners square and use the logo's navy/blue/mint tokens. Import extension source with `@/…`; use `@helium-synk/core` for the shared workspace package. Keep TypeScript, WXT and Vite+ test alias mappings aligned. See [the design system](docs/architecture.md#ui) for component, font and accessibility conventions.
 
 ## Release procedure
 

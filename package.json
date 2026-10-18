@@ -19,12 +19,13 @@
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-rust-version.mjs && pnpm install --lockfile-only && ./scripts/cargo.sh update --workspace",
     "check:versions": "node scripts/sync-rust-version.mjs --check",
-    "check:deployment": "python3 scripts/macos-ops.test.py",
     "hooks:install": "git config core.hooksPath .githooks",
     "format": "vp fmt .",
     "format:check": "vp fmt --check .",
     "release:bundle": "sh scripts/build-release-relay.sh && vp run build && node scripts/package-release.mjs",
-    "release:prepare": "vp run check && vp run check:server && vp run test:integration && vp run check:deployment && vp run check:versions && vp run release:bundle"
+    "release:prepare": "vp run check && vp run check:server && vp run test:integration && vp run check:macos && vp run check:versions && vp run release:bundle",
+    "check:macos": "sh scripts/check-macos.sh",
+    "build:macos": "python3 scripts/build-macos-app.py"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",

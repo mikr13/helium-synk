@@ -6,6 +6,45 @@ use std::{
 };
 use uuid::Uuid;
 
+/// Validate a snapshot with the same patched SQLite shipped in the relay. Never migrates it.
+pub async fn verify_backup(path: &Path) -> Result<()> {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    if !path.is_file() {
+        return Err("Backup does not exist.".into());
+    }
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(SqliteConnectOptions::new().filename(path).read_only(true))
+        .await?;
+    let rows: Vec<String> = sqlx::query_scalar("PRAGMA integrity_check")
+        .fetch_all(&pool)
+        .await?;
+    pool.close().await;
+    if rows != ["ok"] {
+        return Err("Backup integrity check failed.".into());
+    }
+    Ok(())
+}
+
+/// Local operations report; no tokens, payloads or content keys are included.
+pub async fn operations_report(app: &App) -> Result<serde_json::Value> {
+    let row = sqlx::query("SELECT journal_bytes, max_journal_bytes, journal_operations, max_operations FROM settings WHERE id=1")
+        .fetch_one(&app.pool).await?;
+    let deliveries: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(MAX(sent_cursor-processed_cursor,0)),0) FROM devices WHERE revoked=0",
+    )
+    .fetch_one(&app.pool)
+    .await?;
+    Ok(serde_json::json!({
+        "journal_bytes": row.get::<i64, _>("journal_bytes"),
+        "journal_byte_limit": row.get::<i64, _>("max_journal_bytes"),
+        "operations": row.get::<i64, _>("journal_operations"),
+        "operation_limit": row.get::<i64, _>("max_operations"),
+        "unprocessed_deliveries": deliveries,
+        "sqlite_version": app.sqlite_version,
+    }))
+}
+
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// Held by CLI serving/restore operations. Backup and credential provisioning may run online.

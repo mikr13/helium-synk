@@ -4,82 +4,35 @@ Browser steps: [setup-guide.md](setup-guide.md). Progress/limits: [plan.md](plan
 
 ## Install on macOS
 
-Server needs macOS 13+, Python 3.9+, [Tailscale](https://tailscale.com/docs/install/mac) and its matching release bundle. Extract it, then pass that directory with `--release-dir`. Release relays include patched static SQLite; development builds use Homebrew SQLite.
+Use the [Helium Synk Server app](macos-server.md#setup) on macOS 13 or later. It bundles the relay and background supervisor; end users need the app, Tailscale and the browser extension.
 
-```sh
-pnpm exec vp run release:prepare
-cp config/macos.example.json deployment.local.json
-```
+1. Download the Apple silicon or Intel DMG once the native release is published, drag the app into Applications and open it.
+2. Connect Tailscale and follow the account setup. The app checks existing routes, selects an unused local port and private HTTPS endpoint, and creates a verified initial backup.
+3. Enable background operation if macOS requests approval. Save the connection file and [connect the first browser device](setup-guide.md#3-connect-the-first-device-of-a-new-account).
 
-Edit the [example config](../config/macos.example.json): profile identifiers, unused loopback ports, distinct HTTPS `.ts.net` origins, device names and local `HH:MM` backup times. Rename/remove/add profiles as needed. Local config is ignored.
+The overview provides **Add independent account**, pause/resume, connection-file export, **Back up now**, logs and health status. Use extension invitations for additional installations of an existing account.
 
-```sh
-python3 scripts/install-macos.py --config deployment.local.json --check
-python3 scripts/install-macos.py --config deployment.local.json
-```
-
-Installer checks hashes/architecture, creates independent credentials/databases, takes initial backups and installs three LaunchAgents per profile. It refuses existing data/agents; it is not an upgrader.
-
-Default root: `~/Library/Application Support/Helium Synk`. Overrides: `--root`, `--release-dir`, `--python`, `--label-prefix`. `--no-start` defers loading until login; `--check` writes no installation files. Full options: `python3 scripts/install-macos.py --help`.
-
-Inspect partial files after failure before retrying. Legacy installs without deployment metadata require a reviewed upgrade.
+Data stays in the selected private folder, by default `~/Library/Application Support/Helium Synk`; executables stay inside the app bundle. The app preserves folders owned by another server installation. Account data and browser enrollment must not be replaced to complete setup.
 
 ## Private Tailscale endpoints
 
-Inspect existing routes first. Example config uses HTTPS 443/8443 with localhost 4318/4319:
+The wizard configures private Serve HTTPS routes without resetting existing services or using public Funnel endpoints. Tailnet access rules and application credentials both apply. See [the native setup](macos-server.md#setup) for the flow.
 
-```sh
-tailscale serve status
-tailscale serve --bg --https=443 http://127.0.0.1:4318
-tailscale serve --bg --https=8443 http://127.0.0.1:4319
-tailscale serve status --json
-```
-
-Match your config. Enable tailnet HTTPS; keep public Funnel disabled. Restrict intended clients; application credentials remain required. See [Serve](https://tailscale.com/docs/reference/tailscale-cli/serve).
-
-Check each endpoint's `/health/ready`, then verify real cross-device sync and account isolation. Installer does not configure Tailscale, browser extensions or power settings.
-
-## Add an independent profile
-
-Create `additional.deployment.local.json` with only new identifiers, unused ports, distinct endpoints and unchanged retention. Use the original `--root` if customized.
-
-```sh
-python3 scripts/install-macos.py --config additional.deployment.local.json --add-profiles --check
-python3 scripts/install-macos.py --config additional.deployment.local.json --add-profiles
-```
-
-Requires the matching installed helper. Existing accounts/files/jobs stay intact. Add its private Serve route, then [connect its first device](setup-guide.md#3-connect-the-first-device-of-a-new-account).
-
-## Files and jobs
-
-Inside the root: `bin/`, `extension/`, `accounts/PROFILE/`, `recovery/PROFILE/`, `logs/`, `deployment.json`, `installation.json`, `build.json`.
-
-Private directories: 0700; files: 0600; executable: 0700. Keep data/credentials/keys outside Git and cloud sync.
-
-Jobs use `local.helium-synk.PROFILE.{serve,backup,monitor}` unless customized. Login required; FileVault may need unlock after reboot. Test sleep, logout and power restoration on your hardware.
-
-Backups: configurable 7 daily / 4 weekly / 3 monthly by default. Same-day retries verify, not replace; failed creation preserves prior snapshots. Logs: 5 MiB, three prior files. Monitor: hourly; warns below 2 GiB free, at 80% journal usage or after 30 hours without a valid backup. Status files are local; no external alerts. Check browser queues separately.
-
-```sh
-python3 "$HOME/Library/Application Support/Helium Synk/bin/macos-ops.py" --root "$HOME/Library/Application Support/Helium Synk" backup personal
-python3 "$HOME/Library/Application Support/Helium Synk/bin/macos-ops.py" --root "$HOME/Library/Application Support/Helium Synk" monitor personal
-```
-
-Replace `personal` and the root with yours.
+The overview checks local readiness and the existing private HTTPS endpoint. Verify intended client access and cross-device sync before relying on a new account. Availability requires login and an awake Mac; check sleep and power behavior on your hardware.
 
 ## Updates and publishing
 
-Back up relay and clients first. Upgrade relay before extensions; stop its serve job before replacing binaries/helpers. Preserve config, credentials, accounts and agent identities. Release binaries include SQLite; local development binaries may depend on Homebrew SQLite.
+Follow the [native app backup and update procedure](macos-server.md#backups-and-updates). Preserve the selected data folder, account credentials and browser enrollment. Upgrade the relay before browser extensions when a release requires it.
 
-Replace extension files in the same folder, then **Reload** each installation. Preserve ID/storage/enrollment. Never remove/reinstall or clear storage to update. Update all clients before session expiry; older clients pause on its payloads.
+For an unpacked extension, replace files in the same folder, then **Reload** each installation. Preserve ID/storage/enrollment. Never remove/reinstall or clear storage to update. Update all clients before enabling session expiry; older clients pause on its payloads.
 
 Unpacked and store installations have different extension identities/storage. Switching channels needs invitation/recovery enrollment; do not uninstall an enrolled profile with pending work. Existing unpacked installs keep manual updates.
 
 ## GitHub releases and Chrome Web Store
 
 1. Merge reviewed [Changesets/version changes](../CONTRIBUTING.md#release-procedure). Successful **Checks** for a main push automatically starts **Build release**, pinned to that checked commit. Failed, cancelled, PR and foreign-repository checks cannot publish.
-2. The workflow publishes `vX.Y.Z` using the extension's Changesets-managed package version, with matching server version required. Assets include the extension ZIP, macOS ARM64/x64 and Linux ARM64/x64 bundles, extension build metadata and checksums. Each bundle contains relay, identical extension ZIP, `build.json` and `SHA256SUMS`. Only generated artifacts are uploaded. Already published versions and older delayed builds are skipped; an existing draft or orphan tag requires resolution. Merge a reviewed version bump to create another release.
-3. Chrome submission follows successful GitHub publication and verifies that release's source/version/ZIP hash before submitting the same ZIP. Google publishes it after approval. Linux binaries target glibc 2.35+; configure your service/backups separately. The macOS installer does not apply to Linux.
+2. The workflow publishes `vX.Y.Z` using the extension's Changesets-managed package version, with matching server version required. Assets include the extension ZIP, signed/notarized macOS ARM64/x64 app DMGs, macOS/Linux ARM64/x64 relay bundles, build metadata and checksums. Each bundle contains relay, identical extension ZIP, `build.json` and `SHA256SUMS`. Only generated artifacts are uploaded. Already published versions and older delayed builds are skipped; an existing draft or orphan tag requires resolution. Merge a reviewed version bump to create another release.
+3. Chrome submission follows successful GitHub publication and verifies that release's source/version/ZIP hash before submitting the same ZIP. Google publishes it after approval. Linux binaries target glibc 2.35+; configure your service/backups separately. The native Mac app does not apply to Linux.
 4. Upload the extension ZIP once through the Chrome dashboard to create its listing. Finish listing/privacy/screenshots, then save its extension ID. Choose the intended publisher.
 5. Enable Chrome Web Store API in Google Cloud and link a service account to that publisher. Follow [Google's setup](https://developer.chrome.com/docs/webstore/service-accounts). Store credentials in GitHub, never source/chat.
 
@@ -102,10 +55,10 @@ Use a new private filename; never copy only a live WAL database's main file:
 
 ```sh
 /absolute/path/synk-server --database /private/data/relay.sqlite backup --output /private/backups/relay-2026-10-02.sqlite
-sqlite3 /private/backups/relay-2026-10-02.sqlite 'PRAGMA integrity_check;'
+/absolute/path/synk-server verify-backup --path /private/backups/relay-2026-10-02.sqlite
 ```
 
-Require `ok`. For isolated restore review, stop the owning relay; use a separate private copy without old WAL/SHM files. Check integrity first:
+Require a successful integrity check. For isolated restore review, stop the owning relay; use a separate private copy without old WAL/SHM files. Check integrity first:
 
 ```sh
 sqlite3 /private/restore/relay.sqlite 'SELECT server_epoch FROM settings WHERE id=1;'

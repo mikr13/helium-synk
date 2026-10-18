@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use synk_server::recovery::{RelayLease, backup, mark_restored};
+use synk_server::recovery::{RelayLease, backup, mark_restored, operations_report, verify_backup};
 use synk_server::{App, Limits};
 
 #[derive(Parser)]
@@ -19,6 +19,13 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Check an existing snapshot read-only using the shipped SQLite.
+    VerifyBackup {
+        #[arg(long)]
+        path: PathBuf,
+    },
+    /// Report local relay budgets and delivery counts without credentials or payloads.
+    OperationsReport,
     /// Create a new consistent private snapshot, including committed WAL content. Never overwrites.
     Backup {
         #[arg(long)]
@@ -66,9 +73,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
     let cli = Cli::parse();
+    if let Command::VerifyBackup { path } = &cli.command {
+        verify_backup(path).await?;
+        println!("Backup integrity: ok");
+        return Ok(());
+    }
     if matches!(
         &cli.command,
-        Command::Backup { .. } | Command::MarkRestored { .. }
+        Command::Backup { .. } | Command::MarkRestored { .. } | Command::OperationsReport
     ) && !cli.database.is_file()
     {
         return Err("An existing relay database is required for backup or restore marking.".into());
@@ -83,6 +95,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let app = App::open(&cli.database).await?;
     match cli.command {
+        Command::VerifyBackup { .. } => unreachable!("handled before opening the relay"),
+        Command::OperationsReport => {
+            println!("{}", operations_report(&app).await?);
+        }
         Command::Backup { output } => {
             backup(&app, &output).await?;
             println!("Consistent private backup written to {}.", output.display());

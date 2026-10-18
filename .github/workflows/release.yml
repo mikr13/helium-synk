@@ -124,8 +124,31 @@ jobs:
         with:
           name: extension
           path: release
+      - name: Prepare macOS signing and notarization
+        if: matrix.platform == 'darwin'
+        env:
+          APPLE_SIGNING_CERTIFICATE: ${{ secrets.APPLE_SIGNING_CERTIFICATE }}
+          APPLE_SIGNING_PASSWORD: ${{ secrets.APPLE_SIGNING_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_PRIVATE_KEY: ${{ secrets.APPLE_NOTARY_PRIVATE_KEY }}
+        run: python3 scripts/macos-signing.py
       - name: Build and test relay with pinned static SQLite
         run: sh scripts/build-release-relay.sh
+      - name: Verify native server flow
+        if: matrix.platform == 'darwin'
+        env:
+          SYNK_TEST_RELAY: ${{ github.workspace }}/target/release/synk-server
+        run: scripts/check-macos.sh
+      - name: Build signed and notarized native app
+        if: matrix.platform == 'darwin'
+        run: python3 scripts/build-macos-app.py --notarize
+      - name: Smoke test signed app bundle
+        if: matrix.platform == 'darwin'
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: python3 scripts/smoke-native-bundle.py "release/macos-$ARCH/Helium Synk Server.app"
       - name: Package matching release bundle
         env:
           VERSION: ${{ needs.extension.outputs.version }}
@@ -140,7 +163,13 @@ jobs:
         with:
           name: relay-${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: error
-          path: release/helium-synk-${{ needs.extension.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+          path: |
+            release/helium-synk-${{ needs.extension.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+            release/helium-synk-server-${{ needs.extension.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.dmg
+            release/helium-synk-server-${{ needs.extension.outputs.version }}-darwin-${{ matrix.arch }}-build.json
+      - name: Clean up macOS signing material
+        if: always() && matrix.platform == 'darwin'
+        run: python3 scripts/macos-signing.py cleanup
   publish:
     needs: [plan, extension, relay]
     if: >-
@@ -169,12 +198,13 @@ jobs:
             exit 1
           fi
           sha256sum --check extension-SHA256SUMS
-          sha256sum "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz > SHA256SUMS
+          sha256sum "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz "helium-synk-server-$VERSION-"*.dmg > SHA256SUMS
           gh release create "v$VERSION" --target "$SOURCE_SHA" \
             --title "Helium Synk $VERSION" --generate-notes \
             "helium-synk-extension-$VERSION.zip" "helium-synk-$VERSION-"*.tar.gz \
+            "helium-synk-server-$VERSION-"*.dmg "helium-synk-server-$VERSION-"*-build.json \
             extension-build.json SHA256SUMS
-          echo "Published v$VERSION from $SOURCE_SHA with extension, four relay bundles and checksums." >> "$GITHUB_STEP_SUMMARY"
+          echo "Published v$VERSION from $SOURCE_SHA with extension, four relay bundles, two signed notarized Mac installers and checksums." >> "$GITHUB_STEP_SUMMARY"
   chrome:
     needs: [plan, publish]
     if: >-
