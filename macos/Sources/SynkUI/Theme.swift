@@ -30,10 +30,11 @@ extension Color {
       blue: Double(hex & 255) / 255, opacity: 1)
   }
 }
-struct ActionStyle: ButtonStyle {
+public struct ActionStyle: ButtonStyle {
   var primary = false
+  public init(primary: Bool = false) { self.primary = primary }
   @Environment(\.isEnabled) private var enabled
-  func makeBody(configuration: Configuration) -> some View {
+  public func makeBody(configuration: Configuration) -> some View {
     configuration.label.font(SynkTheme.font(13, weight: .bold)).padding(.horizontal, 18).padding(
       .vertical, 12
     )

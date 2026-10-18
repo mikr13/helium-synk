@@ -40,10 +40,8 @@ public struct CommandRunner: CommandRunning {
       let grace = Date().addingTimeInterval(3)
       while process.isRunning && Date() < grace { Thread.sleep(forTimeInterval: 0.05) }
       if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-      process.waitUntilExit()
       throw SynkError.message("That took too long. Check Tailscale and try again.")
     }
-    process.waitUntilExit()
     let data = try Data(contentsOf: output)
     guard data.count < 4 * 1024 * 1024 else {
       throw SynkError.message("Unexpected command output.")

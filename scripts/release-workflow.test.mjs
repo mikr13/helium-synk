@@ -74,9 +74,19 @@ test('Mac releases require signing and notarization before packaging and clean u
     block,
     /if: always\(\) && matrix\.platform == 'darwin'\n        run: python3 scripts\/macos-signing\.py cleanup/,
   );
-  assert.match(workflow, /sha256sum[^\n]+\.dmg > SHA256SUMS/);
+  assert.match(workflow, /sha256sum[^\n]+\.dmg appcast\.xml > SHA256SUMS/);
   assert.match(
     workflow,
     /"helium-synk-server-\$VERSION-"\*\.dmg "helium-synk-server-\$VERSION-"\*-build\.json/,
+  );
+});
+
+test('signed update feed is validated and uploaded before a draft release becomes public', () => {
+  assert.match(workflow, /SPARKLE_ED_PRIVATE_KEY: \$\{\{ secrets\.SPARKLE_ED_PRIVATE_KEY \}\}/);
+  assert.match(workflow, /python3 scripts\/macos-update\.py --verify artifacts/);
+  assert.match(workflow, /gh release create "v\$VERSION" --draft --target/);
+  assert.ok(
+    workflow.indexOf('appcast.xml extension-build.json SHA256SUMS') <
+      workflow.indexOf('gh release edit "v$VERSION" --draft=false --latest'),
   );
 });

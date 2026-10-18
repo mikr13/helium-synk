@@ -2,6 +2,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 python3 scripts/verify-macos-design.py
+python3 scripts/macos-update.test.py
 if [ -z "${SYNK_TEST_RELAY:-}" ]; then
   ./scripts/cargo.sh build --locked
   export SYNK_TEST_RELAY="$PWD/target/debug/synk-server"

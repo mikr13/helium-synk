@@ -59,7 +59,11 @@ public final class Supervisor {
   private var lastMonitor: [String: Date] = [:]
   private var restartAt: [String: Date] = [:]
   private let operations: Operations
-  public init(root: URL, relay: URL) { operations = Operations(root: root, relay: relay) }
+  private let app: URL?
+  public init(root: URL, relay: URL, app: URL? = nil) {
+    operations = Operations(root: root, relay: relay)
+    self.app = app
+  }
   public static func readiness(port: Int) async -> Bool {
     var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/health/ready")!)
     request.timeoutInterval = 3
@@ -84,7 +88,23 @@ public final class Supervisor {
       throw SynkError.message("The server helper is already running.")
     }
     defer { stopAll() }
+    let maintenance = UpdateMaintenance(root: root, relay: operations.relay)
+    let generation = try app.map { try AppGeneration(app: $0) }
+    if let generation {
+      try StatusFiles.save(
+        UpdateAgentInfo(generation: generation),
+        to: root.appendingPathComponent("update-agent.json"))
+    }
     repeat {
+      if let app, let generation {
+        let directive = try maintain(maintenance, app: app, generation: generation)
+        if directive == .restart { return }
+        if directive == .hold {
+          if once { return }
+          try await Task.sleep(nanoseconds: 500_000_000)
+          continue
+        }
+      }
       let config = try Deployment.load(root: root)
       let settings =
         (try? StatusFiles.load(
@@ -156,6 +176,61 @@ public final class Supervisor {
       for _ in 0..<2 where !stop.stopped { try await Task.sleep(nanoseconds: 1_000_000_000) }
     } while !stop.stopped
   }
+  private enum UpdateDirective { case run, hold, restart }
+  private func maintain(_ maintenance: UpdateMaintenance, app: URL, generation: AppGeneration)
+    throws -> UpdateDirective
+  {
+    guard let request = try? maintenance.request() else { return .run }
+    var status = try? maintenance.status()
+    if status?.id == request.id, [.completed, .failed].contains(status?.phase) { return .run }
+    // A helper from the replaced bundle exits cleanly. KeepAlive starts the new approved helper.
+    if let current = try? AppGeneration(app: app), current != generation,
+      current.version == request.targetVersion, status?.id == request.id,
+      [.ready, .restarting].contains(status?.phase)
+    {
+      try maintenance.save(UpdateStatus(id: request.id, phase: .restarting, generation: generation))
+      return .restart
+    }
+    if status?.id == request.id, status?.generation != generation,
+      generation.version == request.targetVersion,
+      [.ready, .restarting].contains(status?.phase)
+    {
+      try maintenance.save(UpdateStatus(id: request.id, phase: .completed, generation: generation))
+      return .run
+    }
+    guard request.action == .prepare && request.expiresAt > Date() else { return .run }
+    if status?.id == request.id, status?.phase == .preparing {
+      try maintenance.save(
+        UpdateStatus(
+          id: request.id, phase: .failed, generation: generation,
+          message: "Update preparation was interrupted. Your current server is running; try again.")
+      )
+      return .run
+    }
+    if status?.id != request.id {
+      do {
+        try maintenance.save(
+          UpdateStatus(id: request.id, phase: .preparing, generation: generation))
+        // Back up while the current relays are still available, then drain them for replacement.
+        try maintenance.snapshot(request)
+        guard request.expiresAt > Date(), try maintenance.request()?.action == .prepare else {
+          throw SynkError.message("Update preparation expired or was cancelled. Try again.")
+        }
+        guard stopAll() else {
+          throw SynkError.message("A server didn't stop cleanly. The update was cancelled.")
+        }
+        try maintenance.save(UpdateStatus(id: request.id, phase: .ready, generation: generation))
+      } catch {
+        try? maintenance.save(
+          UpdateStatus(
+            id: request.id, phase: .failed, generation: generation,
+            message: error.localizedDescription))
+        return .run
+      }
+      status = try maintenance.status()
+    }
+    return status?.phase == .ready ? .hold : .run
+  }
   private func start(_ profile: Profile) throws {
     let directory = operations.account(profile.name)
     try PrivateFiles.rejectSymlinks(directory)
@@ -182,15 +257,28 @@ public final class Supervisor {
     children[profile.name] = process
     pipes[profile.name] = pipe
   }
-  private func stopChild(_ name: String) {
+  @discardableResult private func stopChild(_ name: String) -> Bool {
+    var graceful = true
     if let process = children.removeValue(forKey: name), process.isRunning {
       process.terminate()
       let deadline = Date().addingTimeInterval(15)
       while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
-      if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-      process.waitUntilExit()
+      if process.isRunning {
+        graceful = false
+        kill(process.processIdentifier, SIGKILL)
+      }
+      // isRunning already observes termination. waitUntilExit can deadlock when an async
+      // supervisor resumes on a different thread from the one that launched the process.
+      let killedDeadline = Date().addingTimeInterval(3)
+      while process.isRunning && Date() < killedDeadline { Thread.sleep(forTimeInterval: 0.05) }
+      if process.isRunning { graceful = false }
     }
     pipes.removeValue(forKey: name)?.fileHandleForReading.readabilityHandler = nil
+    return graceful
   }
-  private func stopAll() { for name in Array(children.keys) { stopChild(name) } }
+  @discardableResult private func stopAll() -> Bool {
+    var graceful = true
+    for name in Array(children.keys) { if !stopChild(name) { graceful = false } }
+    return graceful
+  }
 }

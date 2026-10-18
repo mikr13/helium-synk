@@ -10,6 +10,10 @@ import tempfile
 import urllib.request
 
 app = Path(sys.argv[1]).resolve()
+import plistlib
+info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+assert info["SURequireSignedFeed"] and info["SUVerifyUpdateBeforeExtraction"]
+assert info["SUAllowsAutomaticUpdates"] is False, "Updates must use the coordinated explicit-install flow"
 relay = app / "Contents/MacOS/synk-server"
 agent = app / "Contents/MacOS/synk-agent"
 os.umask(0o077)
