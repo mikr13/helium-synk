@@ -80,6 +80,7 @@ def build(args):
         "CFBundleIdentifier": BUNDLE_ID, "CFBundleName": APP_NAME, "CFBundleDisplayName": APP_NAME,
         "CFBundleExecutable": "HeliumSynkServer", "CFBundlePackageType": "APPL", "CFBundleIconFile": "Synk.icns",
         "CFBundleShortVersionString": version, "CFBundleVersion": version, "LSMinimumSystemVersion": "13.0",
+        "LSUIElement": True,
         "NSHighResolutionCapable": True, "NSHumanReadableCopyright": "Helium Synk contributors",
     }))
     (agents / f"{BUNDLE_ID}.agent.plist").write_bytes(plistlib.dumps({

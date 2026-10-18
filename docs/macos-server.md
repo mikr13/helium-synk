@@ -12,7 +12,7 @@ The native app is implemented in this checkout. Its first public signed/notarize
 4. If macOS requests approval, enable **Helium Synk Server** in **System Settings → General → Login Items**. The app exposes an Open Settings action when approval is pending.
 5. Save the connection file. In the extension, choose **Set up my first device** and select it. Keep the file private and use it for one browser profile only. Additional installations join using **Devices → Add device** in the extension.
 
-The overview reports local readiness and private HTTPS reachability. It provides pause/resume, connection-file export, backup, data/log access and additional independent accounts. Accounts share the Mac but keep distinct databases and credentials. Closing or quitting the app keeps an approved background server running. Availability requires the user to be logged in and the Mac to be awake.
+The app lives in the menu bar without a Dock icon. Choose **Open server overview** from its menu to reopen the window. The overview reports local readiness and private HTTPS reachability. It provides pause/resume, connection-file export, backup, data/log access and additional independent accounts. Accounts share the Mac but keep distinct databases and credentials. Closing the window leaves the menu-bar app available; quitting the app keeps an approved background server running. Availability requires the user to be logged in and the Mac to be awake.
 
 ## Existing installations
 
