@@ -76,6 +76,13 @@ final class UpdateMaintenanceTests: XCTestCase {
       credential)
     try setVersion("0.4.0", app: app)
     try await old.value
+    // Losing approval/registration must not turn a formerly running server into an
+    // apparently successful offline update, even if ServiceManagement now reports disabled.
+    do {
+      _ = try await maintenance.verifyRestart(
+        generation: AppGeneration(app: app), helperExpected: false, timeout: 0.1)
+      XCTFail("Expected a missing previously running helper to fail recovery")
+    } catch { XCTAssertTrue(error.localizedDescription.contains("hasn't restarted")) }
     _ = start(root: root, app: app, relay: relay)
     try await wait { await Supervisor.readiness(port: port) }
     XCTAssertEqual(try maintenance.status()?.phase, .completed)

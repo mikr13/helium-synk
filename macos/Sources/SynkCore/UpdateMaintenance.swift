@@ -28,8 +28,12 @@ public struct UpdateRequest: Codable, Sendable {
   public let id: UUID
   public let targetVersion: String
   public let expiresAt: Date
+  public let helperWasRunning: Bool
   public var action: Action = .prepare
-  public init(targetVersion: String, now: Date = Date(), lease: TimeInterval = 600) throws {
+  public init(
+    targetVersion: String, now: Date = Date(), lease: TimeInterval = 600,
+    helperWasRunning: Bool = false
+  ) throws {
     guard lease > 0 && lease <= 600 else { throw SynkError.message("Invalid update timeout.") }
     guard targetVersion.range(of: "^[0-9]+\\.[0-9]+\\.[0-9]+$", options: .regularExpression) != nil
     else {
@@ -38,6 +42,7 @@ public struct UpdateRequest: Codable, Sendable {
     id = UUID()
     self.targetVersion = targetVersion
     expiresAt = now.addingTimeInterval(lease)
+    self.helperWasRunning = helperWasRunning
   }
 }
 
@@ -88,7 +93,9 @@ public struct UpdateMaintenance: Sendable {
     return try StatusFiles.load(UpdateStatus.self, at: statusURL)
   }
   public func save(_ status: UpdateStatus) throws { try StatusFiles.save(status, to: statusURL) }
-  public func begin(targetVersion: String, now: Date = Date()) throws -> UpdateRequest {
+  public func begin(targetVersion: String, now: Date = Date(), helperWasRunning: Bool = false)
+    throws -> UpdateRequest
+  {
     guard managed else {
       throw SynkError.message(
         "This data folder is managed by another server. Its data has been kept.")
@@ -98,7 +105,8 @@ public struct UpdateMaintenance: Sendable {
     {
       throw SynkError.message("An update is already being prepared.")
     }
-    let request = try UpdateRequest(targetVersion: targetVersion, now: now)
+    let request = try UpdateRequest(
+      targetVersion: targetVersion, now: now, helperWasRunning: helperWasRunning)
     try StatusFiles.save(request, to: requestURL)
     return request
   }
@@ -128,11 +136,12 @@ public struct UpdateMaintenance: Sendable {
   public func prepare(targetVersion: String, generation: AppGeneration) async throws -> UUID? {
     // An unconfigured app can update without touching an existing foreign installation.
     guard managed else { return nil }
-    let request = try begin(targetVersion: targetVersion)
+    let stoppedLock = try lockIfStopped()
+    defer { if let stoppedLock { close(stoppedLock) } }
+    let request = try begin(targetVersion: targetVersion, helperWasRunning: stoppedLock == nil)
     do {
-      if let fd = try lockIfStopped() {
+      if stoppedLock != nil {
         // Keep a starting helper out until the offline snapshot and ready marker are complete.
-        defer { close(fd) }
         try snapshot(request)
         try save(UpdateStatus(id: request.id, phase: .ready, generation: generation))
       } else {
@@ -176,7 +185,7 @@ public struct UpdateMaintenance: Sendable {
     while Date() < deadline {
       try Task.checkCancellation()
       let running = try helperRunning()
-      if !helperExpected && !running {
+      if !helperExpected && !request.helperWasRunning && !running {
         try verifyPreservedFiles(request)
         try save(
           UpdateStatus(
