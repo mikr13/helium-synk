@@ -217,6 +217,14 @@ export class SynkDatabase extends Dexie {
   constructor(name = 'helium-synk-v1', storageProbe?: () => Promise<LocalStorageEstimate>) {
     super(name);
     this.storageMeter = new StorageMeter(storageProbe);
+    // Establish the initial estimate outside IDB transactions before admitting writes.
+    this.on(
+      'ready',
+      async () => {
+        await this.storageMeter.read();
+      },
+      true,
+    );
     this.version(1).stores({
       state: 'id',
       outbox: 'operation_id, counter',
