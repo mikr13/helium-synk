@@ -80,7 +80,16 @@ export interface SessionExpiration {
   source_revision: number;
   targets: SessionExpirationTarget[];
 }
-export type SessionOperation = SessionPart | SessionExpiration;
+/** Authenticated, content-free compaction proof; original identities remain retry receipts. */
+export interface SessionErasure {
+  kind: 'session';
+  schema_version: 3;
+  operation_id: string;
+  source_id: string;
+  source_revision: number;
+  targets: { receipt: ErasedSessionPart; digest: string; key_epoch: number }[];
+}
+export type SessionOperation = SessionPart | SessionExpiration | SessionErasure;
 export type ErasedSessionPart = Omit<SessionPart, 'data'> & { erased: true };
 export type SessionJournalOperation = SessionOperation | ErasedSessionPart;
 export interface SessionProjection {
@@ -288,8 +297,49 @@ export function validateSessionExpiration(p: SessionExpiration): void {
     ids.add(target.snapshot_id);
   }
 }
+export function validateSessionErasure(p: SessionErasure): void {
+  if (
+    !p ||
+    Object.keys(p).length !== 6 ||
+    p.kind !== 'session' ||
+    p.schema_version !== 3 ||
+    !canonicalUuid(p.operation_id) ||
+    !canonicalUuid(p.source_id) ||
+    !validCounter(p.source_revision) ||
+    !Array.isArray(p.targets) ||
+    !p.targets.length ||
+    p.targets.length > 100
+  )
+    throw new Error('Invalid session compaction proof.');
+  const ids = new Set<string>();
+  const counters = new Set<number>();
+  for (const target of p.targets) {
+    const r = target?.receipt;
+    validateSessionMetadata(r);
+    const counter = r.source_revision + r.part;
+    if (
+      !isErasedSessionPart(r) ||
+      Object.keys(r).length !== 12 ||
+      'data' in r ||
+      Object.keys(target).length !== 3 ||
+      r.source_id !== p.source_id ||
+      counter >= p.source_revision ||
+      ids.has(r.operation_id) ||
+      counters.has(counter) ||
+      r.operation_id === p.operation_id ||
+      !/^[a-f0-9]{64}$/.test(target.digest) ||
+      !Number.isInteger(target.key_epoch) ||
+      target.key_epoch < 1 ||
+      target.key_epoch > 255
+    )
+      throw new Error('Invalid session compaction target.');
+    ids.add(r.operation_id);
+    counters.add(counter);
+  }
+}
 export function validateSessionOperation(p: SessionOperation): void {
-  if (p?.schema_version === 2) validateSessionExpiration(p);
+  if (p?.schema_version === 3) validateSessionErasure(p);
+  else if (p?.schema_version === 2) validateSessionExpiration(p);
   else validateSessionPart(p);
 }
 const FIELDS = [
@@ -329,8 +379,17 @@ export function projectSessions(input: readonly SessionJournalOperation[]): Sess
     const counter = `${p.source_id}/${p.source_revision + (p.schema_version === 1 ? p.part : 0)}`;
     if (counters.has(counter)) throw new Error('Session source revision/counter was reused.');
     counters.set(counter, p.operation_id);
-    if (p.schema_version === 2) {
-      for (const target of p.targets) {
+    if (p.schema_version === 2 || p.schema_version === 3) {
+      const targets =
+        p.schema_version === 2
+          ? p.targets
+          : p.targets.map(({ receipt: r }) => ({
+              snapshot_id: r.snapshot_id,
+              source_revision: r.source_revision,
+              snapshot_kind: r.snapshot_kind,
+              total: r.total,
+            }));
+      for (const target of targets) {
         const next = { ...target, source_id: p.source_id },
           old = result.expired[target.snapshot_id];
         if (

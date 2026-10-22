@@ -399,7 +399,9 @@ it('source-owned session expiry uploads pending archives first and survives a lo
     expect(projection.snapshots[old]).toBeUndefined();
     for (const id of [current, recent, peerOld]) expect(projection.snapshots[id]).toBeDefined();
     expect((await db.operations.get(original.operation_id))!.payload).not.toHaveProperty('data');
-    expect((await db.operations.get(original.operation_id))!.envelope).toEqual(original.envelope);
+    const compacted = (await db.operations.get(original.operation_id))!;
+    expect(compacted.envelope).toEqual({ ...original.envelope, nonce: '', ciphertext: '' });
+    expect(compacted.redacted?.digest).toBe(await envelopeDigest(original.envelope));
   }
   expect(await owner.pendingCount()).toBe(0);
   const proofs = (await owner.operations.toArray()).filter(
@@ -414,7 +416,8 @@ it('source-owned session expiry uploads pending archives first and survives a lo
     [database, `SELECT envelope FROM operations WHERE operation_id = '${original.operation_id}';`],
     { encoding: 'utf8' },
   );
-  expect(stored).toContain(original.envelope.ciphertext); // Authenticated ciphertext purge remains open.
+  expect(stored).not.toContain(original.envelope.ciphertext);
+  expect(JSON.parse(stored).ciphertext).toBe('');
   expect(stored).not.toContain('https://example.com/');
 });
 
@@ -569,9 +572,16 @@ it('history erases live ciphertext across lost purge replies, client/relay resta
   expect(stored).not.toContain(await a.ensureHistoryIndexKey());
   for (const original of originals.filter((e) => e.domain === 'history'))
     expect(stored).not.toContain(original.ciphertext);
-  const counts = execFileSync('sqlite3', [database, 'SELECT COUNT(*) FROM history_redactions;'], {
-    encoding: 'utf8',
-  });
+  const counts = execFileSync(
+    'sqlite3',
+    [
+      database,
+      "SELECT COUNT(*) FROM history_redactions r JOIN operations o ON o.operation_id=r.operation_id WHERE json_extract(o.envelope, '$.domain')='history';",
+    ],
+    {
+      encoding: 'utf8',
+    },
+  );
   expect(Number(counts.trim())).toBe(3);
 });
 
@@ -804,7 +814,7 @@ it('pairs a new installation across a real lost enrollment reply and relay/clien
   expect(stored).not.toContain('Signal from invitation-enrolled profile');
   expect(JSON.stringify(sent)).not.toContain(bundle.recovery_key);
   expect(JSON.stringify(sent)).not.toContain(bundle.history_index_key);
-  expect((await relayStatus(state.credentials)).schema_version).toBe(5);
+  expect((await relayStatus(state.credentials)).schema_version).toBe(6);
 });
 
 it('local capacity retains the download cursor while draining real queued uploads, then resumes after a limit increase', async () => {
@@ -1008,7 +1018,13 @@ it('real relay purges history ciphertext with durable receipts across a discarde
       headers: {
         Authorization: `Bearer ${c.token}`,
         ...(body ? { 'Content-Type': 'application/json' } : {}),
-        ...(capable ? { 'X-Synk-History-Erasure': '1' } : {}),
+        ...(capable
+          ? {
+              'X-Synk-History-Erasure': '1',
+              'X-Synk-Session-Erasure': '1',
+              'X-Synk-Bookmark-Compaction': '1',
+            }
+          : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });

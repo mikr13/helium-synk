@@ -537,7 +537,10 @@ describe('native bookmark integration', () => {
     await db.stageBookmark(remoteCreate(crypto.randomUUID(), 'Later local addition'));
     await adapter.reconcile();
     const captured = (await db.bookmarkOperations()).find(
-      (op) => op.action.type === 'edit' && op.action.title === 'Local pending edit',
+      (op) =>
+        op.schema_version === 1 &&
+        op.action.type === 'edit' &&
+        op.action.title === 'Local pending edit',
     )!;
     expect(captured.revision).toEqual(reserved);
     const replica = await db.bookmarkProjection();

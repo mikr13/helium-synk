@@ -20,6 +20,7 @@ export interface RecordEntry {
   sequence: number;
   envelope: Envelope;
 }
+/** Shared content-free slot for history, session and bookmark compaction; legacy type name is stable. */
 export interface RedactedHistoryEntry {
   sequence: number;
   redacted: {
@@ -29,6 +30,7 @@ export interface RedactedHistoryEntry {
     certificate_sequence: number;
   };
 }
+/** Shared atomic certificate/target request for all supported compaction domains. */
 export interface HistoryPurgeRequest {
   expected_epoch: string;
   certificate: Envelope;

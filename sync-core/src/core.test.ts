@@ -59,6 +59,39 @@ class Relay implements Transport {
 }
 
 describe('durable encrypted synchronization', () => {
+  it('does not read or rebuild journals on idle pulls, including after a worker restart', async () => {
+    const db = await enrolled();
+    const relay = new Relay();
+    const bookmarks = vi.spyOn(db, 'bookmarkOperations');
+    const sessions = vi.spyOn(db, 'sessionOperations');
+    const history = vi.spyOn(db, 'historyOperations');
+    const persistSessions = vi.spyOn(db, 'persistSessions');
+    const persistHistory = vi.spyOn(db, 'persistHistory');
+    const coordinator = new SyncCoordinator(db, () => relay);
+    await coordinator.sync();
+    await coordinator.sync();
+    await new SyncCoordinator(db, () => relay).sync();
+    expect((await db.state.get('local'))?.server_epoch).toBe(relay.epoch);
+    expect((await db.state.get('local'))?.last_synced).toBeDefined();
+    for (const call of [bookmarks, sessions, history, persistSessions, persistHistory])
+      expect(call).not.toHaveBeenCalled();
+  });
+  it('does not replay unrelated domain journals for a diagnostic download', async () => {
+    const key = generateRecoveryKey(),
+      c = credentials();
+    const source = await enrolled(key, c);
+    const target = await enrolled(key, { ...c, device_id: crypto.randomUUID() });
+    const relay = new Relay();
+    await source.queueDiagnostic('Only the diagnostic domain changed');
+    await new SyncCoordinator(source, () => relay).sync();
+    const bookmarks = vi.spyOn(target, 'bookmarkOperations');
+    const sessions = vi.spyOn(target, 'sessionOperations');
+    const history = vi.spyOn(target, 'historyOperations');
+    await new SyncCoordinator(target, () => relay).sync();
+    expect(await target.records.count()).toBe(1);
+    expect((await target.state.get('local'))?.acknowledged_cursor).toBe(1);
+    for (const call of [bookmarks, sessions, history]) expect(call).not.toHaveBeenCalled();
+  });
   it('survives a database reopen while offline, then drains once', async () => {
     const db = await enrolled();
     const relay = new Relay();
@@ -268,7 +301,7 @@ describe('durable processed-cursor acknowledgements', () => {
     const { target, relay } = await incoming();
     const acknowledge = vi.spyOn(relay, 'acknowledge');
     const failed = vi
-      .spyOn(target, 'persistHistory')
+      .spyOn(target.records, 'bulkPut')
       .mockRejectedValue(new Error('Local disk full'));
     await expect(new SyncCoordinator(target, () => relay).sync()).rejects.toThrow(
       'Local disk full',

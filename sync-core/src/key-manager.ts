@@ -448,7 +448,9 @@ export class KeyManager {
         await encryptPayload(
           local.recovery_key,
           { ...old, key_epoch: epoch },
-          isErasedHistoryOperation(record.payload) || isErasedSessionPart(record.payload)
+          isErasedHistoryOperation(record.payload) ||
+            isErasedSessionPart(record.payload) ||
+            (record.payload.kind === 'bookmark' && record.payload.schema_version === 0)
             ? await decryptPayload(secrets.roots[old.key_epoch]!, old, local.history_index_key)
             : record.payload,
           local.history_index_key,

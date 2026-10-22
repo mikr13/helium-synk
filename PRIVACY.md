@@ -1,6 +1,6 @@
 # Privacy
 
-Updated October 3, 2026. Applies to the Helium Synk extension in this repository.
+Updated October 20, 2026. Applies to the Helium Synk extension in this repository.
 
 ## Purpose and data
 
@@ -18,9 +18,9 @@ Browser-profile secrets and decrypted local caches are **not encrypted at rest b
 
 ## Controls and retention
 
-Enable/pause collections, exclude history URLs, remove synced history, and manage retention in Settings. Native browser history is independent. Session expiry removes visible archives but can leave encrypted copies. Historical backups/exports may retain deleted content. Removing a device prevents future access and rotates future content keys; previously received data cannot be remotely erased.
+Enable/pause collections, exclude history URLs, remove synced history, and manage retention in Settings. Native browser history is independent. Session expiry removes visible archives and compacts live encrypted copies into authenticated content-free receipts. Explicit bookmark compaction removes superseded versions while preserving current/concurrent values and deletion barriers. Historical backups/exports may retain deleted content. Removing a device prevents future access and rotates future content keys; previously received data cannot be remotely erased.
 
-Profile removal/uninstallation destroys its extension storage, including pending work. Automatic reconstruction after relay loss is not guaranteed. Keep current recovery keys and reviewed backups separately.
+Profile removal/uninstallation destroys its extension storage, including pending work. Explicit relay reconstruction uses surviving client copies and cannot recover missing data that no surviving copy contains. Relay rebuild exports contain encrypted content and the exporting installation’s connection credential, but no content keys; transfer them only to your own server. The browser retains a private recovery proposal until it is adopted or replaced, including a new future-content key. Other installations must join the rebuilt relay again. Keep the exporting profile intact, and save current recovery keys and reviewed backups separately.
 
 ## Limited use and contact
 

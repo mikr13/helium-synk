@@ -84,6 +84,34 @@ pub(crate) async fn require_capability(
             "History erasure requires an upgraded client; retain local data and upgrade before syncing",
         ));
     }
+    let session: i64 =
+        sqlx::query_scalar("SELECT session_erasure_version FROM settings WHERE id = 1")
+            .fetch_one(&mut *conn)
+            .await?;
+    if session != 0
+        && headers
+            .get("x-synk-session-erasure")
+            .is_none_or(|v| v != "1")
+    {
+        return Err(ApiError(
+            StatusCode::UPGRADE_REQUIRED,
+            "Session compaction requires an upgraded client; retain local data and upgrade",
+        ));
+    }
+    let bookmarks: i64 =
+        sqlx::query_scalar("SELECT bookmark_compaction_version FROM settings WHERE id=1")
+            .fetch_one(&mut *conn)
+            .await?;
+    if bookmarks != 0
+        && headers
+            .get("x-synk-bookmark-compaction")
+            .is_none_or(|v| v != "1")
+    {
+        return Err(ApiError(
+            StatusCode::UPGRADE_REQUIRED,
+            "Bookmark compaction requires an upgraded client; retain local data and upgrade",
+        ));
+    }
     Ok(())
 }
 pub(crate) async fn matches_stored(
@@ -105,8 +133,8 @@ pub(crate) async fn matches_stored(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Target {
-    header: Header,
-    digest: String,
+    pub(crate) header: Header,
+    pub(crate) digest: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -114,6 +142,31 @@ pub(crate) struct Purge {
     expected_epoch: String,
     certificate: Envelope,
     targets: Vec<Target>,
+}
+
+pub(crate) fn target_digest(targets: &[Target]) -> String {
+    let mut sorted: Vec<_> = targets.iter().collect();
+    sorted.sort_by(|a, b| a.header.operation_id.cmp(&b.header.operation_id));
+    let public_targets: Vec<_> = sorted
+        .iter()
+        .map(|target| {
+            let h = &target.header;
+            json!([
+                h.protocol_version,
+                h.operation_id,
+                h.account_id,
+                h.device_id,
+                h.counter,
+                h.domain,
+                h.key_epoch,
+                target.digest
+            ])
+        })
+        .collect();
+    format!(
+        "{:x}",
+        Sha256::digest(json!(public_targets).to_string().as_bytes())
+    )
 }
 
 pub(crate) async fn purge(
@@ -135,7 +188,29 @@ pub(crate) async fn purge(
         ));
     }
     validate(&request.certificate, &app, &author)?;
-    if request.certificate.domain != "history-erasure"
+    let session = request.certificate.domain == "session";
+    let bookmark = request.certificate.domain == "bookmark";
+    if bookmark
+        && headers
+            .get("x-synk-bookmark-compaction")
+            .is_none_or(|v| v != "1")
+    {
+        return Err(ApiError(
+            StatusCode::UPGRADE_REQUIRED,
+            "Bookmark compaction capability required",
+        ));
+    }
+    if session
+        && headers
+            .get("x-synk-session-erasure")
+            .is_none_or(|v| v != "1")
+    {
+        return Err(ApiError(
+            StatusCode::UPGRADE_REQUIRED,
+            "Session compaction capability required",
+        ));
+    }
+    if (!session && !bookmark && request.certificate.domain != "history-erasure")
         || request.targets.is_empty()
         || request.targets.len() > MAX_BATCH
     {
@@ -149,7 +224,15 @@ pub(crate) async fn purge(
     for target in &request.targets {
         let h = &target.header;
         if h.protocol_version != 1
-            || h.domain != "history"
+            || h.domain
+                != if session {
+                    "session"
+                } else if bookmark {
+                    "bookmark"
+                } else {
+                    "history"
+                }
+            || (session && h.device_id != author)
             || h.key_epoch == 0
             || h.key_epoch > request.certificate.key_epoch
             || h.account_id != app.account_id
@@ -228,28 +311,7 @@ pub(crate) async fn purge(
     };
     // The immutable certificate also binds one public target set across lost replies.
     // The encrypted proof itself is verified by clients, never interpreted here.
-    let mut sorted: Vec<_> = request.targets.iter().collect();
-    sorted.sort_by(|a, b| a.header.operation_id.cmp(&b.header.operation_id));
-    let public_targets: Vec<_> = sorted
-        .iter()
-        .map(|target| {
-            let h = &target.header;
-            json!([
-                h.protocol_version,
-                h.operation_id,
-                h.account_id,
-                h.device_id,
-                h.counter,
-                h.domain,
-                h.key_epoch,
-                target.digest
-            ])
-        })
-        .collect();
-    let request_digest = format!(
-        "{:x}",
-        Sha256::digest(json!(public_targets).to_string().as_bytes())
-    );
+    let request_digest = target_digest(&request.targets);
     let old: Option<String> = sqlx::query_scalar(
         "SELECT request_digest FROM history_erasures WHERE certificate_operation_id = ?",
     )
@@ -360,9 +422,15 @@ pub(crate) async fn purge(
             ));
         }
     }
-    sqlx::query("UPDATE settings SET history_erasure_version = 1 WHERE id = 1")
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(if bookmark {
+        "UPDATE settings SET bookmark_compaction_version = 1 WHERE id = 1"
+    } else if session {
+        "UPDATE settings SET session_erasure_version = 1 WHERE id = 1"
+    } else {
+        "UPDATE settings SET history_erasure_version = 1 WHERE id = 1"
+    })
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     let _ = app.notifications.send(latest);
     Ok(Json(

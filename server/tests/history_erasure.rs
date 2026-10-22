@@ -48,7 +48,10 @@ async fn api(
 ) -> (StatusCode, Value) {
     let mut request = Request::builder().method(method).uri(path);
     if compatible {
-        request = request.header("x-synk-history-erasure", "1");
+        request = request
+            .header("x-synk-history-erasure", "1")
+            .header("x-synk-session-erasure", "1")
+            .header("x-synk-bookmark-compaction", "1");
     }
     if let Some(c) = c {
         request = request.header("authorization", format!("Bearer {}", c.token));
@@ -617,7 +620,7 @@ async fn schema_four_upgrade_preserves_envelopes_usage_epochs_and_processed_prog
     let app = App::open(&path).await.unwrap();
     assert_eq!(app.server_epoch, epoch);
     let after = status(&app, &c).await;
-    assert_eq!(after["schema_version"], 5);
+    assert_eq!(after["schema_version"], 6);
     assert_eq!(after["history_erasure_version"], 0);
     assert_eq!(after["journal_operations"], 1);
     assert_eq!(after["journal_bytes"], encoded.len());
@@ -638,4 +641,136 @@ async fn schema_four_upgrade_preserves_envelopes_usage_epochs_and_processed_prog
         StatusCode::OK
     );
     assert_eq!(push(&app, &c, &[original]).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn session_compaction_requires_owner_and_upgraded_reader_and_reclaims_quota_without_losing_retry_counters()
+ {
+    let (_temp, app, a, b) = setup().await;
+    let mut first = envelope(&a, 1, "session");
+    first.ciphertext = STANDARD.encode([1; 20_000]);
+    let mut second = envelope(&a, 2, "session");
+    second.ciphertext = STANDARD.encode([2; 20_000]);
+    assert_eq!(
+        push(&app, &a, &[first.clone(), second.clone()]).await.0,
+        StatusCode::OK
+    );
+    let wrong = envelope(&b, 1, "session");
+    assert_eq!(
+        api(
+            &app,
+            Some(&b),
+            "POST",
+            "/v1/session/purge",
+            Some(body(&app, &wrong, &[first.clone()])),
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let before = status(&app, &a).await;
+    app.configure_limits(Limits {
+        max_operations: 1,
+        max_journal_bytes: before["journal_bytes"].as_i64().unwrap(),
+        max_devices: 64,
+    })
+    .await
+    .unwrap();
+    let certificate = envelope(&a, 3, "session");
+    let request = body(&app, &certificate, &[first.clone(), second.clone()]);
+    let (code, reply) = api(
+        &app,
+        Some(&a),
+        "POST",
+        "/v1/session/purge",
+        Some(request.clone()),
+        true,
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    let after = status(&app, &a).await;
+    assert!(after["journal_bytes"].as_i64().unwrap() < before["journal_bytes"].as_i64().unwrap());
+    assert_eq!(after["journal_operations"], 1);
+    assert_eq!(after["session_erasure_version"], 1);
+    assert_eq!(
+        api(&app, Some(&b), "GET", "/v1/sync/pull?cursor=0", None, false)
+            .await
+            .0,
+        StatusCode::UPGRADE_REQUIRED
+    );
+    assert_eq!(
+        push(&app, &a, &[first.clone(), second.clone()]).await.0,
+        StatusCode::OK
+    );
+    let (_, repeated) = api(
+        &app,
+        Some(&a),
+        "POST",
+        "/v1/session/purge",
+        Some(request),
+        true,
+    )
+    .await;
+    assert_eq!(repeated, reply);
+    let mut reused = first;
+    reused.operation_id = Uuid::new_v4().to_string();
+    assert_eq!(push(&app, &a, &[reused]).await.0, StatusCode::CONFLICT);
+    let (_, page) = api(&app, Some(&b), "GET", "/v1/sync/pull?cursor=0", None, true).await;
+    assert_eq!(
+        page["records"][0]["redacted"]["header"]["domain"],
+        "session"
+    );
+    assert_eq!(
+        page["records"][0]["redacted"]["certificate"]["operation_id"],
+        certificate.operation_id
+    );
+}
+
+#[tokio::test]
+async fn bookmark_compaction_keeps_cross_author_receipts_and_blocks_changed_target_sets() {
+    let (_temp, app, a, b) = setup().await;
+    let original = envelope(&a, 1, "bookmark");
+    assert_eq!(
+        push(&app, &a, std::slice::from_ref(&original)).await.0,
+        StatusCode::OK
+    );
+    let certificate = envelope(&b, 1, "bookmark");
+    let request = body(&app, &certificate, std::slice::from_ref(&original));
+    assert_eq!(
+        api(
+            &app,
+            Some(&b),
+            "POST",
+            "/v1/bookmark/compact",
+            Some(request.clone()),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(status(&app, &a).await["bookmark_compaction_version"], 1);
+    let mut changed = request;
+    changed["targets"][0]["digest"] = json!("0".repeat(64));
+    assert_eq!(
+        api(
+            &app,
+            Some(&b),
+            "POST",
+            "/v1/bookmark/compact",
+            Some(changed),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        push(&app, &a, std::slice::from_ref(&original)).await.0,
+        StatusCode::OK
+    );
+    let mut conflict = original;
+    conflict.ciphertext = STANDARD.encode([4; 32]);
+    assert_eq!(push(&app, &a, &[conflict]).await.0, StatusCode::CONFLICT);
 }

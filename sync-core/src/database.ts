@@ -1,4 +1,6 @@
 import Dexie, { type Table } from 'dexie';
+import type { RelayRecoveryPending } from './relay-recovery';
+import { isContentErasure, erasureTargetHeader } from './content-erasure';
 import { sessionFingerprintDigest } from './session-native';
 import { sessionRetentionPolicy, type SessionRetentionPolicy } from './session-retention';
 import {
@@ -19,7 +21,6 @@ import {
 } from './local-storage';
 import {
   historyErasureOperations,
-  historyErasureTargetHeader,
   mergeHistoryOperations,
   type HistoryErasure,
 } from './history-erasure';
@@ -69,6 +70,8 @@ import {
   projectBookmarks,
   type BookmarkAction,
   type BookmarkOperation,
+  type BookmarkJournalOperation,
+  type BookmarkCompaction,
   type BookmarkProjection,
 } from './bookmarks';
 import {
@@ -130,7 +133,11 @@ export interface LocalRecord {
 export interface StoredOperation {
   operation_id: string;
   envelope: Envelope;
-  payload: BookmarkOperation | SessionJournalOperation | HistoryJournalOperation | HistoryErasure;
+  payload:
+    | BookmarkJournalOperation
+    | SessionJournalOperation
+    | HistoryJournalOperation
+    | HistoryErasure;
   sequence?: number;
   /** Original cipher is gone; envelope is its header with empty nonce/ciphertext. */
   redacted?: { digest: string; certificate_operation_id: string };
@@ -138,7 +145,12 @@ export interface StoredOperation {
 export interface DraftOperation {
   operation_id: string;
   header: EnvelopeHeader;
-  payload: BookmarkOperation | SessionOperation | HistoryOperation | HistoryErasure;
+  payload:
+    | BookmarkOperation
+    | BookmarkCompaction
+    | SessionOperation
+    | HistoryOperation
+    | HistoryErasure;
   erasure_epoch?: string;
 }
 export interface ErasedHistoryDraft {
@@ -159,6 +171,7 @@ export interface QuarantinedRecord {
 export class SynkDatabase extends Dexie {
   state!: Table<LocalState, string>;
   pairingPending!: Table<PairingCandidate, string>;
+  relayRecoveryPending!: Table<RelayRecoveryPending, string>;
   keySecrets!: Table<KeySecrets, string>;
   rotationPending!: Table<RotationPending, string>;
   outbox!: Table<Envelope, string>;
@@ -285,6 +298,7 @@ export class SynkDatabase extends Dexie {
       historyPurgePending: 'operation_id',
       historyPurgeClaims: 'operation_id, certificate_operation_id',
     });
+    this.version(11).stores({ relayRecoveryPending: 'id' });
   }
   async enroll(
     credentials: Credentials,
@@ -526,7 +540,7 @@ export class SynkDatabase extends Dexie {
             envelope,
             payload,
           });
-          if (draft.payload.kind === 'history-erasure') {
+          if (isContentErasure(draft.payload)) {
             if (
               !draft.erasure_epoch ||
               draft.erasure_epoch !== (await this.state.get('local'))!.server_epoch
@@ -538,7 +552,7 @@ export class SynkDatabase extends Dexie {
                 expected_epoch: draft.erasure_epoch,
                 certificate: envelope,
                 targets: draft.payload.targets.map((target) => ({
-                  header: historyErasureTargetHeader(envelope, target),
+                  header: erasureTargetHeader(envelope, target),
                   digest: target.digest,
                 })),
               },
@@ -549,14 +563,14 @@ export class SynkDatabase extends Dexie {
       );
     }
   }
-  async bookmarkOperations(): Promise<BookmarkOperation[]> {
+  async bookmarkOperations(): Promise<BookmarkJournalOperation[]> {
     return this.transaction('r', [this.operations, this.drafts], async () => [
       ...(await this.operations.where('envelope.domain').equals('bookmark').toArray()).map(
-        (o) => o.payload as BookmarkOperation,
+        (o) => o.payload as BookmarkJournalOperation,
       ),
       ...(await this.drafts.toArray())
         .map((d) => d.payload)
-        .filter((p): p is BookmarkOperation => p.kind === 'bookmark'),
+        .filter((p): p is BookmarkOperation | BookmarkCompaction => p.kind === 'bookmark'),
     ]);
   }
   async sessionOperations(): Promise<SessionJournalOperation[]> {
@@ -574,7 +588,21 @@ export class SynkDatabase extends Dexie {
     // Existing cached v1 projections predate expiry proofs. Their journal remains unchanged.
     return value ? { ...value, expired: value.expired ?? {} } : projectSessions([]);
   }
-  /** Keep immutable ciphertext for retries; expired journal plaintext becomes metadata only. */
+  /** Job completion can occur without new relay records; it must not require a journal replay. */
+  async pruneSessionRestores(): Promise<void> {
+    await this.transaction('rw', [this.sessionRestores, this.sessionReplicas], async () => {
+      const jobs = await this.sessionRestores
+        .where('status')
+        .anyOf('complete', 'cancelled')
+        .toArray();
+      if (!jobs.length) return;
+      const projection = await this.sessionProjection();
+      await this.sessionRestores.bulkDelete(
+        jobs.filter((job) => !!projection.expired[job.snapshot_id]).map((job) => job.id),
+      );
+    });
+  }
+  /** Expired plaintext becomes metadata; authenticated compaction later replaces ciphertext with retry receipts. */
   async persistSessions(projection: SessionProjection): Promise<void> {
     await this.transaction(
       'rw',
@@ -924,12 +952,15 @@ export class SynkDatabase extends Dexie {
   }
   /** Caller includes budget tables; only new collection is admitted here, never retries/erasure. */
   async assertCaptureCapacity(additional = 1, bytes = 0): Promise<void> {
-    const reason = capacityReason(await this.storageStatus(), additional, bytes);
+    // Display-only compaction totals require scanning ciphertext-bearing rows. Admission
+    // runs for every native event and needs only the database's indexed counts/size estimate.
+    const status = await localStorageStatus(this, await this.storageMeter.read(), false);
+    const reason = capacityReason(status, additional, bytes);
     if (reason) throw new LocalCapacityError(reason);
   }
   async assertDownloadCapacity(additional: number, bytes: number): Promise<void> {
     if (!additional) return;
-    const status = await this.storageStatus();
+    const status = await localStorageStatus(this, await this.storageMeter.read(), false);
     const reason = capacityReason({ ...status, pending: 0, capture_tasks: 0 }, additional, bytes);
     if (reason) throw new LocalCapacityError(reason);
   }

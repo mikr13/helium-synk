@@ -91,6 +91,16 @@ class Relay implements Transport {
     return { server_epoch: epoch, processed_cursor: cursor };
   }
 }
+it('checks capture/download capacity without enumerating journal content for display statistics', async () => {
+  const { db } = await fixture();
+  const scan = vi.spyOn(db.operations, 'filter');
+  await db.assertCaptureCapacity();
+  await db.assertDownloadCapacity(1, 100);
+  expect(scan).not.toHaveBeenCalled();
+  expect((await db.storageStatus()).compacted_records).toBe(0);
+  expect(scan).toHaveBeenCalledTimes(1);
+});
+
 it('persists limits across reopening/export, rejects invalid configuration without changing them', async () => {
   const f = await fixture();
   await f.db.setStoragePolicy(f.limit);

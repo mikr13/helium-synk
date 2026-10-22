@@ -1,6 +1,6 @@
 # Architecture
 
-WXT/React client, durable IndexedDB, private Rust/Axum/SQLite relay. Protocol 1; client schema 10; relay schema 5.
+WXT/React client, durable IndexedDB, private Rust/Axum/SQLite relay. Protocol 1; client schema 11; relay schema 6.
 
 Progress and gaps: [plan.md](plan.md). Setup: [setup-guide.md](setup-guide.md). Hosting: [deployment.md](deployment.md).
 
@@ -60,7 +60,7 @@ Loopback only; authenticated account APIs; encrypted payloads and hashed credent
 
 Defaults: 1 GiB envelope JSON, 1,000,000 active encrypted operations, 64 installation identities, including revoked identities. These are not disk limits.
 
-HTTP 507 preserves queued work; exact committed retries still succeed. Graceful SIGTERM/Ctrl+C drains work. No journal compaction.
+HTTP 507 preserves queued work; exact committed retries still succeed. Graceful SIGTERM/Ctrl+C drains work. Content compaction retains sequence, digest and author/counter receipts; it never discards causal tombstones. Offline SQLite compaction requires a verified pre-compaction backup and the process lease.
 
 Upgrade relay before clients. Never edit applied migrations or downgrade a migrated DB into an incompatible binary.
 
@@ -100,8 +100,8 @@ Expiry starts off and applies only to acknowledged source-owned records. Pending
 
 - History: initially 90 days; range 1–3,650 days. Uses authenticated live ciphertext purge.
 - Sessions: 30 days / 100 archives / 50 MiB per source. Ranges: 1–3,650 days / 1–10,000 archives / 1–1,024 MiB.
-- Session expiry removes visible/plaintext archive content; encrypted client/relay copies remain. Protected work can exceed caps.
-- Update every client before session expiry. Disabling expiry or raising limits does not restore expired data.
+- Session expiry removes visible/plaintext archive content, then source-authenticated compaction proofs replace live client/relay ciphertext with content-free receipts. Protected work can exceed caps.
+- Update the relay, then every client before session expiry or bookmark compaction. Disabling expiry or raising limits does not restore expired data.
 
 <a id="interface"></a>
 
@@ -122,3 +122,19 @@ Hash-routed dashboard: Home, Bookmarks, Sessions, History, Devices, Settings. Po
 ## Detailed contracts
 
 Source/tests are authoritative: [shared core](../sync-core/src/), [native adapters](../extension/), [relay](../server/src/) and [immutable migrations](../server/migrations/).
+
+## Compaction contracts
+
+Session schema 3 certificates bind each erased fragment’s identity, metadata, content epoch and original envelope digest. Only the source can compact its expired fragments. Bookmark schema 2 certificates bind revision-only receipts for acknowledged, causally superseded edits/moves/reorders. Selection preserves births, removals, current field winners and every concurrent alternative, including deleted-node recovery state. Queued/draft/quarantined work is protected. Bookmark compaction is an explicit user action because superseded recovery versions are removed; each action processes bounded batches (at most 2,000 targets; repeat for larger journals).
+
+The existing purge-intent/claim tables and relay redaction/target-set tables serve all three content domains. Certificates and receipt updates commit atomically. Lost replies retry the same cipher/target set; old original envelopes match digest receipts without restoring ciphertext. Late and fresh clients validate encrypted certificates before accepting redactions or advancing cursors. Capability headers gate incompatible readers once compaction is used. Old receipt sequences and causal metadata are retained, so no offline-age cutoff or forced stale-client reset is introduced. Quarantined target copies are removed only with an authenticated matching certificate; unresolved unrelated records stay available for review.
+
+Metadata still consumes storage and counts toward byte/journal budgets; compaction is not a physical disk-space guarantee, secure erasure, or general deletion of old backups. Ciphertext removal makes SQLite pages reusable; stopped-server `compact` runs VACUUM after a verified backup to reclaim free pages. Filesystem snapshots, external exports and historical backups remain independent copies.
+
+## Relay reconstruction
+
+A surviving profile prepares a durable private proposal containing a new server epoch, independent future root and proof for its wrapping identity. Its exported replay includes encrypted records, certified receipts and immutable public purge request sets, but no content roots. Optional peer rebuild files are authenticated/decrypted locally with the existing historical keys before their operation sets are merged; conflicting identities/counters fail closed. The manifest covers the sorted replay and purge target sets. Re-exporting an unchanged proposal is idempotent; changed data refreshes the proposal and preserves previously merged peer data.
+
+The offline `rebuild` command validates the account/manifest, reconstructs a private staging database, retains operation IDs/counters/digests and revokes every historical author except the exporting source. It verifies SQLite integrity before atomically creating a new destination. Existing databases/backups are never overwritten. A future key epoch replaces stale membership/key packets; the original client retains every historical content key. The relay has no plaintext content roots.
+
+Only explicit adoption of the matching authenticated recovery receipt resets delivery cursors/sequences and adopts the saved future root. Author counters, native mappings and pending work remain. New acknowledged data after export blocks adoption until the replay is refreshed; in-flight old-epoch pulls/pushes cannot overwrite the adopted epoch. Other survivors keep their original data, but must join again with fresh invitations/credentials. Records missing from every supplied survivor remain unrecoverable; key files alone do not reconstruct lost content. The old relay must stay stopped after cutover to avoid independent histories.

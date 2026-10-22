@@ -169,7 +169,10 @@ pub(crate) async fn status(
         "processed_cursor":row.get::<i64,_>("processed_cursor"),"processed_epoch":row.get::<Option<String>,_>("processed_epoch"),
         "last_seen":row.get::<Option<String>,_>("last_seen"),"latest_sequence":row.get::<i64,_>("latest_sequence"),
         "history_erasure_version":row.get::<i64,_>("history_erasure_version"),
-        "history_identity_receipts":sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM history_redactions").fetch_one(&app.pool).await?}),
+        "session_erasure_version":row.get::<i64,_>("session_erasure_version"),
+        "bookmark_compaction_version":row.get::<i64, _>("bookmark_compaction_version"),
+        "identity_receipts":sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM history_redactions").fetch_one(&app.pool).await?,
+        "history_identity_receipts":sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM history_redactions r JOIN operations o ON o.operation_id=r.operation_id WHERE json_extract(o.envelope,'$.domain')='history'").fetch_one(&app.pool).await?}),
     ))
 }
 
