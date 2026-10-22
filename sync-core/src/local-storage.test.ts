@@ -98,7 +98,7 @@ it('checks capture/download capacity without enumerating journal content for dis
   await db.assertDownloadCapacity(1, 100);
   expect(scan).not.toHaveBeenCalled();
   expect((await db.storageStatus()).compacted_records).toBe(0);
-  expect(scan).toHaveBeenCalledTimes(1);
+  expect(scan).not.toHaveBeenCalled();
 });
 
 it('persists limits across reopening/export, rejects invalid configuration without changing them', async () => {

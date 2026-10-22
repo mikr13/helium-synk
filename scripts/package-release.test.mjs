@@ -64,7 +64,7 @@ test('canonical extension and relay bundle share the ZIP; private release files 
   const proof = JSON.parse(readFileSync(f.proofPath, 'utf8'));
   assert.equal(proof.uncommitted_changes, false);
   assert.equal(proof.relay_schema, 6);
-  assert.equal(proof.client_schema, 11);
+  assert.equal(proof.client_schema, 12);
   assert.deepEqual(
     proof.artifacts.map((item) => item.name),
     ['helium-synk-extension-0.2.0.zip'],
@@ -79,7 +79,7 @@ test('canonical extension and relay bundle share the ZIP; private release files 
   assert.deepEqual(bundle.artifacts[0], proof.artifacts[0]);
   assert.equal(bundle.target, `${process.platform}-${process.arch}`);
   assert.equal(bundle.relay_schema, 6);
-  assert.equal(bundle.client_schema, 11);
+  assert.equal(bundle.client_schema, 12);
   assert.equal(bundle.artifacts.length, 2);
   assert.equal(readFileSync(privatePath, 'utf8'), 'private sentinel');
 });
