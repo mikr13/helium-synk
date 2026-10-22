@@ -13,6 +13,7 @@
 ### Patch Changes
 
 - Avoid replaying stored sessions, bookmarks and history on empty sync pulls, and rebuild only domains changed by a downloaded page. Coalesce the full background capture/sync/application cycle so startup, native events and relay notifications cannot accumulate redundant work.
+- Keep display-only compaction totals out of per-event capture/download capacity checks so admission uses indexed counts without reading every stored journal payload.
 - Updated dependencies
 - Updated dependencies
   - @helium-synk/core@0.5.0

@@ -128,7 +128,7 @@ These remain unverified or unimplemented. They are follow-ups, not passed releas
 ### 0.5.0 CPU fix and release validation
 
 - [x] Avoid journal replay on empty pulls and rebuild only domains changed by a downloaded page. Coalesce the full background capture/network/application cycle and preserve restore cleanup independently of replay. See [the CPU investigation](cpu-investigation-2026-10-22.md).
-- [x] Run the 0.5.0 release gates: 265 client tests with format/lint/types and production build; 47 Rust tests and Clippy; 18 real-relay integration tests; native Swift and 10 Python packaging/update tests; 17 release-tooling tests; schema/version metadata and diff checks.
+- [x] Run the 0.5.0 release gates: 266 client tests with format/lint/types and production build; 47 Rust tests and Clippy; 18 real-relay integration tests; native Swift and 10 Python packaging/update tests; 17 release-tooling tests; schema/version metadata and diff checks.
 - [ ] Verify published signed/notarized 0.5.0 artifacts, store status and local migration after separately authorized release/install. Automated tests do not establish physical browser CPU acceptance.
 
 ## Fast follow-up: desktop Chromium support

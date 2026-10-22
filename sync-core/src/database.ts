@@ -952,12 +952,15 @@ export class SynkDatabase extends Dexie {
   }
   /** Caller includes budget tables; only new collection is admitted here, never retries/erasure. */
   async assertCaptureCapacity(additional = 1, bytes = 0): Promise<void> {
-    const reason = capacityReason(await this.storageStatus(), additional, bytes);
+    // Display-only compaction totals require scanning ciphertext-bearing rows. Admission
+    // runs for every native event and needs only the database's indexed counts/size estimate.
+    const status = await localStorageStatus(this, await this.storageMeter.read(), false);
+    const reason = capacityReason(status, additional, bytes);
     if (reason) throw new LocalCapacityError(reason);
   }
   async assertDownloadCapacity(additional: number, bytes: number): Promise<void> {
     if (!additional) return;
-    const status = await this.storageStatus();
+    const status = await localStorageStatus(this, await this.storageMeter.read(), false);
     const reason = capacityReason({ ...status, pending: 0, capture_tasks: 0 }, additional, bytes);
     if (reason) throw new LocalCapacityError(reason);
   }

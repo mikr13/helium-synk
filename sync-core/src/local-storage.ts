@@ -63,7 +63,7 @@ export function localStorageTables(db: SynkDatabase) {
     db.historyScans,
   ];
 }
-export async function localStorageCounts(db: SynkDatabase) {
+export async function localStorageCounts(db: SynkDatabase, includeCompacted = true) {
   const queued_operations =
     (await db.outbox.count()) + (await db.drafts.count()) + (await db.historyPurgePending.count());
   const capture_tasks =
@@ -81,7 +81,9 @@ export async function localStorageCounts(db: SynkDatabase) {
     capture_tasks,
     pending: queued_operations + capture_tasks,
     journal_records,
-    compacted_records: await db.operations.filter((r) => !!r.redacted).count(),
+    ...(includeCompacted
+      ? { compacted_records: await db.operations.filter((r) => !!r.redacted).count() }
+      : {}),
   };
 }
 export class LocalCapacityError extends Error {
@@ -146,12 +148,13 @@ export function capacityReason(
 export async function localStorageStatus(
   db: SynkDatabase,
   estimate: LocalStorageEstimate,
+  includeCompacted = true,
 ): Promise<LocalStorageStatus> {
   return db.transaction('r', localStorageTables(db), async () => {
     const state = await db.state.get('local');
     const status: LocalStorageStatus = {
       policy: storagePolicy(state?.storage_policy ?? DEFAULT_LOCAL_STORAGE),
-      ...(await localStorageCounts(db)),
+      ...(await localStorageCounts(db, includeCompacted)),
       estimated_bytes: estimate.usage,
       browser_quota: estimate.quota,
       blocked: false,

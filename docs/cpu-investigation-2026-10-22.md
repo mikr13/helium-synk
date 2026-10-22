@@ -18,11 +18,13 @@ Empty pages now validate the epoch/cursor and finish without reading domain jour
 
 The whole background capture/network/application cycle now shares one active promise and permits at most one immediate follow-up. Durable work arriving during that follow-up remains available for the next event/alarm. Duplicate reconciliation in startup and event callbacks has been removed. Completed/cancelled restore cleanup runs separately, so it no longer depends on a full session replay on an empty pull.
 
+Release review also caught a regression in the pending compaction work: display-only compacted-record totals enumerated every operation during each capture/download capacity check. Admission now uses indexed counts and the existing size estimate; the full compaction count remains available when explicitly requesting storage status. A regression test verifies that capture/download admission never enumerates journal payloads for that statistic.
+
 ## Verification
 
 - The idle-work regression failed before the fix: six unexpected journal reads for three idle sync calls. It passes after the fix with zero domain journal reads/rebuilds.
 - Scheduler tests cover 1,000 requests during an active pass, forced retries, failure recovery, and self-generated notifications. They verify a maximum of one active pass and two immediate passes.
-- All **265 client tests** passed, including retention, erasure, recovery, and cursor/ACK failure cases.
+- All **266 client tests** passed, including retention, erasure, recovery, and cursor/ACK failure cases.
 - All **18 real-relay integration tests** passed against isolated temporary localhost servers.
 - Type checking, formatting/lint, and the production extension build passed.
 
