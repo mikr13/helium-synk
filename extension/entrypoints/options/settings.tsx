@@ -68,8 +68,10 @@ export function SettingsPage() {
 }
 
 export function RecoveryPage() {
+  const { onStatus } = useSynk();
   const { busy, error, run } = useAction();
   const [saved, setSaved] = useState('');
+  const [peerFiles, setPeerFiles] = useState<File[]>([]);
   return (
     <>
       <PageTitle
@@ -149,6 +151,81 @@ export function RecoveryPage() {
               import of a complete replica is not available yet.
             </p>
           </Disclosure>
+        </CardContent>
+      </Card>
+      <Card className="panel">
+        <CardHeader className="px-0">
+          <CardTitle>
+            <h2>Rebuild a lost server</h2>
+          </CardTitle>
+          <CardDescription>
+            Recover available synced and unsent data from this surviving profile into a new server
+            database.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 px-0">
+          <p className="fine">
+            The rebuild file includes a private connection credential. Transfer it only to your own
+            server. Other devices must join again after recovery. Add rebuild files from the other
+            surviving profiles to include changes this profile never received.
+          </p>
+          <Field>
+            <FieldLabel htmlFor="peer-recovery-files">
+              Recovery files from other surviving profiles (optional)
+            </FieldLabel>
+            <Input
+              id="peer-recovery-files"
+              type="file"
+              accept=".json,application/json"
+              multiple
+              disabled={busy}
+              onChange={(event) => setPeerFiles(Array.from(event.target.files ?? []))}
+            />
+          </Field>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  const peers = await Promise.all(
+                    peerFiles.map(async (file) => JSON.parse(await file.text()) as unknown),
+                  );
+                  const reply = await request({ type: 'relay-recovery-export', peers });
+                  if (!reply.relay_recovery) throw new Error('No rebuild file was returned.');
+                  downloadJson(reply.relay_recovery, 'helium-synk-relay-rebuild.json');
+                  setSaved(
+                    'Rebuild file saved. Follow the server recovery guide, then connect below. Keep this browser profile intact.',
+                  );
+                })
+              }
+            >
+              <Download aria-hidden="true" />
+              Save relay rebuild file
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  const reply = await request({ type: 'relay-recovery-adopt' });
+                  onStatus(reply.status);
+                  setSaved(
+                    'Rebuilt server accepted. Save a new recovery file before inviting other devices.',
+                  );
+                })
+              }
+            >
+              Connect to rebuilt server
+            </Button>
+          </div>
+          <a
+            className="text-sm text-primary underline"
+            href="https://github.com/mikr13/helium-synk/blob/main/docs/deployment.md#rebuild-from-a-surviving-client"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Server recovery guide
+          </a>
         </CardContent>
       </Card>
     </>

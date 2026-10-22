@@ -1,5 +1,22 @@
 # @helium-synk/extension
 
+## 0.5.0
+
+### Minor Changes
+
+- Add authenticated live session compaction and explicit compaction of superseded bookmark edits/moves while preserving concurrent values, deletion barriers and immutable retry receipts. Add backup-first stopped-server SQLite compaction.
+
+  Add private client replay exports, authenticated merging of surviving profiles and create-only relay reconstruction with manifest validation, fresh future-content keys, retired historical membership and explicit client adoption. Preserve acknowledged/pending work and author counters; refuse stale or mismatched recovery proposals.
+
+  Upgrade the relay before every client, and upgrade all clients before compaction. Relay schema 6 and client schema 11 preserve applied migration history. Older clients stop after incompatible compaction is used. Other profiles must join a rebuilt relay with fresh enrollment. Historical backups remain independent copies, and data or keys absent from all supplied survivors cannot be reconstructed.
+
+### Patch Changes
+
+- Avoid replaying stored sessions, bookmarks and history on empty sync pulls, and rebuild only domains changed by a downloaded page. Coalesce the full background capture/sync/application cycle so startup, native events and relay notifications cannot accumulate redundant work.
+- Updated dependencies
+- Updated dependencies
+  - @helium-synk/core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

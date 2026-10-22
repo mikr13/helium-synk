@@ -19,6 +19,18 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Rebuild from a surviving client's private replay into a NEW database. Never overwrites.
+    Rebuild {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        expected_account: String,
+    },
+    /// Reclaim SQLite free pages while stopped, after saving a verified backup.
+    Compact {
+        #[arg(long)]
+        backup: PathBuf,
+    },
     /// Check an existing snapshot read-only using the shipped SQLite.
     VerifyBackup {
         #[arg(long)]
@@ -73,6 +85,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
     let cli = Cli::parse();
+    if let Command::Rebuild {
+        input,
+        expected_account,
+    } = &cli.command
+    {
+        println!(
+            "{}",
+            synk_server::rebuild::rebuild(input, &cli.database, expected_account).await?
+        );
+        return Ok(());
+    }
     if let Command::VerifyBackup { path } = &cli.command {
         verify_backup(path).await?;
         println!("Backup integrity: ok");
@@ -80,14 +103,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(
         &cli.command,
-        Command::Backup { .. } | Command::MarkRestored { .. } | Command::OperationsReport
+        Command::Backup { .. }
+            | Command::MarkRestored { .. }
+            | Command::OperationsReport
+            | Command::Compact { .. }
     ) && !cli.database.is_file()
     {
         return Err("An existing relay database is required for backup or restore marking.".into());
     }
     let _lease = if matches!(
         &cli.command,
-        Command::Serve { .. } | Command::MarkRestored { .. }
+        Command::Serve { .. } | Command::MarkRestored { .. } | Command::Compact { .. }
     ) {
         Some(RelayLease::acquire(&cli.database)?)
     } else {
@@ -95,6 +121,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let app = App::open(&cli.database).await?;
     match cli.command {
+        Command::Rebuild { .. } => unreachable!("handled before opening the relay"),
+        Command::Compact { backup: output } => {
+            backup(&app, &output).await?;
+            verify_backup(&output).await?;
+            sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                .execute(&app.pool)
+                .await?;
+            sqlx::query("VACUUM").execute(&app.pool).await?;
+            sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                .execute(&app.pool)
+                .await?;
+            app.pool.close().await;
+            verify_backup(&cli.database).await?;
+            println!(
+                "Compaction verified. Retry identities and deletion barriers retained; backup: {}",
+                output.display()
+            );
+        }
         Command::VerifyBackup { .. } => unreachable!("handled before opening the relay"),
         Command::OperationsReport => {
             println!("{}", operations_report(&app).await?);

@@ -1,3 +1,4 @@
+import { isContentErasure, erasureTargetHeader } from './content-erasure';
 import { decryptPayload } from './crypto';
 import { KeyManager, keySnapshot } from './key-manager';
 import type { KeyTransport } from './key-state';
@@ -7,7 +8,6 @@ import { expireSessions } from './session-retention';
 import { projectSessions } from './sessions';
 import { projectBookmarks } from './bookmarks';
 import { LocalCapacityError } from './local-storage';
-import { historyErasureTargetHeader } from './history-erasure';
 import {
   HistoryPurger,
   applyHistoryErasure,
@@ -63,6 +63,8 @@ export class HttpTransport implements Transport {
       headers: {
         Authorization: `Bearer ${this.state.credentials.token}`,
         'X-Synk-History-Erasure': '1',
+        'X-Synk-Session-Erasure': '1',
+        'X-Synk-Bookmark-Compaction': '1',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -101,7 +103,14 @@ export class HttpTransport implements Transport {
     return this.request(`/v1/sync/pull?cursor=${cursor}`);
   }
   purge(request: HistoryPurgeRequest): Promise<HistoryPurgeReply> {
-    return this.request('/v1/history/purge', request);
+    return this.request(
+      request.certificate.domain === 'bookmark'
+        ? '/v1/bookmark/compact'
+        : request.certificate.domain === 'session'
+          ? '/v1/session/purge'
+          : '/v1/history/purge',
+      request,
+    );
   }
   push(envelopes: Envelope[], epoch: string): Promise<PushReply> {
     return this.request('/v1/sync/push', { envelopes, expected_epoch: epoch });
@@ -159,6 +168,24 @@ export class SyncCoordinator {
         page.next_cursor < state.cursor
       )
         throw new Error('Invalid server cursor page.');
+      if (page.records.length === 0) {
+        if (page.next_cursor !== state.cursor || page.has_more)
+          throw new Error('Server cursor skipped unprocessed records.');
+        // Idle notifications and alarms must not replay every saved session/history record.
+        // Still establish/check the epoch, including on a newly enrolled empty account.
+        await this.db.transaction('rw', this.db.state, async () => {
+          const current = (await this.db.state.get('local'))!;
+          if (current.server_epoch !== state.server_epoch)
+            throw new Error('Recovery changed the local server epoch. Retry synchronization.');
+          if (current.cursor !== state.cursor)
+            throw new Error(
+              'Local progress changed during synchronization. Retry synchronization.',
+            );
+          if (!current.server_epoch)
+            await this.db.state.update('local', { server_epoch: page.server_epoch });
+        });
+        return;
+      }
       let previous = state.cursor;
       const records: LocalRecord[] = [];
       const operations: StoredOperation[] = [];
@@ -204,7 +231,7 @@ export class SyncCoordinator {
             const { header, digest, certificate_sequence } = entry.redacted;
             validateEnvelope({ ...header, nonce: '', ciphertext: '' });
             if (
-              payload.kind !== 'history-erasure' ||
+              !isContentErasure(payload) ||
               !Number.isSafeInteger(certificate_sequence) ||
               certificate_sequence <= 0 ||
               certificate_sequence === entry.sequence
@@ -216,14 +243,14 @@ export class SyncCoordinator {
             if (
               !target ||
               target.digest !== digest ||
-              !sameHistoryHeader(header, historyErasureTargetHeader(envelope, target))
+              !sameHistoryHeader(header, erasureTargetHeader(envelope, target))
             )
               throw new Error('Certified history slot differs from its encrypted proof.');
             addOperation({ ...record, sequence: certificate_sequence, payload });
             addOperation({
               operation_id: header.operation_id,
               envelope: {
-                ...historyErasureTargetHeader(envelope, target),
+                ...erasureTargetHeader(envelope, target),
                 nonce: '',
                 ciphertext: '',
               },
@@ -267,11 +294,14 @@ export class SyncCoordinator {
             this.db.sessionClosedSeen,
           ],
           async () => {
+            const liveState = (await this.db.state.get('local'))!;
+            if (liveState.server_epoch !== state.server_epoch)
+              throw new Error('Recovery changed the local server epoch. Retry synchronization.');
             let newContent = 0,
               newBytes = 0;
             const erasedIds = new Set(
               operations.flatMap((r) =>
-                r.payload.kind === 'history-erasure'
+                isContentErasure(r.payload)
                   ? r.payload.targets.map((t) => t.receipt.operation_id)
                   : [],
               ),
@@ -281,10 +311,12 @@ export class SyncCoordinator {
               if (
                 ('redacted' in record && record.redacted) ||
                 erasedIds.has(record.operation_id) ||
-                payload.kind === 'history-erasure' ||
+                isContentErasure(payload) ||
                 (payload.kind === 'session' && payload.schema_version === 2) ||
                 (payload.kind === 'history' && payload.action.type !== 'visit') ||
-                (payload.kind === 'bookmark' && payload.action.type === 'remove')
+                (payload.kind === 'bookmark' &&
+                  payload.schema_version === 1 &&
+                  payload.action.type === 'remove')
               )
                 continue;
               if (
@@ -324,25 +356,26 @@ export class SyncCoordinator {
               await this.db.operations.put(checked);
             }
             for (const record of operations)
-              if (record.payload.kind === 'history-erasure')
+              if (isContentErasure(record.payload))
                 await applyHistoryErasure(this.db, record, redactedSequences);
-            const bookmarkOperations = await this.db.bookmarkOperations();
-            const sessionOperations = await this.db.sessionOperations();
-            const historyOperations = await this.db.historyOperations();
+            const changed = new Set(operations.map((record) => record.payload.kind));
             let projection, sessions, history;
             try {
-              projection = projectBookmarks(bookmarkOperations);
-              sessions = projectSessions(sessionOperations);
-              history = projectHistory(historyOperations);
+              if (changed.has('bookmark'))
+                projection = projectBookmarks(await this.db.bookmarkOperations());
+              if (changed.has('session'))
+                sessions = projectSessions(await this.db.sessionOperations());
+              if (changed.has('history') || changed.has('history-erasure'))
+                history = projectHistory(await this.db.historyOperations());
               await validateAuthorCounters(this.db);
             } catch (cause) {
               validationFailure =
                 cause instanceof Error ? cause : new Error('Invalid replicated journal.');
               throw validationFailure;
             }
-            await this.db.replicas.put({ domain: 'bookmark', value: projection });
-            await this.db.persistSessions(sessions);
-            await this.db.persistHistory(history);
+            if (projection) await this.db.replicas.put({ domain: 'bookmark', value: projection });
+            if (sessions) await this.db.persistSessions(sessions);
+            if (history) await this.db.persistHistory(history);
             await this.db.quarantine.bulkDelete(
               [...records, ...operations].map((r) => r.operation_id),
             );
@@ -350,8 +383,12 @@ export class SyncCoordinator {
             await this.db.state.update('local', {
               cursor: page.next_cursor,
               server_epoch: page.server_epoch,
-              logical: Math.max(current.logical ?? 0, projection.logical),
-              context: projection.frontier,
+              ...(projection
+                ? {
+                    logical: Math.max(current.logical ?? 0, projection.logical),
+                    context: projection.frontier,
+                  }
+                : {}),
             });
           },
         );
@@ -412,6 +449,7 @@ export class SyncCoordinator {
       // Bad records, network failures and epoch changes continue to stop the pass.
       if (!(cause instanceof LocalCapacityError)) throw cause;
     }
+    const syncEpoch = (await this.db.state.get('local'))!.server_epoch;
     await expireHistory(this.db);
     await expireSessions(this.db);
     const purger = transport.purge ? new HistoryPurger(this.db, transport.keys) : undefined;
@@ -457,8 +495,9 @@ export class SyncCoordinator {
       }
       await this.db.transaction(
         'rw',
-        [this.db.outbox, this.db.records, this.db.operations],
+        [this.db.state, this.db.outbox, this.db.records, this.db.operations],
         async () => {
+          checkEpoch((await this.db.state.get('local'))!, reply.server_epoch);
           for (const ack of reply.acknowledgements) {
             await this.db.records.update(ack.operation_id, { sequence: ack.sequence });
             await this.db.operations.update(ack.operation_id, { sequence: ack.sequence });
@@ -468,10 +507,15 @@ export class SyncCoordinator {
       );
     }
     await this.pull(transport);
+    await this.db.pruneSessionRestores();
     if (purger && (await purger.remaining()))
       throw new Error('New history erasure remains. Sync again to continue.');
     if (await this.db.pendingCount())
       throw new Error('More pending work remains. Sync again to continue.');
-    await this.db.state.update('local', { last_synced: new Date().toISOString() });
+    await this.db.transaction('rw', this.db.state, async () => {
+      if ((await this.db.state.get('local'))!.server_epoch !== syncEpoch)
+        throw new Error('Recovery changed the local server epoch. Retry synchronization.');
+      await this.db.state.update('local', { last_synced: new Date().toISOString() });
+    });
   }
 }

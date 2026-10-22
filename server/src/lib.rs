@@ -3,6 +3,7 @@ mod hardening;
 pub mod history_erasure;
 mod keys;
 mod pairing;
+pub mod rebuild;
 pub mod recovery;
 pub use hardening::Limits;
 
@@ -28,7 +29,7 @@ use sqlx::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, broadcast, watch};
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u8 = 5;
+const SCHEMA_VERSION: u8 = 6;
 const MAX_BATCH: usize = 100;
 const MAX_PAGE_BYTES: usize = 512 * 1024;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
@@ -288,6 +289,7 @@ pub fn router(app: App) -> Router {
         .route("/v1/events", get(events))
         .route("/v1/sync/ack", post(hardening::acknowledge))
         .route("/v1/status", get(hardening::status))
+        .route("/v1/recovery/state", get(rebuild::state))
         .route("/v1/pairing/invites", post(pairing::invite))
         .route("/v1/pairing/register", post(pairing::register))
         .route("/v1/keys/identity", post(keys::identity))
@@ -295,6 +297,8 @@ pub fn router(app: App) -> Router {
         .route("/v1/keys/rotate", post(keys::rotate))
         .route("/v1/sync/rekey-check", post(keys::rekey_check))
         .route("/v1/history/purge", post(history_erasure::purge))
+        .route("/v1/session/purge", post(history_erasure::purge))
+        .route("/v1/bookmark/compact", post(history_erasure::purge))
         .layer(DefaultBodyLimit::max(1_048_576))
         .layer(axum::middleware::from_fn_with_state(
             app.clone(),

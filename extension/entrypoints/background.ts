@@ -10,6 +10,9 @@ import {
   KeyManager,
   HttpTransport,
   exportRecovery,
+  exportRelayRecovery,
+  compactBookmarks,
+  adoptRelayRecovery,
   enrollRecovery,
   SyncCoordinator,
   BookmarkAdapter,
@@ -27,6 +30,7 @@ import type { Reply, Request, Status } from '@/lib/messages';
 import { bookmarkBrowser } from '@/lib/bookmark-browser';
 import { historyBrowser } from '@/lib/history-browser';
 import { sessionBrowser, restoreBrowser, nativeTab, nativeWindow } from '@/lib/session-browser';
+import { syncRunner } from '@/lib/sync-runner';
 
 export default defineBackground(() => {
   const db = new SynkDatabase();
@@ -53,7 +57,7 @@ export default defineBackground(() => {
   let retryAt = 0;
   let failures = 0;
 
-  async function sync(force = false): Promise<void> {
+  const sync = syncRunner(async (force) => {
     if (!force && Date.now() < retryAt) return;
     if (!(await db.state.get('local'))) return;
     await reconcileBookmarks();
@@ -76,7 +80,7 @@ export default defineBackground(() => {
       retryAt =
         Date.now() + Math.min(120_000, 1_000 * 2 ** failures) * (0.75 + Math.random() * 0.5);
     }
-  }
+  });
   async function connect(): Promise<void> {
     if (socket && socket.readyState !== WebSocket.CLOSED) return;
     const local = await db.state.get('local');
@@ -220,6 +224,15 @@ export default defineBackground(() => {
         void sync(true);
         return { ok: true, status: await status() };
       }
+      if (request.type === 'bookmark-compact') {
+        for (let pass = 0; pass < 20; pass++) {
+          const compacted = await compactBookmarks(db);
+          await coordinator.sync();
+          if (!compacted) break;
+        }
+        await sync(true);
+        return { ok: true, status: await status() };
+      }
       if (request.type === 'storage-set') {
         await db.setStoragePolicy(request.policy);
         void sync(true);
@@ -334,6 +347,15 @@ export default defineBackground(() => {
       }
       if (request.type === 'session-cancel') {
         await restorer.cancel(request.id);
+        return { ok: true, status: await status() };
+      }
+      if (request.type === 'relay-recovery-export')
+        return { ok: true, relay_recovery: await exportRelayRecovery(db, request.peers) };
+      if (request.type === 'relay-recovery-adopt') {
+        await adoptRelayRecovery(db);
+        socket?.close();
+        await sync(true);
+        await connect();
         return { ok: true, status: await status() };
       }
       if (request.type === 'export') return { ok: true, replica: await db.exportReplica() };
@@ -528,7 +550,7 @@ export default defineBackground(() => {
           () => {
             sessionTimer = undefined;
             firstSessionEvent = 0;
-            void reconcileSessions().then(() => sync(true));
+            void sync(true);
           },
           Math.min(2_000, Math.max(0, firstSessionEvent + 5_000 - now)),
         );
@@ -604,7 +626,7 @@ export default defineBackground(() => {
           () => {
             bookmarkTimer = undefined;
             firstBookmarkEvent = 0;
-            void reconcileBookmarks().then(() => sync(true));
+            void sync(true);
           },
           Math.min(300, Math.max(0, firstBookmarkEvent + 2_000 - now)),
         );
@@ -629,7 +651,7 @@ export default defineBackground(() => {
     captured({ type: 'reordered', id, childIds: reordered.childIds }),
   );
   browser.bookmarks.onImportEnded.addListener(() => {
-    void reconcileBookmarks().then(() => sync(true));
+    void sync(true);
   });
 
   // Register synchronously, before any database/network initialization.
@@ -655,9 +677,6 @@ export default defineBackground(() => {
 
   async function start(): Promise<void> {
     await browser.alarms.create('reconcile', { periodInMinutes: 0.5 });
-    await reconcileBookmarks();
-    await reconcileSessions();
-    await reconcileHistory();
     void resumeRestores();
     await connect();
     await sync();

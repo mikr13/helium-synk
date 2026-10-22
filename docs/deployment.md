@@ -66,4 +66,38 @@ sqlite3 /private/restore/relay.sqlite 'SELECT server_epoch FROM settings WHERE i
 /absolute/path/synk-server --database /private/restore/relay.sqlite serve --port 4399
 ```
 
-Marking changes epoch, resets delivery progress and invalidates invitations. Clients stop and preserve state. Do not reconnect daily-use clients until missing operations, deletions, membership and key generations are reconciled. Automatic older-backup/server-loss reconstruction remains unfinished; never reset clients to bypass guards.
+Marking changes epoch, resets delivery progress and invalidates invitations. Clients stop and preserve state. Do not reconnect daily-use clients until missing operations, deletions, membership and key generations are reconciled. For missing acknowledged data or server disk loss, use the client replay rebuild below. It deliberately creates a new database instead of replaying over a potentially stale membership/key registry. Never reset clients to bypass guards.
+
+## Storage compaction
+
+Before upgrading, save a verified relay snapshot and preserve the existing browser profiles/recovery keys. Upgrade the relay before all clients. Older binaries must not open a migrated database; review rollback using an isolated pre-migration snapshot, never by restoring over a running account. Session retention compacts expired live ciphertext automatically. **Settings → Local storage → Compact old bookmark versions** explicitly compacts superseded synced edits/moves/reorders in bounded batches; save a local data backup first. Current values, concurrent alternatives, births, deletions, pending work and immutable retry receipts remain. Repeat the action for more than 2,000 candidates. Once used, incompatible clients stop with an upgrade-required response.
+
+SQLite reuses freed pages. To return free pages to the filesystem, stop the owning relay/helper and use a new private backup filename:
+
+```sh
+/absolute/path/synk-server --database /private/data/relay.sqlite compact --backup /private/backups/before-compaction.sqlite
+```
+
+The process lease rejects a serving database. Backup creation and integrity verification precede VACUUM; an existing backup filename is rejected. Integrity is checked again afterward. Keep the backup for rollback. Space for both the backup and SQLite’s rebuild is required. Neither this command nor content expiry securely erases filesystem snapshots or historical backups.
+
+## Rebuild from a surviving client
+
+Use this for server disk loss or an older backup missing acknowledged work. Keep the original server stopped, preserve every surviving browser profile and save current private recovery/local-data exports before recovery. Use the surviving profile with the most current complete key ring as the authority; finish/review any pending key rotation first. A stale profile cannot manufacture a content key it never received.
+
+1. On other surviving profiles, open **Settings → Recovery & backups → Rebuild a lost server → Save relay rebuild file**. Keep these private; each contains that installation’s connection credential and encrypted replay.
+2. On the authority profile, select those files in the optional peer-files field, then save its combined rebuild file. Client-side authentication and operation/counter validation run before the proposal is saved. Resolve quarantined data first. Unchanged exports retry the same proposal; export again after new acknowledged data to refresh it. Keep this exact authority profile intact: its new future-content key is stored locally, never in the server file.
+3. Transfer the authority file privately to the server. Build into a **new** path with the expected original account UUID from the file:
+
+   ```sh
+   /absolute/path/synk-server --database /private/recovery/rebuilt.sqlite rebuild --input /private/transfer/helium-synk-relay-rebuild.json --expected-account ORIGINAL-ACCOUNT-UUID
+   /absolute/path/synk-server verify-backup --path /private/recovery/rebuilt.sqlite
+   ```
+
+   Reconstruction uses a staging database, validates the manifest and certified receipt references, preserves author counters/operation identities and verifies integrity before publication. It refuses any existing destination. The only active credential is the authority’s existing credential; historical authors are retained as revoked provenance. Previously revoked access is never restored. The replay includes source-owned pending work and supplied peer operations; data absent from all supplied copies is not recovered. The CLI bounds input to 2 GiB and 1,000,000 entries, preserves the 256-author maximum, and raises default account budgets only as needed to admit the validated replay.
+
+4. Start only the rebuilt database behind the authority profile’s existing private endpoint. Preserve the old database and service configuration for rollback. On the native Mac installation, stop the owning helper before an operator-reviewed path/configuration cutover; do not overwrite a running account database or reset Tailscale routes. The CLI verifies a stopped/new database; automated GUI cutover and physical installation acceptance are separate.
+5. On the authority profile choose **Connect to rebuilt server**. The authenticated receipt must match the saved recovery ID, account, manifest, future epoch and source. Adoption atomically resets delivery progress, retains author counters/native mappings/pending work and installs the new root. Old-epoch synchronization stays blocked until this action. If newer acknowledged data appeared after the file was saved, re-export and rebuild into another new path; do not bypass the check.
+6. Wait for **Connected** and an empty pending queue. Check bookmarks, sessions and history, save a fresh private recovery file and a verified relay snapshot, then issue new invitations for other profiles. Use fresh enrolled profiles/installation credentials; retain old profiles/exports until their recovered work has been checked. Old credentials are rejected and future content uses a fresh independent key. Original browser data and old downloaded copies are not remotely erased.
+7. Remove private transfer copies once recovery and independent backups are verified. Never restart the old relay concurrently with the rebuilt one. Before adoption, rollback is simply returning to the untouched original server. After adoption, preserve both states and reconcile explicitly; pointing the adopted client at an old epoch fails closed rather than rolling back keys/counters.
+
+This is explicit reconstruction from available client data, not unattended failover. A recovery-key file plus an incomplete old server backup cannot recreate records that exist in no surviving data copy.

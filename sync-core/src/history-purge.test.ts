@@ -475,3 +475,155 @@ it('retains encrypted intent and old ciphertext when the server epoch changes', 
   expect(await f.b.historyPurgePending.get(pending.operation_id)).toEqual(pending);
   expect((await f.b.operations.get(f.id))!.envelope.ciphertext).not.toBe('');
 });
+
+it('compacts expired multipart sessions across lost replies and restart; fresh and stale replicas retain no expired ciphertext', async () => {
+  const f = await setup();
+  const { sessionWindow } = await import('../../tests/session-fixtures');
+  const window = sessionWindow();
+  for (const tab of window.tabs) tab.title = 'Session content '.repeat(1000);
+
+  const old = await f.a.stageSession({
+    kind: 'closed',
+    captured_at: new Date(0).toISOString(),
+    windows: [window],
+  });
+  const current = await f.a.stageSession({
+    kind: 'current',
+    captured_at: new Date().toISOString(),
+    windows: [sessionWindow()],
+  });
+  await f.sync(f.a);
+  await f.sync(f.b);
+  const originals = await f.a.operations
+    .where('envelope.domain')
+    .equals('session')
+    .filter(
+      (r) =>
+        r.payload.kind === 'session' &&
+        r.payload.schema_version === 1 &&
+        r.payload.snapshot_id === old,
+    )
+    .toArray();
+  expect(originals.length).toBeGreaterThan(1);
+  await f.a.setSessionRetention({
+    enabled: true,
+    days: 1,
+    max_archives: 100,
+    max_bytes: 50 * 1024 * 1024,
+  });
+  f.relay.loseReply = true;
+  await expect(f.sync(f.a)).rejects.toThrow('Lost purge reply');
+  const intent = (await f.a.historyPurgePending.toArray())[0]!;
+  expect(intent.request.certificate.domain).toBe('session');
+  f.a.close();
+  await f.a.open();
+  await f.sync(f.a);
+  await f.sync(f.b);
+  const fresh = await f.device();
+  await f.sync(fresh);
+  for (const db of [f.a, f.b, fresh]) {
+    expect((await db.sessionProjection()).snapshots[old]).toBeUndefined();
+    expect((await db.sessionProjection()).snapshots[current]).toBeDefined();
+    for (const original of originals) {
+      const receipt = (await db.operations.get(original.operation_id))!;
+      expect(receipt.redacted?.digest).toBe(await envelopeDigest(original.envelope));
+      expect(receipt.envelope.ciphertext).toBe('');
+      expect(receipt.payload).not.toHaveProperty('data');
+    }
+    expect(await db.historyPurgePending.count()).toBe(0);
+  }
+  const request = f.relay.requests.find((r) => r.certificate.domain === 'session')!;
+  const reply = await f.relay.purge(request);
+  expect(reply.certificate_sequence).toBeGreaterThan(0);
+  expect((await f.a.storageStatus()).compacted_records).toBe(originals.length);
+});
+
+it('rejects a forged session compaction receipt before advancing or destroying a stale replica', async () => {
+  const f = await setup();
+  const { sessionWindow } = await import('../../tests/session-fixtures');
+  await f.a.stageSession({
+    kind: 'closed',
+    captured_at: new Date(0).toISOString(),
+    windows: [sessionWindow()],
+  });
+  await f.sync(f.a);
+  await f.sync(f.b);
+  await f.a.setSessionRetention({
+    enabled: true,
+    days: 1,
+    max_archives: 100,
+    max_bytes: 50 * 1024 * 1024,
+  });
+  await f.sync(f.a);
+  const target = f.relay.rows.find(
+    (r) => 'redacted' in r && r.redacted.header.domain === 'session',
+  ) as RedactedHistoryEntry;
+  target.redacted.digest = '0'.repeat(64);
+  const fresh = await f.device();
+  await expect(f.sync(fresh)).rejects.toThrow('differs from its encrypted proof');
+  expect((await fresh.state.get('local'))!.cursor).toBe(0);
+  expect(await fresh.quarantine.count()).toBe(1);
+});
+
+it('bookmark compaction retains concurrent values, deletion barriers, late edits and byte-identical retries after bootstrap', async () => {
+  const f = await setup();
+  const { compactBookmarks } = await import('./bookmark-compaction');
+  const { BOOKMARK_ROOTS } = await import('./bookmarks');
+  const node = crypto.randomUUID();
+  await f.a.stageBookmark({
+    type: 'create',
+    node_id: node,
+    node_type: 'bookmark',
+    title: 'Birth',
+    url: 'https://bookmarks.example',
+    placement: { parent: BOOKMARK_ROOTS.other, position: '0/1' },
+  });
+  await f.sync(f.a);
+  await f.sync(f.b);
+  const obsolete = await f.a.queueBookmark({
+    type: 'edit',
+    node_id: node,
+    title: 'Intermediate'.repeat(1000),
+  });
+  await f.sync(f.a);
+  await f.sync(f.b);
+  const oldEnvelope = (await f.a.operations.get(obsolete))!.envelope;
+  await f.a.queueBookmark({ type: 'edit', node_id: node, title: 'Authority latest' });
+  await f.b.queueBookmark({ type: 'edit', node_id: node, title: 'Concurrent value' });
+  await f.sync(f.a);
+  await f.sync(f.b);
+  await f.sync(f.a);
+  const before = await f.a.bookmarkProjection();
+  expect(before.conflicts.some((c) => c.node_id === node && c.field === 'title')).toBe(true);
+  expect(await compactBookmarks(f.a)).toBe(1);
+  await f.sync(f.a);
+  f.a.close();
+  await f.a.open();
+  await f.sync(f.b);
+  const fresh = await f.device();
+  await f.sync(fresh);
+  for (const db of [f.a, f.b, fresh]) {
+    const after = await db.bookmarkProjection();
+    expect(after.nodes).toEqual(before.nodes);
+    expect(after.deleted).toEqual(before.deleted);
+    expect(after.conflicts).toEqual(before.conflicts);
+    expect((await db.operations.get(obsolete))!.redacted?.digest).toBe(
+      await envelopeDigest(oldEnvelope),
+    );
+    expect((await db.operations.get(obsolete))!.envelope.ciphertext).toBe('');
+    expect((await db.operations.get(obsolete))!.payload).not.toHaveProperty('action');
+  }
+  expect(await compactBookmarks(f.a)).toBe(0);
+  await f.relay.push([oldEnvelope]);
+  await f.sync(f.a);
+  expect((await f.a.operations.get(obsolete))!.envelope.ciphertext).toBe('');
+  await fresh.queueBookmark({ type: 'edit', node_id: node, title: 'After bootstrap' });
+  await f.sync(fresh);
+  await f.sync(f.a);
+  expect((await f.a.bookmarkProjection()).nodes[node]!.title).toBe('After bootstrap');
+  await f.a.queueBookmark({ type: 'remove', node_id: node, observed_descendants: [] });
+  await f.sync(f.a);
+  await f.sync(f.b);
+  expect((await f.b.bookmarkProjection()).nodes[node]).toBeUndefined();
+  expect((await f.b.bookmarkProjection()).deleted[node]).toBeDefined();
+});

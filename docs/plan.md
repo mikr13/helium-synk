@@ -1,6 +1,6 @@
 # Helium Synk release checklist
 
-Updated 2026-10-14. This is the single project checklist. Checked items have recorded evidence; unchecked work is not claimed as tested. Technical contracts are in [architecture.md](architecture.md), user instructions in [setup-guide.md](setup-guide.md), and operations in [deployment.md](deployment.md).
+Updated 2026-10-20. This is the single project checklist. Checked items have recorded evidence; unchecked work is not claimed as tested. Technical contracts are in [architecture.md](architecture.md), user instructions in [setup-guide.md](setup-guide.md), and operations in [deployment.md](deployment.md).
 
 ## Release boundary
 
@@ -13,7 +13,7 @@ Version 0.2.0 has recorded automated and native acceptance evidence. A reference
 - [x] **1. Scope and compatibility.** Opt-in bookmarks, current/closed/previous sessions and searchable history; source-owned sessions and explicit restoration. Manifest Chromium floor 134; native baseline Helium 0.18.2.1 / Chromium 154.0.8037.92. Older versions have not been validated.
 - [x] **2. Durable offline state.** IndexedDB journal, drafts/outbox, immutable retries, atomic incoming cursor/projection and independent native application/restoration progress. Tested short outages and database/worker reopening preserve pending work. Storage limits pause capture without discarding queued work.
 - [x] **3. Encryption and keys.** Authenticated AES-GCM envelopes, installation/domain keys, stable history index key, hashed relay credentials and private recovery export. Profile secrets and decrypted caches are not encrypted at rest by the extension.
-- [x] **4. Relay and transport.** Rust/Axum/SQLite, bounded authenticated push/pull, idempotent ACKs, WebSocket hints, durable processed cursors, epoch guards, quotas, graceful shutdown and consistent snapshots. Protocol 1 / relay schema 5 / client schema 10.
+- [x] **4. Relay and transport.** Rust/Axum/SQLite, bounded authenticated push/pull, idempotent ACKs, WebSocket hints, durable processed cursors, epoch guards, quotas, graceful shutdown and consistent snapshots. Original baseline: protocol 1 / relay schema 5 / client schema 10. Version 0.5.0 storage/recovery uses relay schema 6 / client schema 11.
 - [x] **5. Bookmarks.** Preview and backup before opt-in, causal field/placement merges, tombstones, recovered children, capture and journaled browser effects. Native create/reverse rename and empty-folder cross-root cut/paste + Undo passed.
 - [x] **6. Sessions.** Current/closed/previous snapshots, encrypted multipart transport, source revision ordering, durable capture and explicit restore jobs. Native pins/groups/closed capture, 24-tab restore and ordinary three-window restore passed.
 - [x] **7. History.** Original-time capture/import/search, source filters, exclusions, logical deletion, authenticated live ciphertext purge and source-owned expiry. One selected test visit's removal converged without deleting native browser history or neighboring visits.
@@ -104,15 +104,43 @@ Use the [runbook](deployment.md) for concrete commands. Deployment checks must b
 
 These remain unverified or unimplemented. They are follow-ups, not passed release claims.
 
-- [ ] Authenticated session ciphertext purge, total disk/journal bounds, general quarantine/unresolved/shared history-copy cleanup and deletion propagation into historical backups.
-- [ ] Older-backup/server-disk-loss acknowledged-operation replay and safe reconciliation of deletions, membership and key generations. Existing guards retain client state but do not reconstruct a lost relay.
+- [x] Implement authenticated session ciphertext compaction, explicit superseded bookmark-version compaction, immutable retry/counter receipts and backup-first offline SQLite VACUUM. Retain unrelated unresolved/quarantined work and existing byte/journal budget guards.
+- [ ] Physical disk-full/large-journal acceptance, additional shared-copy cleanup policy and deletion propagation into historical backups. Compaction does not establish secure erasure or a physical disk-space guarantee.
+- [x] Implement explicit older-backup/server-loss reconstruction from one or multiple surviving client replay files into a separate verified database. Preserve acknowledged/pending operations and authenticated deletion receipts, retire old membership, rotate future keys and require matching client adoption without resetting author counters.
+- [ ] Physical/native recovery acceptance and an operator-reviewed production cutover. Missing data/keys absent from every supplied survivor cannot be reconstructed.
 - [ ] Native fresh-author recovery/removal/key rotation and additional onboarding interruptions.
 - [ ] Native bookmark child preservation, true drag/order/delete, concurrent/offline conflicts, duplicates, managed/ambiguous roots and interrupted remote application.
 - [ ] Native history source/global/URL clears, delayed replay, exclusions/private/permission/clock edges and enabled expiry.
 - [ ] Forced interruption of large restores, abrupt browser shutdown, DevTools-closed alarms, termination between native mutation and journal commit, and hours-long concurrent outages/reconnects.
 - [ ] Large-journal/history/session performance, quota/eviction/physical disk-full and backup-failure exercises.
-- [ ] Store/unpacked migration and actual browser-upgrade preservation, older-browser validation and supported journal compaction/stale-client rebootstrap. Workflow implementation does not establish store acceptance.
+- [ ] Store/unpacked migration and actual browser-upgrade preservation, older-browser validation and broader native stale-client/bootstrap acceptance. Receipt-preserving compaction keeps old delivery slots and supports automated late/fresh-client replay without an offline-age cutoff. Workflow implementation does not establish store acceptance.
 - [ ] Optional iCloud/CloudKit/alternate transport research, outside phase one.
+
+## Storage and recovery implementation checkpoint (0.5.0)
+
+- [x] Implement relay schema 6 and IndexedDB schema 11 without modifying applied migrations, account identities or author counters.
+- [x] Add storage/recovery controls, protocol capability gates, private replay exports/peer merge, manifest/receipt validation and create-only staged reconstruction.
+- [x] Cover expired multipart sessions, bookmark conflicts/late edits, immutable retries, stale/fresh bootstrap, lost replies, corrupt receipts, transaction rollback and stale recovery proposals in automated tests.
+- [x] Exercise the real relay with key rotation/revocation, merged peer pending work, old-backup preservation, new database integrity, explicit adoption, fresh enrollment and stopped-server VACUUM.
+- [x] Final checks pass: `CI=true pnpm exec vp run check` (259 unit tests, format/lint/types and WXT production build); `pnpm exec vp run check:server` (Clippy and 47 Rust tests); `CI=true pnpm exec vp run test:integration` (18 real-relay tests); `pnpm exec vp run check:macos` (22 native tests, 10 Python packaging/updater tests and design-token checks); version alignment and `git diff --check`. All fixtures use isolated data; this does not establish a physical browser recovery or production cutover.
+- [ ] Install/release or migrate production data only through a separately authorized deployment.
+
+### 0.5.0 CPU fix and release validation
+
+- [x] Avoid journal replay on empty pulls and rebuild only domains changed by a downloaded page. Coalesce the full background capture/network/application cycle and preserve restore cleanup independently of replay. See [the CPU investigation](cpu-investigation-2026-10-22.md).
+- [x] Run the 0.5.0 release gates: 265 client tests with format/lint/types and production build; 47 Rust tests and Clippy; 18 real-relay integration tests; native Swift and 10 Python packaging/update tests; 17 release-tooling tests; schema/version metadata and diff checks.
+- [ ] Verify published signed/notarized 0.5.0 artifacts, store status and local migration after separately authorized release/install. Automated tests do not establish physical browser CPU acceptance.
+
+## Fast follow-up: desktop Chromium support
+
+Parked as the fast follow-up after the storage compaction and server-loss recovery implementation. Reuse the current core and relay; expand the supported-browser claim only after native evidence.
+
+- [ ] Add capability detection for bookmark roots, tab groups and session APIs; disable unsupported features without breaking other collections.
+- [ ] Verify Chrome, Edge and Brave with disposable profiles, including coexistence with built-in bookmark sync and managed/account roots.
+- [ ] Verify mixed-browser bookmarks, history, session restoration, offline replay, deletion and browser-upgrade preservation against Helium.
+- [ ] Add clear browser/profile/device labels and publish the tested browser/version/platform matrix.
+- [ ] Evaluate Vivaldi and other Chromium browsers after the first matrix passes; record limitations for browser-specific workspaces and tab layouts.
+- [ ] Update onboarding, documentation and store copy for supported desktop Chromium browsers while preserving extension identities, stored keys and protocol identifiers.
 
 Update this checklist at each checkpoint with commands, results and material limits. Record a future requested commit's hash after its checks pass. Keep unknowns unchecked and use this single progress checklist.
 

@@ -26,3 +26,7 @@ export * from './key-crypto';
 export * from './key-state';
 export * from './key-manager';
 export * from './recovery';
+
+export * from './relay-recovery';
+
+export * from './bookmark-compaction';

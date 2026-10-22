@@ -1,15 +1,13 @@
 import Dexie from 'dexie';
+import { eraseBookmarkOperation } from './bookmarks';
+import { erasureTargetHeader, isContentErasure, type ContentErasure } from './content-erasure';
+import { isErasedSessionPart, eraseSessionPart, projectSessions } from './sessions';
 import type { SynkDatabase, StoredOperation } from './database';
 import { encryptPayload } from './crypto';
 import { keySnapshot } from './key-manager';
 import type { KeyTransport } from './key-state';
 import { eraseHistoryVisit, isErasedHistoryOperation, projectHistory } from './history';
-import {
-  historyErasureTargetHeader,
-  sameHistoryReceipt,
-  validateHistoryErasure,
-  type HistoryErasure,
-} from './history-erasure';
+import { sameHistoryReceipt, type HistoryErasure } from './history-erasure';
 import { MAX_PLAINTEXT_BYTES, validatePayload } from './payload';
 import {
   envelopeDigest,
@@ -34,6 +32,9 @@ export function historyPurgeTables(db: SynkDatabase) {
     db.historyReplicas,
     db.historyVisits,
     ...db.historyCaptureTables(),
+    db.sessionReplicas,
+    db.sessionRestores,
+    db.sessionClosedSeen,
   ];
 }
 export function sameHistoryHeader(
@@ -74,8 +75,8 @@ export async function preserveHistoryIdentity(
     return next;
   }
   if (
-    existing.payload.kind !== 'history' ||
-    next.payload.kind !== 'history' ||
+    existing.payload.kind !== next.payload.kind ||
+    !['history', 'session', 'bookmark'].includes(next.payload.kind) ||
     !sameHistoryHeader(existing.envelope, next.envelope)
   )
     throw new Error('History erasure header conflicts.');
@@ -83,12 +84,25 @@ export async function preserveHistoryIdentity(
   const b = next.redacted?.digest ?? (await Dexie.waitFor(envelopeDigest(next.envelope)));
   if (a !== b) throw new Error('History erasure digest conflicts with original ciphertext.');
   const receipt = (record: StoredOperation) => {
+    if (record.payload.kind === 'bookmark') {
+      if (record.payload.schema_version === 0) return record.payload;
+      if (record.payload.schema_version === 1) return eraseBookmarkOperation(record.payload);
+    }
+    if (isErasedSessionPart(record.payload)) return record.payload;
+    if (record.payload.kind === 'session' && record.payload.schema_version === 1)
+      return eraseSessionPart(record.payload);
     if (isErasedHistoryOperation(record.payload)) return record.payload;
     if (record.payload.kind === 'history' && record.payload.action.type === 'visit')
       return eraseHistoryVisit(record.payload);
     throw new Error('History erasure target is not a visit.');
   };
-  if (!sameHistoryReceipt(receipt(existing), receipt(next)))
+  const aReceipt = receipt(existing),
+    bReceipt = receipt(next);
+  if (
+    aReceipt.kind === 'history' && bReceipt.kind === 'history'
+      ? !sameHistoryReceipt(aReceipt, bReceipt)
+      : JSON.stringify(aReceipt) !== JSON.stringify(bReceipt)
+  )
     throw new Error('History erasure receipt conflicts.');
   return next.redacted ? next : { ...existing, sequence: next.sequence ?? existing.sequence };
 }
@@ -116,8 +130,7 @@ export async function applyHistoryErasure(
   record: StoredOperation,
   sequences = new Map<string, number>(),
 ): Promise<void> {
-  if (record.payload.kind !== 'history-erasure')
-    throw new Error('Expected an erasure certificate.');
+  if (!isContentErasure(record.payload)) throw new Error('Expected an erasure certificate.');
   validatePayload(record.payload, record.envelope);
   if (!validSequence(record.sequence)) throw new Error('History certificate is not committed.');
   const certificate = record.payload;
@@ -131,13 +144,13 @@ export async function applyHistoryErasure(
           !pending.request.targets.some(
             (saved) =>
               saved.digest === target.digest &&
-              sameHistoryHeader(saved.header, historyErasureTargetHeader(record.envelope, target)),
+              sameHistoryHeader(saved.header, erasureTargetHeader(record.envelope, target)),
           ),
       ))
   )
     throw new Error('Committed certificate differs from saved purge intent.');
   for (const target of certificate.targets) {
-    const header = historyErasureTargetHeader(record.envelope, target);
+    const header = erasureTargetHeader(record.envelope, target);
     if (
       (await db.historyErasedDrafts.get(header.operation_id)) ||
       (await db.drafts.get(header.operation_id))
@@ -173,20 +186,41 @@ export class HistoryPurger {
     private keys?: KeyTransport,
   ) {}
   async remaining(): Promise<boolean> {
+    const local = await this.db.state.get('local');
     return !!(await this.db.operations
-      .where('envelope.domain')
-      .equals('history')
-      .filter((record) => isErasedHistoryOperation(record.payload) && !record.redacted)
+      .filter(
+        (r) =>
+          !r.redacted &&
+          (isErasedHistoryOperation(r.payload) ||
+            (isErasedSessionPart(r.payload) &&
+              r.payload.source_id === local?.credentials.device_id &&
+              r.sequence !== undefined)),
+      )
       .first());
   }
   /** Reserve counter, content-free proof and target claims before asynchronous encryption. */
   async prepare(): Promise<boolean> {
-    const candidates = await this.db.operations
+    const local = (await this.db.state.get('local'))!;
+    let candidates = await this.db.operations
       .where('envelope.domain')
       .equals('history')
-      .filter((record) => isErasedHistoryOperation(record.payload) && !record.redacted)
+      .filter((r) => isErasedHistoryOperation(r.payload) && !r.redacted)
       .limit(100)
       .toArray();
+    const session = !candidates.length;
+    if (session)
+      candidates = await this.db.operations
+        .where('envelope.domain')
+        .equals('session')
+        .filter(
+          (r) =>
+            isErasedSessionPart(r.payload) &&
+            !r.redacted &&
+            r.sequence !== undefined &&
+            r.payload.source_id === local.credentials.device_id,
+        )
+        .limit(100)
+        .toArray();
     const prepared: { record: StoredOperation; digest: string }[] = [];
     for (const record of candidates)
       if (!(await this.db.historyPurgeClaims.get(record.operation_id)))
@@ -199,7 +233,7 @@ export class HistoryPurger {
         throw new Error('Establish the server epoch before erasure.');
       if (local.next_counter >= Number.MAX_SAFE_INTEGER)
         throw new Error('Device counter exhausted.');
-      const certificate: HistoryErasure = {
+      const history: HistoryErasure = {
         kind: 'history-erasure',
         schema_version: 1,
         operation_id: crypto.randomUUID(),
@@ -215,12 +249,24 @@ export class HistoryPurger {
         },
         targets: [],
       };
+      const certificate: ContentErasure = session
+        ? {
+            kind: 'session',
+            schema_version: 3,
+            operation_id: history.operation_id,
+            source_id: local.credentials.device_id,
+            source_revision: local.next_counter,
+            targets: [],
+          }
+        : history;
       for (const candidate of prepared) {
         const saved = await this.db.operations.get(candidate.record.operation_id);
         if (
           !saved ||
           saved.redacted ||
-          !isErasedHistoryOperation(saved.payload) ||
+          !(session
+            ? isErasedSessionPart(saved.payload)
+            : isErasedHistoryOperation(saved.payload)) ||
           (await this.db.historyPurgeClaims.get(saved.operation_id))
         )
           continue;
@@ -230,9 +276,11 @@ export class HistoryPurger {
           digest: candidate.digest,
           key_epoch: saved.envelope.key_epoch,
         };
-        certificate.targets.push(next);
+        (certificate.targets as (typeof next)[]).push(next);
         if (
-          new Set(certificate.targets.map((target) => target.receipt.action.visit.id)).size > 80 ||
+          (!session &&
+            new Set((certificate as HistoryErasure).targets.map((t) => t.receipt.action.visit.id))
+              .size > 80) ||
           new TextEncoder().encode(JSON.stringify(certificate)).byteLength > MAX_PLAINTEXT_BYTES
         ) {
           certificate.targets.pop();
@@ -249,8 +297,8 @@ export class HistoryPurger {
         operation_id: certificate.operation_id,
         account_id: local.credentials.account_id,
         device_id: local.credentials.device_id,
-        counter: certificate.revision.counter,
-        domain: 'history-erasure' as const,
+        counter: local.next_counter,
+        domain: certificate.kind,
         key_epoch: local.key_epoch ?? 1,
       };
       validatePayload(certificate, header);
@@ -268,7 +316,7 @@ export class HistoryPurger {
       );
       await this.db.state.update('local', {
         next_counter: local.next_counter + 1,
-        history_logical: certificate.revision.logical,
+        history_logical: history.revision.logical,
       });
       await this.db.persistHistory(projectHistory(await this.db.historyOperations()));
       return true;
@@ -306,7 +354,7 @@ export class HistoryPurger {
     const record = await this.db.operations.get(old.operation_id);
     if (
       !record ||
-      record.payload.kind !== 'history-erasure' ||
+      !isContentErasure(record.payload) ||
       record.sequence !== undefined ||
       !sameEnvelope(record.envelope, old)
     )
@@ -383,12 +431,13 @@ export class HistoryPurger {
         const stored = (await this.db.operations.get(pending!.operation_id))!;
         if (!sameEnvelope(stored.envelope, pending!.request.certificate))
           throw new Error('Saved certificate changed.');
-        validateHistoryErasure(stored.payload as HistoryErasure);
+        validatePayload(stored.payload as ContentErasure, stored.envelope);
         const committed = { ...stored, sequence: reply.certificate_sequence };
         await this.db.operations.put(await preserveHistoryIdentity(this.db, committed));
         await applyHistoryErasure(this.db, committed, sequences);
         await validateAuthorCounters(this.db);
         await this.db.persistHistory(projectHistory(await this.db.historyOperations()));
+        await this.db.persistSessions(projectSessions(await this.db.sessionOperations()));
       });
     }
     if (await this.db.historyPurgePending.count())

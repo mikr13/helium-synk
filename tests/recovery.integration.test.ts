@@ -1,10 +1,23 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { expect, it } from 'vite-plus/test';
 import {
+  compactBookmarks,
+  exportRelayRecovery,
+  adoptRelayRecovery,
+  exportRecovery,
+  enrollRecovery,
   SynkDatabase,
   SyncCoordinator,
   HttpTransport,
@@ -172,6 +185,7 @@ it('online CLI backup includes WAL; an older marked restore preserves client key
     await sync(b);
     const manager = new KeyManager(a, new HttpTransport((await a.state.get('local'))!).keys);
     await manager.stageRotation([]);
+    await expect(exportRelayRecovery(a)).rejects.toThrow('saved key rotation');
     await manager.completeRotation();
     await sync(b);
     expect((await b.state.get('local'))!.key_epoch).toBe(2);
@@ -265,6 +279,266 @@ it('a lost relay creates a separate account and rejected old credentials leave s
     expect(await db.keySecrets.get('keys')).toEqual(keys);
     expect(await db.records.get(accepted)).toBeDefined();
     expect(await db.outbox.get(queued)).toBeDefined();
+  } finally {
+    await h.cleanup();
+  }
+});
+
+it('rebuilds a lost relay from multiple surviving profiles without resurrecting history/sessions or old access; compaction preserves exact retry identities', async () => {
+  const h = await harness();
+  try {
+    const a = await h.local('Rebuild A'),
+      b = await h.local('Rebuild B'),
+      revoked = await h.local('Removed profile');
+    await h.start();
+    for (const db of [a, b, revoked]) await sync(db);
+    const initial = (await a.state.get('local'))!;
+    const staleBackup = join(h.directory, 'older-backup.sqlite');
+    h.cli('backup', '--output', staleBackup);
+    const staleBytes = readFileSync(staleBackup);
+    const manager = new KeyManager(a, new HttpTransport(initial).keys);
+    await manager.stageRotation([(await revoked.state.get('local'))!.credentials.device_id]);
+    await expect(exportRelayRecovery(a)).rejects.toThrow('saved key rotation');
+    await manager.completeRotation();
+    await sync(b);
+    const current = (await a.state.get('local'))!;
+    expect(current.key_epoch).toBe(2);
+    const incarnation = crypto.randomUUID(),
+      visited_at = Date.now() - 1000;
+    const visitId = historyVisitId(
+      current.credentials.device_id,
+      incarnation,
+      'rebuild',
+      visited_at,
+    );
+    const historyId = await a.stageHistory({
+      type: 'visit',
+      visit: {
+        id: visitId,
+        source_id: current.credentials.device_id,
+        source_name: 'Rebuild A',
+        incarnation,
+        native_id: 'rebuild',
+        visited_at,
+        url: 'https://rebuild.example/erase',
+        title: 'Must stay erased',
+        url_tag: await historyUrlTag(
+          await a.ensureHistoryIndexKey(),
+          'https://rebuild.example/erase',
+        ),
+        generation: {},
+      },
+    });
+    const oldSession = await a.stageSession({
+      kind: 'closed',
+      captured_at: new Date(Date.now() - 100 * 86_400_000).toISOString(),
+      windows: [sessionWindow()],
+    });
+    const liveSession = await a.stageSession({
+      kind: 'current',
+      captured_at: new Date().toISOString(),
+      windows: [sessionWindow()],
+    });
+    await sync(a);
+    const bookmark = crypto.randomUUID();
+    await a.queueBookmark({
+      type: 'create',
+      node_id: bookmark,
+      node_type: 'bookmark',
+      title: 'Initial',
+      url: 'https://rebuild.example/bookmark',
+      placement: { parent: BOOKMARK_ROOTS.bar, position: '0/1' },
+    });
+    await sync(a);
+    const oldEdit = await a.queueBookmark({
+      type: 'edit',
+      node_id: bookmark,
+      title: 'Old version'.repeat(1000),
+    });
+    await sync(a);
+    await a.queueBookmark({ type: 'edit', node_id: bookmark, title: 'Retained version' });
+    await sync(a);
+    const oldEditEnvelope = (await a.operations.get(oldEdit))!.envelope;
+    expect(await compactBookmarks(a)).toBe(1);
+    await sync(a);
+    expect((await a.operations.get(oldEdit))!.redacted).toBeDefined();
+    await new HttpTransport((await a.state.get('local'))!).push(
+      [oldEditEnvelope],
+      current.server_epoch!,
+    );
+    const originalPart = structuredClone(
+      (await a.operations
+        .where('envelope.domain')
+        .equals('session')
+        .filter(
+          (r) =>
+            r.payload.kind === 'session' &&
+            r.payload.schema_version === 1 &&
+            r.payload.snapshot_id === oldSession,
+        )
+        .first())!.envelope,
+    );
+    await a.stageHistory({ type: 'delete', visit_ids: [visitId] });
+    await a.setSessionRetention({
+      enabled: true,
+      days: 30,
+      max_archives: 100,
+      max_bytes: 50 * 1024 * 1024,
+    });
+    await sync(a);
+    await sync(b);
+    expect((await a.operations.get(historyId))!.redacted).toBeDefined();
+    expect((await a.operations.get(originalPart.operation_id))!.redacted).toBeDefined();
+    expect((await a.operations.get(originalPart.operation_id))!.envelope.ciphertext).toBe('');
+    const compactedBytes = Number(h.sql('SELECT journal_bytes FROM settings WHERE id=1;'));
+    const retry = await new HttpTransport((await a.state.get('local'))!).push(
+      [originalPart],
+      current.server_epoch!,
+    );
+    expect(retry.acknowledgements[0]!.operation_id).toBe(originalPart.operation_id);
+    expect(Number(h.sql('SELECT journal_bytes FROM settings WHERE id=1;'))).toBe(compactedBytes);
+    const oldClient = await fetch(`${h.origin}/v1/sync/pull?cursor=0`, {
+      headers: {
+        Authorization: `Bearer ${current.credentials.token}`,
+        'X-Synk-History-Erasure': '1',
+      },
+    });
+    expect(oldClient.status).toBe(426);
+    expect(() =>
+      h.cli('compact', '--backup', join(h.directory, 'online-compact.sqlite')),
+    ).toThrow();
+    await h.stop();
+    const acknowledged = await a.queueDiagnostic('Queued on authority after relay loss');
+    const peerPending = await b.queueDiagnostic('Queued only on the other surviving profile');
+    await b.stageHistory({ type: 'clear', scope: 'all' });
+    const lateIncarnation = crypto.randomUUID(),
+      lateTime = Date.now();
+    const staleVisitId = historyVisitId(
+      current.credentials.device_id,
+      lateIncarnation,
+      'late',
+      lateTime,
+    );
+    const staleOperation = await a.stageHistory({
+      type: 'visit',
+      visit: {
+        id: staleVisitId,
+        source_id: current.credentials.device_id,
+        source_name: 'Rebuild A',
+        incarnation: lateIncarnation,
+        native_id: 'late',
+        visited_at: lateTime,
+        url: 'https://rebuild.example/stale-offline',
+        title: 'Suppressed by unseen clear',
+        url_tag: await historyUrlTag(
+          await a.ensureHistoryIndexKey(),
+          'https://rebuild.example/stale-offline',
+        ),
+        generation: {},
+      },
+    });
+    const peer = await exportRelayRecovery(b);
+    const bundle = await exportRelayRecovery(a, [peer]);
+    expect(await exportRelayRecovery(a)).toEqual(bundle);
+    expect(JSON.stringify(bundle)).not.toContain(current.recovery_key);
+    expect(bundle.entries.some((r) => r.envelope.operation_id === peerPending)).toBe(true);
+    const afterExport = await a.queueDiagnostic('Captured after recovery-file transfer');
+    const input = join(h.directory, 'rebuild.json');
+    writeFileSync(input, JSON.stringify(bundle), { mode: 0o600 });
+    const rebuilt = join(h.directory, 'rebuilt.sqlite');
+    const binary = resolve('target/debug/synk-server');
+    const build = (output: string, file = input, account = bundle.account_id) =>
+      execFileSync(
+        binary,
+        ['--database', output, 'rebuild', '--input', file, '--expected-account', account],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+    expect(() => build(staleBackup)).toThrow();
+    expect(() => build(rebuilt, input, crypto.randomUUID())).toThrow();
+    expect(existsSync(rebuilt)).toBe(false);
+    const orphaned = join(h.directory, 'orphaned.sqlite');
+    writeFileSync(orphaned + '-wal', 'preserved orphaned WAL');
+    expect(() => build(orphaned)).toThrow();
+    expect(readFileSync(orphaned + '-wal', 'utf8')).toBe('preserved orphaned WAL');
+    expect(existsSync(orphaned)).toBe(false);
+    const tampered = join(h.directory, 'tampered.json');
+    writeFileSync(tampered, JSON.stringify({ ...bundle, manifest_digest: '0'.repeat(64) }));
+    expect(() => build(rebuilt, tampered)).toThrow();
+    expect(existsSync(rebuilt)).toBe(false);
+    expect(build(rebuilt)).toContain('"active_installations":1');
+    expect(statSync(rebuilt).mode & 0o777).toBe(0o600);
+    expect(readFileSync(staleBackup)).toEqual(staleBytes);
+    const saved = await a.exportReplica();
+    await expect(
+      adoptRelayRecovery(a, {
+        account_id: bundle.account_id,
+        server_epoch: crypto.randomUUID(),
+        recovery_id: bundle.recovery_id,
+        key_epoch: bundle.key_epoch,
+        manifest_digest: bundle.manifest_digest,
+        source_id: bundle.source.device_id,
+      }),
+    ).rejects.toThrow('does not match');
+    expect(await a.exportReplica()).toEqual(saved);
+    h.removeDatabase();
+    copyFileSync(rebuilt, h.database);
+    await h.start();
+    await expect(sync(a)).rejects.toThrow(); // No implicit epoch reset.
+    await adoptRelayRecovery(a);
+    await sync(a);
+    await adoptRelayRecovery(a); // Lost completion reply / repeated click.
+    const recovered = (await a.state.get('local'))!;
+    expect(recovered.key_epoch).toBe(3);
+    expect(recovered.next_counter).toBeGreaterThanOrEqual(current.next_counter);
+    expect((await a.sessionProjection()).snapshots[oldSession]).toBeUndefined();
+    expect((await a.sessionProjection()).snapshots[liveSession]).toBeDefined();
+    expect(await a.historyVisits.get(visitId)).toBeUndefined();
+    expect(await a.records.get(acknowledged)).toBeDefined();
+    expect(await a.records.get(peerPending)).toBeDefined();
+    expect((await a.records.get(afterExport))!.envelope.key_epoch).toBe(3);
+    expect(await a.historyVisits.get(staleVisitId)).toBeUndefined();
+    expect((await a.operations.get(staleOperation))!.redacted).toBeDefined();
+    expect(await a.pendingCount()).toBe(0);
+    await expect(sync(b)).rejects.toThrow('Device credentials were rejected');
+    await expect(sync(revoked)).rejects.toThrow('Device credentials were rejected');
+    expect(h.sql('SELECT COUNT(*) FROM devices WHERE revoked=0;')).toBe('1');
+    const credentialFile = join(h.directory, 'new-peer.json');
+    h.cli(
+      'issue-device',
+      '--name',
+      'Fresh recovery peer',
+      '--server-url',
+      h.origin,
+      '--output',
+      credentialFile,
+    );
+    const fresh = new SynkDatabase(`rebuilt-fresh-${crypto.randomUUID()}`);
+    h.locals.push(fresh);
+    await enrollRecovery(
+      fresh,
+      JSON.parse(readFileSync(credentialFile, 'utf8')),
+      await exportRecovery(a),
+    );
+    await sync(fresh);
+    expect(await fresh.historyVisits.get(visitId)).toBeUndefined();
+    expect((await fresh.sessionProjection()).snapshots[oldSession]).toBeUndefined();
+    expect((await fresh.sessionProjection()).snapshots[liveSession]).toBeDefined();
+    expect(await fresh.records.get(peerPending)).toBeDefined();
+    expect((await fresh.bookmarkProjection()).nodes[bookmark]!.title).toBe('Retained version');
+    expect((await fresh.operations.get(oldEdit))!.envelope.ciphertext).toBe('');
+    await h.stop();
+    const rows = h.sql(
+      'SELECT operation_id,envelope,purged FROM operations ORDER BY operation_id;',
+    );
+    h.cli('compact', '--backup', join(h.directory, 'pre-compact.sqlite'));
+    expect(
+      h.sql('SELECT operation_id,envelope,purged FROM operations ORDER BY operation_id;'),
+    ).toBe(rows);
+    expect(h.sql('PRAGMA integrity_check;')).toBe('ok');
+    expect(readFileSync(staleBackup)).toEqual(staleBytes);
+    await h.start();
+    await sync(a);
+    expect(await a.pendingCount()).toBe(0);
   } finally {
     await h.cleanup();
   }

@@ -1,4 +1,9 @@
-import { validateBookmarkOperation, type BookmarkOperation } from './bookmarks';
+import {
+  validateBookmarkOperation,
+  validateBookmarkCompaction,
+  type BookmarkOperation,
+  type BookmarkCompaction,
+} from './bookmarks';
 import { validateSessionOperation, type SessionOperation } from './sessions';
 import { validateHistoryOperation, type HistoryOperation } from './history';
 import { validateHistoryErasure, type HistoryErasure } from './history-erasure';
@@ -6,6 +11,7 @@ import type { Diagnostic, Envelope } from './protocol';
 export type Payload =
   | Diagnostic
   | BookmarkOperation
+  | BookmarkCompaction
   | SessionOperation
   | HistoryOperation
   | HistoryErasure;
@@ -25,6 +31,8 @@ export function validatePayload(payload: Payload, header: EnvelopeHeader): void 
       throw new Error('Invalid diagnostic payload.');
   } else if (payload.kind === 'session') {
     validateSessionOperation(payload);
+    if (payload.schema_version === 3 && payload.targets.some((t) => t.key_epoch > header.key_epoch))
+      throw new Error('Session compaction refers to a newer content epoch.');
     if (
       payload.operation_id !== header.operation_id ||
       payload.source_id !== header.device_id ||
@@ -37,7 +45,11 @@ export function validatePayload(payload: Payload, header: EnvelopeHeader): void 
       if (payload.targets.some((target) => target.key_epoch > header.key_epoch))
         throw new Error('History erasure refers to a newer content epoch.');
     } else if (payload.kind === 'history') validateHistoryOperation(payload);
-    else validateBookmarkOperation(payload);
+    else if (payload.schema_version === 2) {
+      validateBookmarkCompaction(payload);
+      if (payload.targets.some((t) => t.key_epoch > header.key_epoch))
+        throw new Error('Bookmark compaction refers to a newer content epoch.');
+    } else validateBookmarkOperation(payload);
     if (
       payload.operation_id !== header.operation_id ||
       payload.revision.author !== header.device_id ||

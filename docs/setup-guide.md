@@ -53,6 +53,7 @@ Keep recovery keys private, separate from relay snapshots. Save recovery again a
 - Offline: check Tailscale, server awake/login and `/health/ready`; choose **Sync now**.
 - Missing collection: enable it and check filters.
 - Wrong account or epoch: pause capture and preserve data/queues. Renaming or resetting does not fix enrollment.
+- Lost server or older backup missing work: preserve all profiles and use [relay rebuild from surviving clients](deployment.md#rebuild-from-a-surviving-client).
 - No connected device: current recovery file plus a freshly issued connection file; see [recovery](deployment.md#backup-and-recovery).
 
 [Update](deployment.md#updates-and-publishing) in the same extension folder with **Reload**. Never remove/reinstall or clear enrolled storage to update.

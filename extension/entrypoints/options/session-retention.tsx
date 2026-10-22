@@ -119,9 +119,9 @@ export function SessionRetentionControls({
           <Alert>
             <AlertDescription>
               Update every connected profile before enabling expiry. This removes archived content
-              from Synk’s saved collections; encrypted relay copies and existing exports/backups
-              remain. The content limit is not a disk-space limit. Turning expiry off cannot restore
-              expired archives.
+              from Synk’s saved collections. Synk then compacts live encrypted copies into
+              content-free receipts. Existing exports/backups remain. The content limit is not a
+              disk-space limit. Turning expiry off cannot restore expired archives.
             </AlertDescription>
           </Alert>
           {error && (

@@ -21,6 +21,7 @@ export function StoragePanel({
   const storage = status.storage;
   const [bytes, setBytes] = useState(String((storage?.policy.max_bytes ?? 512 * MiB) / MiB));
   const [pending, setPending] = useState(String(storage?.policy.max_pending ?? 100_000));
+  const [compacting, setCompacting] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -56,6 +57,8 @@ export function StoragePanel({
           <dd>
             {storage.pending.toLocaleString()} / {storage.policy.max_pending.toLocaleString()}
           </dd>
+          <dt>Compacted content receipts</dt>
+          <dd>{(storage.compacted_records ?? 0).toLocaleString()}</dd>
           <dt>Journal records</dt>
           <dd>
             {storage.journal_records.toLocaleString()} /{' '}
@@ -65,6 +68,41 @@ export function StoragePanel({
         {storage.warning && (
           <Alert className="notice mt-4" role="status">
             <AlertDescription>{storage.warning}</AlertDescription>
+          </Alert>
+        )}
+        <Disclosure title="Compact old bookmark versions">
+          <p className="fine">
+            Remove superseded synced edits and moves. Current bookmarks, concurrent alternatives,
+            deletion barriers and pending changes stay intact. Older compacted values will no longer
+            be available for recovery; save a local data backup first. Update every connected
+            profile before using this action.
+          </p>
+          <Button
+            variant="outline"
+            disabled={compacting}
+            onClick={async () => {
+              setCompacting(true);
+              setError('');
+              try {
+                const reply = await request({ type: 'bookmark-compact' });
+                if (reply.status) onStatus(reply.status);
+              } catch (cause) {
+                setError(
+                  cause instanceof Error
+                    ? cause.message
+                    : 'Unable to compact bookmarks. Saved work was retained.',
+                );
+              } finally {
+                setCompacting(false);
+              }
+            }}
+          >
+            {compacting ? 'Compacting…' : 'Compact synced bookmark versions'}
+          </Button>
+        </Disclosure>
+        {error && (
+          <Alert variant="destructive" role="alert">
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
         <Disclosure title="Storage limits" className="mt-4">
@@ -121,11 +159,6 @@ export function StoragePanel({
                 At the limit, new collection pauses. Sync retries and deletion continue. Increasing
                 a limit does not create free disk space.
               </p>
-              {error && (
-                <Alert variant="destructive" role="alert">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
               <Button className="w-fit max-w-full" type="submit" disabled={saving}>
                 {saving ? 'Saving…' : 'Save limits'}
               </Button>

@@ -25,6 +25,7 @@ export interface LocalStorageStatus {
   capture_tasks: number;
   pending: number;
   journal_records: number;
+  compacted_records?: number;
   blocked: boolean;
   warning?: string;
 }
@@ -80,6 +81,7 @@ export async function localStorageCounts(db: SynkDatabase) {
     capture_tasks,
     pending: queued_operations + capture_tasks,
     journal_records,
+    compacted_records: await db.operations.filter((r) => !!r.redacted).count(),
   };
 }
 export class LocalCapacityError extends Error {

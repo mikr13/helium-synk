@@ -12,6 +12,7 @@ import type {
   PairingBundle,
   pairingSummary,
   RecoveryBundle,
+  RelayRecoveryBundle,
   LocalStoragePolicy,
   LocalStorageStatus,
   HistoryRetentionPolicy,
@@ -20,6 +21,7 @@ import type {
 
 export type Request =
   | { type: 'status' }
+  | { type: 'bookmark-compact' }
   | { type: 'storage-set'; policy: LocalStoragePolicy }
   | { type: 'history-retention-set'; policy: HistoryRetentionPolicy }
   | { type: 'session-retention-set'; policy: SessionRetentionPolicy }
@@ -48,6 +50,8 @@ export type Request =
   | { type: 'sync' }
   | { type: 'recovery' }
   | { type: 'export' }
+  | { type: 'relay-recovery-export'; peers?: unknown[] }
+  | { type: 'relay-recovery-adopt' }
   | { type: 'bookmark-roots' }
   | { type: 'bookmark-preview'; roots?: RootSelection }
   | { type: 'bookmark-confirm'; id: string }
@@ -118,6 +122,7 @@ export type Reply =
       ok: true;
       status?: Status;
       recovery?: RecoveryBundle;
+      relay_recovery?: RelayRecoveryBundle;
       pairing?: PairingBundle;
       keys?: KeySummary;
       replica?: unknown;

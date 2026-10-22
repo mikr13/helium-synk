@@ -44,6 +44,73 @@ export interface BookmarkOperation {
   revision: Revision;
   action: BookmarkAction;
 }
+export interface BookmarkReceipt {
+  kind: 'bookmark';
+  schema_version: 0;
+  operation_id: string;
+  revision: Revision;
+}
+export interface BookmarkCompaction {
+  kind: 'bookmark';
+  schema_version: 2;
+  operation_id: string;
+  revision: Revision;
+  targets: { receipt: BookmarkReceipt; digest: string; key_epoch: number }[];
+}
+export type BookmarkJournalOperation = BookmarkOperation | BookmarkReceipt | BookmarkCompaction;
+export function eraseBookmarkOperation(op: BookmarkOperation): BookmarkReceipt {
+  return {
+    kind: 'bookmark',
+    schema_version: 0,
+    operation_id: op.operation_id,
+    revision: op.revision,
+  };
+}
+export function validateBookmarkReceipt(p: BookmarkReceipt): void {
+  if (
+    !p ||
+    p.kind !== 'bookmark' ||
+    p.schema_version !== 0 ||
+    !canonicalUuid(p.operation_id) ||
+    Object.keys(p).length !== 4
+  )
+    throw new Error('Invalid compacted bookmark receipt.');
+  validateRevision(p.revision);
+}
+export function validateBookmarkCompaction(p: BookmarkCompaction): void {
+  if (
+    !p ||
+    p.kind !== 'bookmark' ||
+    p.schema_version !== 2 ||
+    !canonicalUuid(p.operation_id) ||
+    Object.keys(p).length !== 5 ||
+    !Array.isArray(p.targets) ||
+    !p.targets.length ||
+    p.targets.length > 100
+  )
+    throw new Error('Invalid bookmark compaction proof.');
+  validateRevision(p.revision);
+  const ids = new Set<string>();
+  for (const target of p.targets) {
+    validateBookmarkReceipt(target.receipt);
+    const r = target.receipt;
+    if (
+      Object.keys(target).length !== 3 ||
+      !/^[a-f0-9]{64}$/.test(target.digest) ||
+      !Number.isInteger(target.key_epoch) ||
+      target.key_epoch < 1 ||
+      target.key_epoch > 255 ||
+      ids.has(r.operation_id) ||
+      r.operation_id === p.operation_id ||
+      r.revision.logical >= p.revision.logical ||
+      (r.revision.author === p.revision.author
+        ? r.revision.counter >= p.revision.counter
+        : (p.revision.context[r.revision.author] ?? 0) < r.revision.counter)
+    )
+      throw new Error('Invalid bookmark compaction target.');
+    ids.add(r.operation_id);
+  }
+}
 export interface BookmarkNode {
   id: string;
   type: BookmarkType;
@@ -175,10 +242,22 @@ function system(id: string, name: string, parent: string, position: Position): B
   };
 }
 /** Replay the immutable journal; results depend only on its operation set, never delivery order/time. */
-export function projectBookmarks(input: readonly BookmarkOperation[]): BookmarkProjection {
-  const byId = new Map<string, BookmarkOperation>();
-  for (const op of input) {
-    validateBookmarkOperation(op);
+export function projectBookmarks(input: readonly BookmarkJournalOperation[]): BookmarkProjection {
+  const receipts = new Map<string, BookmarkReceipt>();
+  for (const op of input)
+    if (op.schema_version === 2) {
+      validateBookmarkCompaction(op);
+      for (const target of op.targets) receipts.set(target.receipt.operation_id, target.receipt);
+    }
+  const byId = new Map<string, BookmarkJournalOperation>();
+  for (const original of [...input, ...receipts.values()]) {
+    const receipt = receipts.get(original.operation_id);
+    if (receipt && JSON.stringify(receipt.revision) !== JSON.stringify(original.revision))
+      throw new Error('Compacted bookmark revision conflicts with original identity.');
+    const op = receipt ?? original;
+    if (op.schema_version === 0) validateBookmarkReceipt(op);
+    else if (op.schema_version === 2) validateBookmarkCompaction(op);
+    else validateBookmarkOperation(op);
     const old = byId.get(op.operation_id);
     if (old && JSON.stringify(old) !== JSON.stringify(op))
       throw new Error('Bookmark operation identity was reused.');
@@ -197,6 +276,7 @@ export function projectBookmarks(input: readonly BookmarkOperation[]): BookmarkP
   for (const op of operations) {
     frontier[op.revision.author] = Math.max(frontier[op.revision.author] ?? 0, op.revision.counter);
     logical = Math.max(logical, op.revision.logical);
+    if (op.schema_version !== 1) continue;
     const action = op.action;
     if (action.type === 'create') {
       const e = get(action.node_id);
@@ -381,15 +461,16 @@ export function restoreBookmark(
   };
 }
 
-/** Every prior value remains in the immutable journal, even after a conflict is resolved. */
+/** Retained historical values remain recoverable until explicit acknowledged-version compaction. */
 export function bookmarkRecoveryVersions(
-  input: readonly BookmarkOperation[],
+  input: readonly BookmarkJournalOperation[],
   nodeId: string,
   field: 'title' | 'url' | 'placement',
 ): Versioned<unknown>[] {
   identity(nodeId);
   const values = new Map<string, Versioned<unknown>>();
   for (const op of input) {
+    if (op.schema_version !== 1) continue;
     validateBookmarkOperation(op);
     const action = op.action;
     let value: unknown;

@@ -106,8 +106,8 @@ const metadata = {
   versions: { extension: extension.version, server: server.version, vite_plus: '1.0.0' },
   target: extensionOnly ? 'chrome-mv3' : `${process.platform}-${process.arch}`,
   protocol: 1,
-  relay_schema: 5,
-  client_schema: 10,
+  relay_schema: 6,
+  client_schema: 11,
   node: process.version,
   sqlite_libraries:
     !extensionOnly && process.platform === 'darwin'
