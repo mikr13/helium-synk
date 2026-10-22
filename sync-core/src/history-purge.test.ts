@@ -157,6 +157,107 @@ async function suppressed() {
   await f.b.stageHistory({ type: 'delete', visit_ids: [f.v.id] });
   return f;
 }
+it('does not deserialize ordinary journal content during idle sync with deletion transport enabled', async () => {
+  const f = await setup();
+  const { sessionWindow } = await import('../../tests/session-fixtures');
+  await f.a.stageSession({
+    kind: 'current',
+    captured_at: new Date().toISOString(),
+    windows: [sessionWindow()],
+  });
+  await f.sync(f.a);
+  f.a.close();
+  let operationValuesRead = 0;
+  f.a.use({
+    stack: 'dbcore',
+    name: 'count-operation-content-reads',
+    create: (down) => ({
+      ...down,
+      table(name) {
+        const table = down.table(name);
+        if (name !== 'operations') return table;
+        return {
+          ...table,
+          async query(request) {
+            const reply = await table.query(request);
+            if (request.values) operationValuesRead += reply.result.length;
+            return reply;
+          },
+          async openCursor(request) {
+            const cursor = await table.openCursor(request);
+            return (
+              cursor &&
+              new Proxy(cursor, {
+                get(target, property) {
+                  if (property === 'value') operationValuesRead++;
+                  const value = Reflect.get(target, property);
+                  return typeof value === 'function' ? value.bind(target) : value;
+                },
+              })
+            );
+          },
+        };
+      },
+    }),
+  });
+  await f.a.open();
+  await f.sync(f.a);
+  expect(operationValuesRead).toBe(0);
+});
+it('backfills the sparse cleanup index from schema 11 while preserving every original operation field', async () => {
+  const f = await suppressed();
+  const erased = (await f.b.operations.get(f.id))!;
+  const normal = (await f.a.operations.get(f.id))!;
+  const redacted = {
+    ...erased,
+    operation_id: crypto.randomUUID(),
+    redacted: { digest: 'digest', certificate_operation_id: crypto.randomUUID() },
+  };
+  const originals = [erased, { ...normal, operation_id: crypto.randomUUID() }, redacted].map(
+    ({ purge_state: _index, ...record }) => record,
+  );
+  const name = `legacy-purge-${crypto.randomUUID()}`;
+  const legacy = new Dexie(name);
+  legacy
+    .version(11)
+    .stores({ operations: 'operation_id, sequence, envelope.domain, envelope.device_id' });
+  await legacy.table('operations').bulkAdd(originals);
+  legacy.close();
+  const migrated = new SynkDatabase(name);
+  databases.push(migrated);
+  await migrated.open();
+  for (const original of originals) {
+    const { purge_state: _index, ...record } = (await migrated.operations.get(
+      original.operation_id,
+    ))!;
+    expect(record).toEqual(original);
+  }
+  expect(await migrated.operations.where('purge_state').equals('history').primaryKeys()).toEqual([
+    erased.operation_id,
+  ]);
+  expect(await migrated.operations.where('purge_state').equals('redacted').primaryKeys()).toEqual([
+    redacted.operation_id,
+  ]);
+});
+it('updates cleanup indexes across erasure, acknowledgement, redaction and complete replacement', async () => {
+  const f = await suppressed();
+  const normal = (await f.a.operations.get(f.id))!;
+  const erased = (await f.b.operations.get(f.id))!;
+  expect(await f.a.operations.orderBy('purge_state').count()).toBe(0);
+  await f.a.operations.update(f.id, { payload: erased.payload });
+  expect(await f.a.operations.where('purge_state').equals('history').count()).toBe(1);
+  await f.a.operations.update(f.id, { sequence: 123 });
+  expect(await f.a.operations.where('purge_state').equals('history').count()).toBe(1);
+  await f.a.operations.update(f.id, {
+    redacted: { digest: 'digest', certificate_operation_id: crypto.randomUUID() },
+  });
+  expect(await f.a.operations.where('purge_state').equals('history').count()).toBe(0);
+  expect((await f.a.storageStatus()).compacted_records).toBe(1);
+  expect(JSON.stringify(await f.a.exportReplica())).not.toContain('purge_state');
+  await f.a.operations.put(normal);
+  expect(await f.a.operations.orderBy('purge_state').count()).toBe(0);
+  expect((await f.a.storageStatus()).compacted_records).toBe(0);
+});
 it('saves content-free claims and counter before encryption, then exact ciphertext/intent across reopening', async () => {
   const f = await suppressed(),
     purger = new HistoryPurger(f.b);

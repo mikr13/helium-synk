@@ -188,6 +188,8 @@ export class HistoryPurger {
   async remaining(): Promise<boolean> {
     const local = await this.db.state.get('local');
     return !!(await this.db.operations
+      .where('purge_state')
+      .anyOf('history', 'session')
       .filter(
         (r) =>
           !r.redacted &&
@@ -202,7 +204,7 @@ export class HistoryPurger {
   async prepare(): Promise<boolean> {
     const local = (await this.db.state.get('local'))!;
     let candidates = await this.db.operations
-      .where('envelope.domain')
+      .where('purge_state')
       .equals('history')
       .filter((r) => isErasedHistoryOperation(r.payload) && !r.redacted)
       .limit(100)
@@ -210,7 +212,7 @@ export class HistoryPurger {
     const session = !candidates.length;
     if (session)
       candidates = await this.db.operations
-        .where('envelope.domain')
+        .where('purge_state')
         .equals('session')
         .filter(
           (r) =>

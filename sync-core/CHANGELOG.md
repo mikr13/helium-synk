@@ -1,5 +1,11 @@
 # @helium-synk/core
 
+## 0.5.1
+
+### Patch Changes
+
+- Use a sparse IndexedDB cleanup index so ordinary syncs and storage status do not scan saved session/history content to find deletion work. Schema 12 backfills only derived local metadata; authenticated payloads, keys, credentials and relay schema 6 stay unchanged. Existing browser profiles migrate in place; keep a cold profile backup before upgrading.
+
 ## 0.5.0
 
 ### Minor Changes

@@ -50,6 +50,7 @@ import {
 import {
   projectHistory,
   eraseHistoryVisit,
+  isErasedHistoryOperation,
   type ErasedHistoryOperation,
   type HistoryJournalOperation,
   validHistoryVisitId,
@@ -141,6 +142,14 @@ export interface StoredOperation {
   sequence?: number;
   /** Original cipher is gone; envelope is its header with empty nonce/ciphertext. */
   redacted?: { digest: string; certificate_operation_id: string };
+  /** Derived local index only; never part of an authenticated payload or envelope. */
+  purge_state?: 'history' | 'session' | 'redacted';
+}
+function purgeState(record: Pick<StoredOperation, 'payload' | 'redacted'>) {
+  if (record.redacted) return 'redacted' as const;
+  if (isErasedHistoryOperation(record.payload)) return 'history' as const;
+  if (isErasedSessionPart(record.payload)) return 'session' as const;
+  return undefined;
 }
 export interface DraftOperation {
   operation_id: string;
@@ -299,6 +308,33 @@ export class SynkDatabase extends Dexie {
       historyPurgeClaims: 'operation_id, certificate_operation_id',
     });
     this.version(11).stores({ relayRecoveryPending: 'id' });
+    this.version(12)
+      .stores({
+        operations: 'operation_id, sequence, envelope.domain, envelope.device_id, purge_state',
+      })
+      .upgrade((tx) =>
+        tx
+          .table('operations')
+          .toCollection()
+          .modify((record: StoredOperation) => {
+            const domain = purgeState(record);
+            if (domain) record.purge_state = domain;
+            else delete record.purge_state;
+          }),
+      );
+    // Keep the sparse index correct for every insertion, replacement, erasure and ACK.
+    this.operations.hook('creating', (_key, record) => {
+      record.purge_state = purgeState(record);
+    });
+    this.operations.hook('updating', (changes, _key, record) => {
+      let next = { payload: record.payload, redacted: record.redacted };
+      const relevant = Object.entries(changes).filter(([key]) =>
+        /^(payload|redacted)(\.|$)/.test(key),
+      );
+      if (relevant.some(([key]) => key.includes('.'))) next = structuredClone(next);
+      for (const [key, value] of relevant) Dexie.setByKeyPath(next, key, value);
+      return { purge_state: purgeState(next) };
+    });
   }
   async enroll(
     credentials: Credentials,
@@ -952,8 +988,7 @@ export class SynkDatabase extends Dexie {
   }
   /** Caller includes budget tables; only new collection is admitted here, never retries/erasure. */
   async assertCaptureCapacity(additional = 1, bytes = 0): Promise<void> {
-    // Display-only compaction totals require scanning ciphertext-bearing rows. Admission
-    // runs for every native event and needs only the database's indexed counts/size estimate.
+    // Admission runs for every native event and needs only budget counts/size estimates.
     const status = await localStorageStatus(this, await this.storageMeter.read(), false);
     const reason = capacityReason(status, additional, bytes);
     if (reason) throw new LocalCapacityError(reason);
@@ -1127,7 +1162,9 @@ export class SynkDatabase extends Dexie {
           device_id: credentials.device_id,
           progress,
           records: await this.records.toArray(),
-          operations: await this.operations.toArray(),
+          operations: (await this.operations.toArray()).map(
+            ({ purge_state: _localIndex, ...record }) => record,
+          ),
           drafts: await this.drafts.toArray(),
           outbox: await this.outbox.toArray(),
           replicas: await this.replicas.toArray(),

@@ -33,3 +33,11 @@ A temporary synthetic benchmark compared the original checked-in coordinator wit
 ## Acceptance boundary
 
 The automated checks and synthetic benchmark do not establish live browser CPU acceptance. Verify idle CPU and browsing/catch-up behavior after installing the corrected extension. Real session changes still validate/replay the session journal; incremental projection and history retention are separate performance/storage decisions. Preserve enrolled profiles and verify backups before upgrades.
+
+## Live 0.5.0 follow-up
+
+A verified Store 0.5.0 installation still showed substantial idle worker CPU. Its shipped code matched the published ZIP. A live pause caught IndexedDB cursor work; the deletion transport performed full session-content scans in `HistoryPurger.prepare()` and repeated whole-journal scans in `remaining()`, even without any erased records. The earlier benchmark explicitly omitted this transport and therefore missed the cost.
+
+Version 0.5.1 introduces a sparse `purge_state` index in IndexedDB schema 12. It backfills derived metadata from existing records and keeps it current through operation create/update hooks. Deletion candidate queries touch only suppression receipts; completed-redaction counts also use the index. Payloads, envelopes, keys, credentials and relay schema 6 remain unchanged.
+
+The full idle coordinator regression enables deletion transport and measures journal value reads: it failed with eight ordinary-record reads in a small fixture and passes with zero. Migration tests preserve every pre-existing operation field and cover erasure, ACK, redaction, replacement and the existing compaction/recovery scenarios. A temporary fake-IndexedDB benchmark with 2,897 session records and empty pull plus deletion transport measured **2,666 ms before** and **2.7 ms after**. It excludes HTTP, native capture and key APIs, and is not a live browser CPU result. Live acceptance must be repeated after Store 0.5.1 installation.

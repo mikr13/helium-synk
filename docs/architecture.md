@@ -1,6 +1,6 @@
 # Architecture
 
-WXT/React client, durable IndexedDB, private Rust/Axum/SQLite relay. Protocol 1; client schema 11; relay schema 6.
+WXT/React client, durable IndexedDB, private Rust/Axum/SQLite relay. Protocol 1; client schema 12; relay schema 6.
 
 Progress and gaps: [plan.md](plan.md). Setup: [setup-guide.md](setup-guide.md). Hosting: [deployment.md](deployment.md).
 

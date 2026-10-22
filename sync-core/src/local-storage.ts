@@ -82,7 +82,7 @@ export async function localStorageCounts(db: SynkDatabase, includeCompacted = tr
     pending: queued_operations + capture_tasks,
     journal_records,
     ...(includeCompacted
-      ? { compacted_records: await db.operations.filter((r) => !!r.redacted).count() }
+      ? { compacted_records: await db.operations.where('purge_state').equals('redacted').count() }
       : {}),
   };
 }
