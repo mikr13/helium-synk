@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vite-plus/test';
+import Dexie from 'dexie';
 import { SynkDatabase } from './database';
 import { DEFAULT_LOCAL_STORAGE, storagePolicy } from './local-storage';
 import { encryptPayload, generateRecoveryKey, historyUrlTag } from './crypto';
@@ -8,6 +9,7 @@ import { type Envelope, envelopeDigest, type PullPage } from './protocol';
 import { type HistoryErasure } from './history-erasure';
 import { sessionWindow } from '../../tests/session-fixtures';
 import { HistoryCapture } from './history-capture';
+import { IDBObjectStore } from 'fake-indexeddb';
 const dbs: SynkDatabase[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -99,6 +101,77 @@ it('checks capture/download capacity without enumerating journal content for dis
   expect(scan).not.toHaveBeenCalled();
   expect((await db.storageStatus()).compacted_records).toBe(0);
   expect(scan).not.toHaveBeenCalled();
+});
+
+it('samples initial browser usage before opening a capture transaction and still enforces it', async () => {
+  const contexts: boolean[] = [];
+  const db = new SynkDatabase(`quota-initial-${crypto.randomUUID()}`, async () => {
+    contexts.push(!!Dexie.currentTransaction);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return { usage: DEFAULT_LOCAL_STORAGE.max_bytes, quota: 1e9 };
+  });
+  dbs.push(db);
+  await db.open();
+  await expect(
+    db.transaction('rw', db.captureBudgetTables(), () => db.assertCaptureCapacity()),
+  ).rejects.toThrow('storage estimate reached its limit');
+  expect(contexts).toEqual([false]);
+});
+
+it('refreshes stale browser usage without keeping a capture transaction spinning or blocking its commit', async () => {
+  let time = Date.now();
+  vi.spyOn(Date, 'now').mockImplementation(() => time);
+  const contexts: boolean[] = [];
+  let finish: ((value: { usage: number; quota: number }) => void) | undefined;
+  const db = new SynkDatabase(`quota-refresh-${crypto.randomUUID()}`, async () => {
+    contexts.push(!!Dexie.currentTransaction);
+    if (contexts.length === 1) return { usage: 0, quota: 1e9 };
+    return new Promise<{ usage: number; quota: number }>((resolve) => {
+      finish = resolve;
+    });
+  });
+  dbs.push(db);
+  await db.open();
+  time += 5001;
+  const gets = vi.spyOn(IDBObjectStore.prototype, 'get');
+  let committed = false;
+  const capture = db
+    .transaction('rw', db.captureBudgetTables(), async () => {
+      await db.assertCaptureCapacity();
+      await db.assertCaptureCapacity();
+    })
+    .then(() => {
+      committed = true;
+    });
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const committedBeforeEstimate = committed;
+  const readsWhileWaiting = gets.mock.calls.length;
+  finish?.({ usage: DEFAULT_LOCAL_STORAGE.max_bytes, quota: 1e9 });
+  await capture;
+  expect(committedBeforeEstimate).toBe(true);
+  expect(readsWhileWaiting).toBeLessThan(10);
+  expect(contexts).toEqual([false, false]);
+  await expect(db.assertCaptureCapacity()).rejects.toThrow('storage estimate reached its limit');
+});
+
+it('admits a write after a slow initial estimate without losing the transaction context', async () => {
+  const db = new SynkDatabase(`quota-write-${crypto.randomUUID()}`, async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return { usage: 0, quota: 1e9 };
+  });
+  dbs.push(db);
+  await db.enroll(
+    {
+      account_id: crypto.randomUUID(),
+      device_id: crypto.randomUUID(),
+      name: 'Quota fixture',
+      token: 'a'.repeat(64),
+      server_url: 'http://127.0.0.1:4318',
+    },
+    generateRecoveryKey(),
+  );
+  await db.transaction('rw', db.captureBudgetTables(), () => db.assertCaptureCapacity());
+  expect(await db.state.get('local')).toBeDefined();
 });
 
 it('persists limits across reopening/export, rejects invalid configuration without changing them', async () => {

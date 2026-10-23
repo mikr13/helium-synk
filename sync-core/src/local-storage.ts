@@ -98,6 +98,7 @@ export class LocalCapacityError extends Error {
 export class StorageMeter {
   private estimate: LocalStorageEstimate = {};
   private sampled = 0;
+  private reading?: Promise<LocalStorageEstimate>;
   constructor(
     private probe: () => Promise<LocalStorageEstimate> = async () => {
       return typeof navigator !== 'undefined' && navigator.storage?.estimate
@@ -105,19 +106,32 @@ export class StorageMeter {
         : {};
     },
   ) {}
-  async read(force = false): Promise<LocalStorageEstimate> {
+  read(force = false): Promise<LocalStorageEstimate> {
     if (force || !this.sampled || Date.now() - this.sampled >= 5000) {
-      try {
-        const estimate = await Dexie.waitFor(this.probe());
-        const number = (value: unknown) =>
-          typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
-        this.estimate = { usage: number(estimate.usage), quota: number(estimate.quota) };
-      } catch {
-        this.estimate = {};
-      }
-      this.sampled = Date.now();
+      const reading = (this.reading ??= Dexie.ignoreTransaction(() =>
+        Promise.resolve()
+          .then(() => Dexie.Promise.resolve(this.probe()).timeout(60_000))
+          .then((estimate) => {
+            const number = (value: unknown) =>
+              typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+            this.estimate = { usage: number(estimate.usage), quota: number(estimate.quota) };
+          })
+          .catch(() => {
+            this.estimate = {};
+          })
+          .then(() => {
+            this.sampled = Date.now();
+            return this.estimate;
+          })
+          .finally(() => {
+            this.reading = undefined;
+          }),
+      ));
+      // Browser quota work must not hold an IDB transaction open with dummy reads.
+      // Admission uses the last sample; the refresh can finish after the write commits.
+      if (!Dexie.currentTransaction) return reading;
     }
-    return this.estimate;
+    return Dexie.Promise.resolve(this.estimate);
   }
 }
 export function capacityReason(
