@@ -1,5 +1,11 @@
 # @helium-synk/server
 
+## 0.5.3
+
+### Patch Changes
+
+- 770bbe8: Reduce history audit CPU use by indexing lookup readiness and retained errors instead of repeatedly reading the entire queued history payload. Upgrade existing queues without dropping pending work or deletion barriers, and preserve delayed retries. Installed-profile performance still requires release acceptance testing.
+
 ## 0.5.2
 
 ### Patch Changes
