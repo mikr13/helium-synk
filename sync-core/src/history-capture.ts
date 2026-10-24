@@ -208,10 +208,7 @@ export class HistoryCapture {
         }
       }
       // Other URLs continue even if one lookup is temporarily unavailable.
-      for (const lookup of await this.db.historyLookups
-        .filter((l) => (l.retry_at ?? 0) <= this.now())
-        .limit(5)
-        .toArray()) {
+      for (const lookup of await this.db.readyHistoryLookups(this.now()).limit(5).toArray()) {
         if ((lookup.retry_at ?? 0) > this.now()) continue;
         try {
           await this.lookup(lookup, setup);
@@ -256,7 +253,7 @@ export class HistoryCapture {
       }
       const retainedError =
         (await this.db.historyInbox.toArray()).find((i) => i.error)?.error ??
-        (await this.db.historyLookups.toArray()).find((l) => l.error)?.error ??
+        (await this.db.retainedHistoryLookupError()) ??
         (await this.db.historyScans.toArray()).find((s) => s.error)?.error;
       if (
         setup.phase === 'active' &&

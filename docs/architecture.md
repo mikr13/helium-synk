@@ -1,6 +1,8 @@
 # Architecture
 
-WXT/React client, durable IndexedDB, private Rust/Axum/SQLite relay. Protocol 1; client schema 12; relay schema 6.
+WXT/React client, durable IndexedDB, private Rust/Axum/SQLite relay. Protocol 1; client schema 13; relay schema 6.
+
+Client schema 13 adds retry-time and error indexes to the history lookup queue. Existing entries without a retry time are normalized to zero (immediately ready); delayed retries, queued records, deletion barriers and encrypted outgoing work are retained. Scheduling counts and retained-error queries read index metadata rather than full lookup payloads. The upgrade performs one transactional pass over existing lookups and may take time for large queues. No relay or wire-protocol change is required. A code rollback must retain schema 13 and its retry normalization; an older binary that only knows schema 12 cannot directly reopen an upgraded database. Do not clear the profile to downgrade.
 
 Progress and gaps: [plan.md](plan.md). Setup: [setup-guide.md](setup-guide.md). Hosting: [deployment.md](deployment.md).
 
