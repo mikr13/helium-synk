@@ -107,7 +107,7 @@ const metadata = {
   target: extensionOnly ? 'chrome-mv3' : `${process.platform}-${process.arch}`,
   protocol: 1,
   relay_schema: 6,
-  client_schema: 12,
+  client_schema: 13,
   node: process.version,
   sqlite_libraries:
     !extensionOnly && process.platform === 'darwin'
