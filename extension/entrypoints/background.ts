@@ -465,7 +465,7 @@ export default defineBackground(() => {
       const now = Date.now();
       const ready =
         (await db.historyInbox.filter((i) => (i.retry_at ?? 0) <= now).count()) > 0 ||
-        (await db.historyLookups.filter((l) => (l.retry_at ?? 0) <= now).count()) > 0 ||
+        (await db.hasReadyHistoryLookups(now)) ||
         (await db.historyScans.filter((s) => (s.retry_at ?? 0) <= now).count()) > 0;
       if (ready)
         historyWorkTimer = setTimeout(() => {

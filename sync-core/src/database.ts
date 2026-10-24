@@ -330,6 +330,24 @@ export class SynkDatabase extends Dexie {
             else delete record.purge_state;
           }),
       );
+    this.version(13)
+      .stores({ historyLookups: 'id, job_id, retry_at, error' })
+      .upgrade((tx) =>
+        tx
+          .table('historyLookups')
+          .toCollection()
+          .modify((lookup: HistoryLookup) => {
+            lookup.retry_at ??= 0;
+          }),
+      );
+    // Missing retry times mean immediately ready. Keep them in the scheduling index,
+    // including replacements and updates that clear a previous retry delay.
+    this.historyLookups.hook('creating', (_key, lookup) => {
+      lookup.retry_at ??= 0;
+    });
+    this.historyLookups.hook('updating', (changes: Partial<HistoryLookup>) => {
+      if ('retry_at' in changes) return { retry_at: changes.retry_at ?? 0 };
+    });
     // Keep the sparse index correct for every insertion, replacement, erasure and ACK.
     this.operations.hook('creating', (_key, record) => {
       record.purge_state = purgeState(record);
@@ -343,6 +361,17 @@ export class SynkDatabase extends Dexie {
       for (const [key, value] of relevant) Dexie.setByKeyPath(next, key, value);
       return { purge_state: purgeState(next) };
     });
+  }
+  readyHistoryLookups(now: number) {
+    return this.historyLookups.where('retry_at').belowOrEqual(now);
+  }
+  async hasReadyHistoryLookups(now: number): Promise<boolean> {
+    return (await this.readyHistoryLookups(now).limit(1).primaryKeys()).length > 0;
+  }
+  async retainedHistoryLookupError(): Promise<string | undefined> {
+    // Read the error index key, never the lookup's potentially large barrier payload.
+    const [error] = await this.historyLookups.where('error').above('').limit(1).keys();
+    return typeof error === 'string' ? error : undefined;
   }
   async enroll(
     credentials: Credentials,
